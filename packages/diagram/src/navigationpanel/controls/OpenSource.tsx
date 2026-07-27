@@ -1,4 +1,5 @@
 import { IconFileSymlink } from '@tabler/icons-react'
+import type { MouseEvent } from 'react'
 import { useDiagramEventHandlers } from '../../context/DiagramEventHandlers'
 import { useEnabledFeatures } from '../../context/DiagramFeatures'
 import { useCurrentViewId } from '../../hooks/useCurrentView'
@@ -17,7 +18,7 @@ export const OpenSource = () => {
     <Tooltip label="Open View Source">
       <PanelActionIcon
         // variant="filled"
-        onClick={e => {
+        onClick={(e: MouseEvent<HTMLButtonElement>) => {
           e.stopPropagation()
           onOpenSource?.({ view: viewId })
         }}

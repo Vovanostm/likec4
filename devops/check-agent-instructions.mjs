@@ -55,8 +55,21 @@ if (requireTrackedFile('CLAUDE.md')) {
 
 const trackedAgentsFiles = tracked.filter(file => path.basename(file).toLowerCase() === 'agents.md')
 const nestedAgentsFiles = trackedAgentsFiles.filter(file => file !== 'AGENTS.md' && path.basename(file) === 'AGENTS.md')
-if (nestedAgentsFiles.length > 0) {
-  fail(`Only root AGENTS.md is allowed; remove nested files: ${nestedAgentsFiles.join(', ')}`)
+const permittedNestedAgentsFiles = new Set(['apps/gui-to-code/AGENTS.md'])
+const unexpectedNestedAgentsFiles = nestedAgentsFiles.filter(file => !permittedNestedAgentsFiles.has(file))
+if (unexpectedNestedAgentsFiles.length > 0) {
+  fail(
+    `Only root AGENTS.md and approved scoped supplements are allowed; remove nested files: ${
+      unexpectedNestedAgentsFiles.join(', ')
+    }`,
+  )
+}
+
+if (existsSync(absolute('apps/gui-to-code/AGENTS.md'))) {
+  const guiToCodeAgents = read('apps/gui-to-code/AGENTS.md')
+  requireIncludes(guiToCodeAgents, 'Read `../../AGENTS.md` first.', 'GUI-to-code root policy reference')
+  requireIncludes(guiToCodeAgents, 'SPEC.md', 'GUI-to-code specification reference')
+  requireIncludes(guiToCodeAgents, 'ROADMAP.md', 'GUI-to-code roadmap reference')
 }
 
 const caseVariantAgentsFiles = trackedAgentsFiles.filter(file => path.basename(file) !== 'AGENTS.md')

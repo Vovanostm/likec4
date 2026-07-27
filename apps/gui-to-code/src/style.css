@@ -1,0 +1,38 @@
+@layer reset, base, tokens, recipes, utilities;
+
+:root { color: #e5e7eb; background: #111827; font-family: ui-sans-serif, system-ui, sans-serif; }
+
+html,
+body,
+#likec4-root {
+  min-height: 100%;
+  margin: 0;
+}
+
+.editor-shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+.topbar { align-items: center; border-bottom: 1px solid #374151; display: flex; gap: 1rem; justify-content: space-between; padding: 1rem 1.25rem; }
+.topbar h1, .topbar p, h2, h3 { margin: 0; }
+.topbar p { color: #9ca3af; margin-top: .25rem; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.workspace { display: grid; gap: 1px; grid-template-columns: minmax(15rem, .8fr) minmax(22rem, 1.2fr) minmax(26rem, 1.4fr); background: #374151; min-height: 0; }
+.panel { background: #111827; min-height: 0; padding: 1rem; }
+.controls { overflow: auto; }
+form { border-top: 1px solid #374151; display: grid; gap: .5rem; margin-top: .75rem; padding-top: .75rem; }
+h2 { font-size: 1rem; } h3 { font-size: .875rem; font-weight: 600; }
+button, .button { background: #2563eb; border: 0; border-radius: .375rem; color: white; cursor: pointer; font: inherit; padding: .5rem .75rem; }
+.button input { display: none; } button:hover, .button:hover { background: #1d4ed8; }
+input, textarea { background: #030712; border: 1px solid #4b5563; border-radius: .25rem; color: inherit; font: inherit; padding: .5rem; }
+.code-panel { display: grid; gap: .75rem; grid-template-rows: auto minmax(0, 1fr) auto; }
+textarea { min-height: 24rem; resize: none; width: 100%; }
+.diagram-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: .75rem; }
+.diagram { border: 1px solid #374151; border-radius: .5rem; min-height: 28rem; }
+.tree { color: #d1d5db; display: grid; gap: .35rem; list-style: none; padding: 0; }
+.tree code { color: #93c5fd; } .tree span { color: #9ca3af; }
+.diagnostics, .error { background: #450a0a; border: 1px solid #b91c1c; border-radius: .375rem; color: #fecaca; padding: .5rem .75rem; }
+.diagnostics h2 { font-size: .875rem; } .diagnostics ul { margin: .5rem 0 0; padding-left: 1.25rem; } .empty { color: #9ca3af; }
+@media (max-width: 1050px) { .workspace { grid-template-columns: 1fr; } .topbar { align-items: flex-start; flex-direction: column; } .diagram { min-height: 24rem; } }
+
+h1,
+p {
+  margin: 0;
+}

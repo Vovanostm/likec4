@@ -1,5 +1,5 @@
 import { IconSparkles } from '@tabler/icons-react'
-import { memo } from 'react'
+import { type MouseEvent, memo } from 'react'
 import { useDiagram } from '../../hooks/useDiagram'
 import { useEditorActorStateHasTag } from '../../hooks/useEditorActor'
 import { PanelActionIcon } from '../_common'
@@ -25,7 +25,7 @@ export const ApplySemanticLayout = memo<{
           x: visible ? 0 : -5,
           y: visible ? 0 : -8,
         }}
-        onClick={(e) => {
+        onClick={(e: MouseEvent<HTMLButtonElement>) => {
           e.stopPropagation()
           diagram.editorActor().send({ type: 'change.semantic-layout' })
         }}>

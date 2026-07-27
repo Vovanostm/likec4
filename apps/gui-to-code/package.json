@@ -1,0 +1,39 @@
+{
+  "name": "@likec4/gui-to-code",
+  "version": "1.59.2",
+  "private": true,
+  "description": "Browser GUI-to-code editor for LikeC4 diagrams",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "scripts": {
+    "generate": "pandacss codegen",
+    "dev": "vite dev",
+    "test": "vitest run",
+    "typecheck": "tsc --build --verbose",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clean": "pnpm rimraf dist lib styled-system"
+  },
+  "dependencies": {
+    "@likec4/diagram": "workspace:*",
+    "@likec4/core": "workspace:*",
+    "@likec4/language-services": "workspace:*",
+    "@likec4/style-preset": "workspace:*",
+    "@likec4/styles": "workspace:*",
+    "react": "catalog:react",
+    "react-dom": "catalog:react"
+  },
+  "devDependencies": {
+    "@likec4/tsconfig": "workspace:*",
+    "@pandacss/dev": "catalog:css",
+    "@types/react": "catalog:react",
+    "@types/react-dom": "catalog:react",
+    "@vitejs/plugin-react": "catalog:vite",
+    "postcss": "catalog:css",
+    "typescript": "catalog:",
+    "vite": "catalog:vite",
+    "vitest": "catalog:vitest"
+  }
+}

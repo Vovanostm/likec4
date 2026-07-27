@@ -35,6 +35,7 @@ import {
   linksProperty,
   notationProperty,
   notesProperty,
+  opacityProperty,
   styleProperties,
   tagsProperty,
   technologyProperty,
@@ -99,15 +100,38 @@ export const viewRuleStyle = zodOp(schemas.views.viewRuleStyle)(
     ),
   ),
 )
-export const viewRuleGroup = zodOp(schemas.views.viewRuleGroup)(({ ctx: _ctx, exec: _exec }) => {
-  throw new Error('not implemented')
-})
-export const viewRuleGlobalStyle = zodOp(schemas.views.viewRuleGlobalStyle)(({ ctx: _ctx, exec: _exec }) => {
-  throw new Error('not implemented')
-})
-export const viewRuleGlobalPredicate = zodOp(schemas.views.viewRuleGlobalPredicate)(({ ctx: _ctx, exec: _exec }) => {
-  throw new Error('not implemented')
-})
+export const viewRuleGlobalStyle = zodOp(schemas.views.viewRuleGlobalStyle)(
+  spaceBetween(
+    print('global style'),
+    printProperty('styleId'),
+  ),
+)
+export const viewRuleGlobalPredicate = zodOp(schemas.views.viewRuleGlobalPredicate)(
+  spaceBetween(
+    print('global predicate'),
+    printProperty('predicateId'),
+  ),
+)
+
+export const viewRuleGroup = zodOp(schemas.views.viewRuleGroup)(
+  spaceBetween(
+    print('group'),
+    property('title', text()),
+    body('{', '}')(
+      lines(
+        colorProperty(),
+        property('border'),
+        opacityProperty(),
+        property(
+          'groupRules',
+          foreachNewLine(
+            lazy(() => elementViewRule()),
+          ),
+        ),
+      ),
+    ),
+  ),
+)
 
 const mapping = {
   'TB': 'TopBottom',
@@ -139,9 +163,21 @@ export const deploymentViewRuleIncludeAncestors = zodOp(schemas.views.deployment
   ),
 )
 
-export const viewRuleRank = zodOp(schemas.views.viewRuleRank)(({ ctx: _ctx, exec: _exec }) => {
-  throw new Error('not implemented')
-})
+export const viewRuleRank = zodOp(schemas.views.viewRuleRank)(
+  spaceBetween(
+    print('rank'),
+    printProperty('rank'),
+    body('{', '}')(
+      property(
+        'targets',
+        foreach(
+          expression(),
+          separateComma(),
+        ),
+      ),
+    ),
+  ),
+)
 
 export const elementViewRule = zodOp(schemas.views.elementViewRule)(
   ({ ctx, exec }) => {

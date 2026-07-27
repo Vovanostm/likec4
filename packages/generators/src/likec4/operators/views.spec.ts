@@ -1,4 +1,5 @@
 import { type ViewsBuilder, Builder } from '@likec4/core/builder'
+import { fromSource } from '@likec4/language-services/node'
 import { describe, expect as viExpect, it } from 'vitest'
 import {
   materialize,
@@ -67,6 +68,80 @@ function expect(...builders: Array<(input: ViewsBuilder<T>) => any>) {
 }
 
 describe('view', () => {
+  it('prints parseable group, rank, and global rules', async () => {
+    const output = materialize(
+      withctx({
+        index: {
+          _type: 'element' as const,
+          id: 'index',
+          rules: [
+            {
+              title: 'Backend',
+              color: 'red',
+              border: 'solid',
+              opacity: 10,
+              groupRules: [
+                { include: [{ wildcard: true }] },
+                {
+                  title: null,
+                  groupRules: [{ exclude: [{ ref: { model: 'frontend' } }] }],
+                },
+              ],
+            },
+            { rank: 'same' as const, targets: [{ wildcard: true }] },
+            { styleId: 'shared-style' },
+            { predicateId: 'shared-predicate' },
+          ],
+        },
+      }, viewsOp()),
+    )
+
+    viExpect(output).toMatchInlineSnapshot(`
+      "views {
+        view index {
+          group 'Backend' {
+            color red
+            border solid
+            opacity 10%
+            include *
+            group {
+              exclude frontend
+            }
+          }
+          rank same {
+            *
+          }
+          global style shared-style
+          global predicate shared-predicate
+        }
+      }"
+    `)
+
+    const likec4 = await fromSource(
+      `
+      specification {
+        element component
+      }
+      model {
+        component backend
+        component frontend
+      }
+      global {
+        style shared-style * {
+          color green
+        }
+        predicateGroup shared-predicate {
+          include *
+        }
+      }
+      ${output}
+    `,
+      { throwIfInvalid: true },
+    )
+
+    viExpect(likec4.hasErrors()).toBe(false)
+  })
+
   it('should print element view', () => {
     expect(
       view(

@@ -74,6 +74,7 @@
   "devDependencies": {
     "@likec4/tsconfig": "workspace:*",
     "@likec4/devops": "workspace:*",
+    "@likec4/language-services": "workspace:*",
     "@types/node": "catalog:",
     "@types/pako": "catalog:",
     "typescript": "catalog:",

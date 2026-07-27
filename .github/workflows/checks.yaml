@@ -154,6 +154,32 @@ jobs:
         run: |
           pnpm turbo run build --filter='@likec4/playground'
 
+  check-gui-to-code:
+    name: 🧩 GUI-to-code
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04-arm
+    needs:
+      - check-build
+      - check-types
+      - check-tests
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 🛠️ bootstrap
+        uses: ./.github/actions/bootstrap
+
+      - name: ʦ typecheck
+        run: |
+          pnpm turbo run typecheck --filter='@likec4/gui-to-code'
+
+      - name: 🔬 test
+        run: |
+          pnpm --filter='@likec4/gui-to-code' test
+
+      - name: ⚙️ build
+        run: |
+          pnpm turbo run build --filter='@likec4/gui-to-code'
+
   check-e2e-tests:
     name: 🔬 e2e tests
     timeout-minutes: 10
@@ -288,6 +314,7 @@ jobs:
       - check-tests
       - check-docs-astro
       - check-playground
+      - check-gui-to-code
       - check-e2e-tests
       - check-e2e-types
     steps:

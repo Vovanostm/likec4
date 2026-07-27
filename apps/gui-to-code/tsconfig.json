@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@likec4/tsconfig/react-lib.json",
+  "compilerOptions": {
+    "composite": true,
+    "paths": {
+      "@likec4/styles/css": ["./styled-system/css/index.d.mts"],
+      "@likec4/styles/jsx": ["./styled-system/jsx/index.d.mts"],
+      "@likec4/styles/patterns": ["./styled-system/patterns/index.d.mts"],
+      "@likec4/styles/recipes": ["./styled-system/recipes/index.d.mts"],
+      "@likec4/styles/types": ["./styled-system/types/index.d.mts"]
+    },
+    "tsBuildInfoFile": "lib/tsconfig.tsbuildinfo",
+    "types": [
+      "vite/client"
+    ]
+  },
+  "include": [
+    "src/",
+    "styled-system/",
+    "vite.config.ts"
+  ]
+}

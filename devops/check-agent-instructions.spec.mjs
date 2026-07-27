@@ -82,14 +82,23 @@ describe('check-agent-instructions', () => {
       createFixture({
         'packages/core/AGENTS.md': '# Nested instructions\n',
       }),
-      /Only root AGENTS\.md is allowed/,
+      /Only root AGENTS\.md and approved scoped supplements are allowed/,
+    )
+  })
+
+  it('accepts the approved GUI-to-code supplement', () => {
+    expectPass(
+      createFixture({
+        'apps/gui-to-code/AGENTS.md':
+          '# GUI-to-code instructions\n\nRead `../../AGENTS.md` first.\n\nRead `SPEC.md` and `ROADMAP.md`.\n',
+      }),
     )
   })
 
   it('rejects case variants of canonical instruction files', () => {
     expectFail(
       createFixture({
-        'agents.md': '# Duplicate canonical instructions\n',
+        'packages/core/agents.md': '# Duplicate canonical instructions\n',
       }),
       /Do not track AGENTS\.md case variants/,
     )
