@@ -4,34 +4,45 @@
 
 ## Current behavior
 
-The first usable source-first vertical slice intentionally supports:
+The WP-02 vertical slice supports:
 
 - importing one `.c4` source file, editing it directly, and exporting the exact current text as `model.c4`;
-- preserving the source draft in browser `localStorage` under a versioned key;
-- adding root elements, logical relations and scoped views through explicit forms;
-- compiling with `@likec4/language-services/browser`, showing diagnostics, and rendering the first available view with `@likec4/diagram`;
+- preserving the visible source draft in browser `localStorage` under the existing versioned key;
+- using the diagram as the primary workspace;
+- activating creation tools for «Актор», «Система» and «Компонент»;
+- creating one root element by canvas click or keyboard confirmation;
+- allocating deterministic collision-free identifiers such as `actor`, `actor2` and `actor3`;
+- applying source-preserving edits through `DocumentEditService.planAddElement`;
+- compiling an isolated candidate before committing source, revision and model atomically;
 - preserving the last valid rendered model while a direct edit or import is invalid;
-- validating form-command candidates before committing them;
-- ignoring stale asynchronous compilation responses.
+- rejecting stale operations and ignoring stale asynchronous compilation responses;
+- deriving available element kinds from the loaded LikeC4 specification.
 
-Forms do not yet cover nested/deployment elements, rename/remove, undo/redo, manual-layout editing, multi-file workspaces, config/library authoring, IndexedDB, ZIP or snapshot export. Canvas-first semantic creation is not implemented yet.
+The current package does not yet implement relation creation on canvas, nesting, rename/remove, inspector CRUD, view CRUD, product undo/redo controls, manual layout, multi-file UI, IndexedDB, ZIP import/export, backend collaboration or AI generation.
 
 ## Current architecture
 
-- The source string remains the WP-01 document owner and is the only persisted source of truth.
-- `src/document.ts` applies the three append-only prototype commands to a candidate source string.
-- `src/compiler.ts` is the only browser language-services compilation boundary.
-- `src/editor-state.ts` separates invalid draft updates from compile-before-commit semantic commands and preserves the last valid model.
-- `@likec4/language-services/browser` now exposes revision-bound AST/CST-backed source edit planning primitives for add, semantic rename, dependency inspection, and controlled removal.
-- `@likec4/diagram` now exposes an optional canvas intent callback and deterministic interaction controller without applying semantic commands or extending `ViewChange`.
-- `src/wp01-contracts.ts` is a compile/test adapter proving that owning-package intents can map to future app commands and edit plans can be applied to an in-memory candidate. It is not production canvas CRUD.
-- `src/spikes/` remains historical executable decision evidence and is not connected to the production UI.
+- `EditorWorkspace` is the only runtime owner of committed sources, draft sources, workspace revision, compilation state, last-valid model and history foundation.
+- LikeC4 DSL remains the persisted semantic representation. The compiled model and diagram are derived.
+- Semantic changes enter through typed `EditorOperation` values carrying `expectedRevision`.
+- Workspace operations are serialized; concurrent operations based on the same revision cannot silently overwrite each other.
+- `src/compiler.ts` is the revision-aware browser compiler boundary.
+- `src/editor/adapters/language-services.ts` owns the production integration with `@likec4/language-services/browser`.
+- `DocumentEditService.planAddElement` and `applyDocumentTextEdits` produce and apply source-preserving candidate edits.
+- `createCanvasIntentController` owns only transient gesture lifecycle. It does not allocate DSL identifiers or mutate workspace state.
+- Canvas points, selection, focus and the active creation tool are transient UI state and are not persisted into the DSL.
+- `ViewChange` remains layout-only and is not used for semantic CRUD.
 
-The target product and architecture live in [SPEC.md](./SPEC.md). Delivery order and managed state live in [ROADMAP.md](./ROADMAP.md).
+The target product and architecture live in [SPEC.md](./SPEC.md). Delivery order and managed state live in [ROADMAP.md](./ROADMAP.md) and [ROADMAP.STATUS.md](./ROADMAP.STATUS.md).
 
 ## Verification
 
 ```bash
+pnpm --filter @likec4/style-preset sources
+pnpm --filter @likec4/styles sources
+pnpm --filter @likec4/styles emit-pkg
+pnpm --filter @likec4/language-server generate
+pnpm --filter @likec4/layouts generate
 pnpm --filter @likec4/gui-to-code generate
 pnpm --filter @likec4/gui-to-code typecheck
 pnpm --filter @likec4/gui-to-code test
