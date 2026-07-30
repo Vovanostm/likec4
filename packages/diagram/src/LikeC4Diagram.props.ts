@@ -341,6 +341,11 @@ export type OnCanvasClick = (event: ReactMouseEvent) => void
 
 export type OnCanvasContextMenu = (event: ReactMouseEvent) => void
 
+export type OnConnect<A extends Any = Unknown> = (
+  sourceId: Fqn<A>,
+  targetId: Fqn<A>,
+) => void
+
 export type OnInitialized = (params: { diagram: DiagramApi; xyflow: XYFlowInstance }) => void
 
 export type OnLayoutTypeChange = (layoutType: LayoutType) => void
@@ -354,6 +359,7 @@ export interface LikeC4DiagramEventHandlers<A extends Any = Unknown> {
   onEdgeContextMenu?: OnEdgeClick<A> | null | undefined
   onCanvasClick?: OnCanvasClick | null | undefined
   onCanvasDblClick?: OnCanvasClick | null | undefined
+  onConnect?: OnConnect<A> | null | undefined
 
   // if set, will render a logo icon in the top left corner
   onLogoClick?: null | undefined | (() => void)

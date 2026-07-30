@@ -56,7 +56,38 @@ describe('DocumentEditService', () => {
     expect(reparsed.hasErrors()).toBe(false)
   })
 
-  it('renames only the declaration and resolved semantic references', async () => {
+  it('adds one directed relation without rewriting comments or neighboring declarations', async () => {
+  const likec4 = await fromSources({ 'model.c4': source })
+  const service = createDocumentEditService(likec4)
+
+  const plan = await service.planAddRelation({
+    source: 'shop' as Fqn,
+    target: 'user' as Fqn,
+  })
+  const candidate = applySingleDocumentPlan(source, plan)
+
+  expect(candidate).toContain('// shop must stay unchanged in this comment')
+  expect(candidate).toContain("system shop 'shop title must stay unchanged'")
+  expect(candidate.match(/shop -> user/g)).toHaveLength(1)
+  expect(candidate.indexOf('shop -> user')).toBeGreaterThan(candidate.indexOf('user -> shop'))
+
+  const reparsed = await fromSource(candidate)
+  expect(reparsed.hasErrors()).toBe(false)
+})
+
+it('rejects missing and self relation endpoints without producing edits', async () => {
+  const likec4 = await fromSources({ 'model.c4': source })
+  const service = createDocumentEditService(likec4)
+
+  await expect(service.planAddRelation({ source: 'missing' as Fqn, target: 'user' as Fqn })).rejects
+    .toMatchObject({ code: 'not-found' })
+  await expect(service.planAddRelation({ source: 'user' as Fqn, target: 'missing' as Fqn })).rejects
+    .toMatchObject({ code: 'not-found' })
+  await expect(service.planAddRelation({ source: 'user' as Fqn, target: 'user' as Fqn })).rejects
+    .toMatchObject({ code: 'invalid-operation' })
+})
+
+it('renames only the declaration and resolved semantic references', async () => {
     const likec4 = await fromSources({ 'model.c4': source })
     const service = createDocumentEditService(likec4)
 

@@ -23,6 +23,7 @@ export {
   DocumentEditService,
   sourceRevision,
   type AddElementInput,
+  type AddRelationInput,
   type CascadeRemoveElementInput,
   type DocumentEditErrorCode,
   type DocumentTextEdit,
