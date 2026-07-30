@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'apps/gui-to-code/**'
+      - 'e2e/playwright.gui-to-code.config.ts'
+      - 'e2e/tests/gui-to-code/**'
       - 'packages/core/**'
       - 'packages/diagram/**'
       - 'packages/language-services/**'
@@ -18,6 +20,8 @@ on:
     branches: [main]
     paths:
       - 'apps/gui-to-code/**'
+      - 'e2e/playwright.gui-to-code.config.ts'
+      - 'e2e/tests/gui-to-code/**'
       - 'packages/core/**'
       - 'packages/diagram/**'
       - 'packages/language-services/**'
@@ -36,7 +40,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -51,9 +55,13 @@ jobs:
       - run: pnpm --filter @likec4/language-server generate
       - run: pnpm --filter @likec4/layouts generate
       - run: pnpm --filter @likec4/gui-to-code generate
+      - run: pnpm --filter @likec4/language-services test -- DocumentEditService
+      - run: pnpm --filter @likec4/language-services typecheck
       - run: pnpm --filter @likec4/gui-to-code typecheck
       - run: pnpm --filter @likec4/gui-to-code test
       - run: pnpm --filter @likec4/gui-to-code build
       - run: pnpm --filter @likec4/gui-to-code smoke:start
+      - run: pnpm --dir e2e exec playwright install chromium
+      - run: pnpm --dir e2e exec playwright test -c playwright.gui-to-code.config.ts
       - run: pnpm check:agent-instructions
       - run: git diff --check
