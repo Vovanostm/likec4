@@ -1,17 +1,25 @@
-import { LikeC4ModelProvider, ReactLikeC4 } from '@likec4/diagram'
-import type { ChangeEvent, FormEvent } from 'react'
-import { useEffect, useRef, useState } from 'react'
-import { type Compilation, compile } from './compiler'
-import { type EditorCommand, starterSource } from './document'
+import type { ElementKind } from '@likec4/core/types'
 import {
-  CompilationSequence,
-  type EditorRuntimeState,
-  applyDraftCompilation,
-  applyEditorCommand,
-} from './editor-state'
+  createCanvasIntentController,
+  LikeC4ModelProvider,
+  ReactLikeC4,
+} from '@likec4/diagram'
+import type { CanvasIntent, CanvasIntentController } from '@likec4/diagram'
+import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { compile } from './compiler'
+import { starterSource } from './document'
+import type { EditorWorkspaceState, SourceFile } from './editor/contracts'
+import { EditorWorkspace } from './editor/workspace'
 import { userError, userMessages } from './user-messages'
 
 const storageKey = 'likec4.gui-to-code.source.v1'
+const documentUri = 'model.c4'
+const createKinds = [
+  ['actor', 'Актор'],
+  ['system', 'Система'],
+  ['component', 'Компонент'],
+] as const satisfies readonly (readonly [ElementKind, string])[]
 
 function readInitialSource(): string {
   return localStorage.getItem(storageKey) ?? starterSource
@@ -27,39 +35,101 @@ export function downloadSource(source: string): void {
 }
 
 export function App() {
-  const initialSource = readInitialSource()
-  const [runtime, setRuntime] = useState<EditorRuntimeState>({
-    source: initialSource,
-    compilation: { errors: [], model: null },
-    lastValidModel: null,
-  })
+  const workspace = useRef<EditorWorkspace | null>(null)
+  const [state, setState] = useState<EditorWorkspaceState | null>(null)
+  const [activeKind, setActiveKind] = useState<ElementKind | null>(null)
   const [commandError, setCommandError] = useState<string | null>(null)
-  const [element, setElement] = useState({ id: '', kind: 'component', title: '' })
-  const [relation, setRelation] = useState({ source: '', target: '', title: '' })
-  const [view, setView] = useState({ id: '', of: '' })
-  const compilationSequence = useRef(new CompilationSequence())
-  const validatedSource = useRef<string | null>(null)
-
-  const source = runtime.source
-  const compilation = runtime.compilation
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const intentHandler = useRef<(intent: CanvasIntent) => void>(() => undefined)
+  const controller = useRef<CanvasIntentController | null>(null)
+  if (!controller.current) {
+    controller.current = createCanvasIntentController(intent => intentHandler.current(intent))
+  }
 
   useEffect(() => {
-    localStorage.setItem(storageKey, source)
-    if (validatedSource.current === source) {
-      validatedSource.current = null
+    let cancelled = false
+    void EditorWorkspace.create([{ uri: documentUri, content: readInitialSource() }], compile).then(created => {
+      if (cancelled) return
+      workspace.current = created
+      setState(created.state)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const refresh = (): void => {
+    const current = workspace.current?.state
+    if (current) {
+      setState(current)
+      localStorage.setItem(storageKey, current.draftSources[0]?.content ?? '')
+    }
+  }
+
+  const updateDraftSource = (content: string): void => {
+    const current = workspace.current
+    if (!current) return
+    setCommandError(null)
+    setFeedback(null)
+    const pending = current.updateDraft([{ uri: documentUri, content }])
+    refresh()
+    void pending.then(refresh)
+  }
+
+  const createElement = async (kind: ElementKind): Promise<void> => {
+    const current = workspace.current
+    if (!current) return
+    const result = await current.dispatch({
+      id: Date.now(),
+      expectedRevision: current.state.revision,
+      semantic: { type: 'element.create', input: { kind, documentUri } },
+    })
+    refresh()
+    setActiveKind(null)
+    if (result.status === 'applied') {
+      setCommandError(null)
+      setFeedback(`Создан элемент ${result.createdElementId}.`)
       return
     }
-    const sequence = compilationSequence.current.next()
-    void compile(source).then(result => {
-      if (!compilationSequence.current.isCurrent(sequence)) return
-      setRuntime(current => applyDraftCompilation(current, source, result))
-    })
-  }, [source])
+    if (result.status === 'conflict') {
+      setCommandError('Проект изменился. Повторите действие на актуальной версии.')
+      return
+    }
+    setCommandError(result.issues[0]?.message ?? 'Не удалось создать элемент.')
+  }
 
-  const updateDraftSource = (nextSource: string): void => {
-    validatedSource.current = null
+  intentHandler.current = intent => {
+    switch (intent.type) {
+      case 'element.create.requested':
+        void createElement(intent.elementKind)
+        return
+      case 'interaction.cancelled':
+        setActiveKind(null)
+        return
+      case 'selection.changed':
+      case 'relation.create.requested':
+        return
+    }
+  }
+
+  const activateCreateTool = (kind: ElementKind): void => {
+    controller.current?.startElementCreation(kind)
+    setActiveKind(kind)
+    setFeedback(null)
     setCommandError(null)
-    setRuntime(current => ({ ...current, source: nextSource }))
+  }
+
+  const confirmKeyboardCreate = (event: ReactKeyboardEvent<HTMLElement>): void => {
+    if (event.key === 'Escape') {
+      if (controller.current?.handleKeyDown(event.key)) {
+        event.preventDefault()
+      }
+      return
+    }
+    if ((event.key === 'Enter' || event.key === ' ') && activeKind) {
+      event.preventDefault()
+      controller.current?.requestElementCreation({ x: 0.5, y: 0.5 })
+    }
   }
 
   const importSource = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
@@ -67,12 +137,12 @@ export function App() {
     const file = input.files?.[0]
     if (!file) return
     try {
-      const nextSource = await file.text()
-      if (!nextSource.length) {
+      const content = await file.text()
+      if (!content.length) {
         setCommandError(userMessages.importEmpty)
         return
       }
-      updateDraftSource(nextSource)
+      updateDraftSource(content)
     } catch (error) {
       setCommandError(userError(userMessages.importFailed, error instanceof Error ? error.message : String(error)))
     } finally {
@@ -80,43 +150,23 @@ export function App() {
     }
   }
 
-  const dispatch = async (command: EditorCommand): Promise<boolean> => {
-    const result = await applyEditorCommand(runtime, command, compile)
-    if (result.status === 'rejected') {
-      setCommandError(result.message)
-      return false
-    }
-    compilationSequence.current.next()
-    validatedSource.current = result.state.source
-    setRuntime(result.state)
-    setCommandError(null)
-    return true
+  if (!state) {
+    return <main className="editor-shell"><p>Загрузка редактора…</p></main>
   }
 
-  const submitElement = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (await dispatch({ type: 'add-element', ...element })) setElement({ id: '', kind: element.kind, title: '' })
-  }
-  const submitRelation = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (await dispatch({ type: 'add-relation', ...relation })) setRelation({ source: '', target: '', title: '' })
-  }
-  const submitView = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (await dispatch({ type: 'add-view', ...view })) setView({ id: '', of: '' })
-  }
-
-  const renderModel = compilation.model ?? runtime.lastValidModel
-  const elements = renderModel ? Object.values(renderModel.$data.elements) : []
+  const source = state.draftSources[0]?.content ?? ''
+  const renderModel = state.compilation.model ?? state.lastValidModel
   const views = renderModel ? Object.values(renderModel.$data.views) : []
   const selectedView = views.find(candidate => candidate.id === 'index') ?? views[0]
+  const availableKinds = new Set(Object.keys(state.lastValidModel?.$data.specification.elements ?? {}))
+  const canvasDisabled = state.compilation.status !== 'valid'
 
   return (
     <main className="editor-shell">
       <header className="topbar">
         <div>
           <h1>LikeC4: визуальный редактор</h1>
-          <p>Семантический редактор LikeC4, работающий полностью в браузере.</p>
+          <p>Создавайте элементы на диаграмме; исходный код обновляется автоматически.</p>
         </div>
         <div className="actions">
           <label className="button">
@@ -129,69 +179,49 @@ export function App() {
       </header>
 
       <section className="workspace" aria-label="Рабочая область редактора LikeC4">
-        <aside className="panel controls" aria-label="Команды модели">
-          <h2>Модель</h2>
-          <form onSubmit={submitElement}>
-            <h3>Добавить корневой элемент</h3>
-            <input
-              required
-              placeholder="Идентификатор, например payments"
-              value={element.id}
-              onChange={event => setElement({ ...element, id: event.target.value })} />
-            <input
-              required
-              placeholder="Тип, например component"
-              value={element.kind}
-              onChange={event => setElement({ ...element, kind: event.target.value })} />
-            <input
-              required
-              placeholder="Название"
-              value={element.title}
-              onChange={event => setElement({ ...element, title: event.target.value })} />
-            <button type="submit">Добавить элемент</button>
-          </form>
-          <form onSubmit={submitRelation}>
-            <h3>Добавить связь</h3>
-            <input
-              required
-              placeholder="Источник связи, например shop.web"
-              value={relation.source}
-              onChange={event => setRelation({ ...relation, source: event.target.value })} />
-            <input
-              required
-              placeholder="Цель связи, например payments"
-              value={relation.target}
-              onChange={event => setRelation({ ...relation, target: event.target.value })} />
-            <input
-              placeholder="Подпись связи — необязательно"
-              value={relation.title}
-              onChange={event => setRelation({ ...relation, title: event.target.value })} />
-            <button type="submit">Связать</button>
-          </form>
-          <form onSubmit={submitView}>
-            <h3>Добавить вид</h3>
-            <input
-              required
-              placeholder="Идентификатор вида"
-              value={view.id}
-              onChange={event => setView({ ...view, id: event.target.value })} />
-            <input
-              required
-              placeholder="Область вида, например shop"
-              value={view.of}
-              onChange={event => setView({ ...view, of: event.target.value })} />
-            <button type="submit">Добавить вид</button>
-          </form>
-          <h2>Элементы</h2>
-          <ul className="tree">
-            {elements.map(item => (
-              <li key={item.id}>
-                <code>{item.id}</code> <span>{item.title}</span>
-              </li>
-            ))}
-          </ul>
+        <section
+          className="panel diagram-panel"
+          aria-label="Холст диаграммы"
+          tabIndex={0}
+          onKeyDown={confirmKeyboardCreate}>
+          <header>
+            <h2>Диаграмма</h2>
+            <div className="actions" aria-label="Создание элемента">
+              {createKinds.map(([kind, label]) => {
+                const unavailable = !availableKinds.has(kind)
+                const disabled = canvasDisabled || unavailable
+                return (
+                  <button
+                    key={kind}
+                    type="button"
+                    aria-label={`Создать: ${label}`}
+                    aria-pressed={activeKind === kind}
+                    disabled={disabled}
+                    title={unavailable ? 'Этот тип элемента недоступен в текущей спецификации.' : undefined}
+                    onClick={() => activateCreateTool(kind)}>
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </header>
+          {renderModel && selectedView ?
+            (
+              <LikeC4ModelProvider likec4model={renderModel}>
+                <ReactLikeC4
+                  viewId={selectedView.id}
+                  className="diagram"
+                  onCanvasClick={event => {
+                    if (!activeKind) return
+                    controller.current?.requestElementCreation({ x: event.clientX, y: event.clientY })
+                  }} />
+              </LikeC4ModelProvider>
+            ) :
+            <p className="empty">В проекте нет подходящего вида для отображения.</p>}
+          {activeKind && <p aria-live="polite">Кликните по холсту или нажмите Enter, чтобы создать элемент.</p>}
+          {feedback && <p role="status">{feedback}</p>}
           {commandError && <p className="error" role="alert">{commandError}</p>}
-        </aside>
+        </section>
 
         <section className="panel code-panel" aria-label="Код LikeC4">
           <h2>Код LikeC4</h2>
@@ -200,23 +230,19 @@ export function App() {
             value={source}
             onChange={event => updateDraftSource(event.target.value)}
             spellCheck={false} />
-          {compilation.errors.length > 0 && (
+          {state.compilation.diagnostics.length > 0 && (
             <section className="diagnostics" aria-live="polite">
               <h2>Ошибки</h2>
-              <ul>{compilation.errors.map(error => <li key={error}>{error}</li>)}</ul>
+              <ul>
+                {state.compilation.diagnostics.map((diagnostic, index) => (
+                  <li key={`${diagnostic.line ?? 0}-${index}`}>
+                    {diagnostic.line ? `Строка ${diagnostic.line}: ` : ''}{diagnostic.message}
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
-        </section>
-
-        <section className="panel diagram-panel" aria-label="Предпросмотр диаграммы">
-          <h2>Диаграмма</h2>
-          {renderModel && selectedView ?
-            (
-              <LikeC4ModelProvider likec4model={renderModel}>
-                <ReactLikeC4 viewId={selectedView.id} className="diagram" />
-              </LikeC4ModelProvider>
-            ) :
-            <p className="empty">Исправьте код LikeC4, чтобы отобразить диаграмму.</p>}
+          <p>Ревизия проекта: {state.revision}</p>
         </section>
       </section>
     </main>
