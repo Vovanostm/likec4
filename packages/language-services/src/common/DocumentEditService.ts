@@ -1,5 +1,5 @@
 import type { ElementKind, Fqn, ProjectId } from '@likec4/core/types'
-import type { AstNode, CstNode, LangiumDocument, ReferenceDescription } from 'langium'
+import type { AstNode, LangiumDocument, ReferenceDescription } from 'langium'
 import type { Position, Range } from 'vscode-languageserver-types'
 import { URI } from 'vscode-uri'
 import type { LikeC4, LikeC4Langium } from './LikeC4'
@@ -87,6 +87,7 @@ export interface CascadeRemoveElementInput extends RemoveElementInput {
 }
 
 interface LocatedElement {
+  readonly target: Fqn
   readonly projectId: ProjectId
   readonly document: LangiumDocument
   readonly node: AstNode
@@ -99,16 +100,11 @@ interface DependencyCandidate extends RemovalDependency {
 const ID_PATTERN = /^([a-zA-Z]|_+[a-zA-Z0-9])[-\w]*$/
 
 /**
- * Browser-compatible, source-preserving edit planner backed by linked Langium documents.
- *
- * Plans are immutable and revision-bound. Applying a plan is intentionally left to
- * the caller so candidate source can be compiled before commit.
+ * Browser-compatible source edit planner backed by linked Langium documents.
+ * Plans are immutable and revision-bound; callers apply them to candidate source.
  */
 export class DocumentEditService {
-  private readonly langium: LikeC4Langium
-
-  constructor(langium: LikeC4Langium) {
-    this.langium = langium
+  constructor(private readonly langium: LikeC4Langium) {
   }
 
   async planAddElement(input: AddElementInput): Promise<SourceEditPlan> {
@@ -126,8 +122,7 @@ export class DocumentEditService {
 
     const document = this.findModelDocument(projectId, input.documentUri)
     const root = document.parseResult.value as AstNode & { models?: readonly AstNode[] }
-    const model = root.models?.[0]
-    const modelCst = model?.$cstNode
+    const modelCst = root.models?.[0]?.$cstNode
     if (!modelCst) {
       throw new DocumentEditError('not-found', 'No model block found in the selected document')
     }
@@ -144,7 +139,7 @@ export class DocumentEditService {
     const newText = `${prefix}${childIndent}${input.kind} ${input.id}${title}\n${actualClosingIndent}`
     const position = document.textDocument.positionAt(insertionOffset)
 
-    return this.planFromEdits(document, [{
+    return this.planFromEdits([{
       uri: document.uri.toString(),
       range: { start: position, end: position },
       newText,
@@ -171,37 +166,89 @@ export class DocumentEditService {
       range: nameNode.range,
       newText: input.newId,
     }]
-
-    const references = this.referencesTo(located.node)
-    for (const reference of references) {
+    for (const reference of this.referencesTo(located.node)) {
       edits.push({
         uri: reference.sourceUri.toString(),
         range: reference.segment.range,
         newText: input.newId,
       })
     }
-
-    return this.planFromWorkspaceEdits(edits)
+    return this.planFromEdits(edits)
   }
 
   inspectRemoveElement(input: RemoveElementInput): RemovalDependencyReport {
     const located = this.locateElement(input.target, input.project)
-    const targetRange = this.removalRange(located.document, located.node)
+    const dependencies = this.dependencyCandidates(located).map(({ removalEdit: _edit, ...dependency }) => dependency)
+    return {
+      target: input.target,
+      revision: reportRevision(located.document, dependencies),
+      dependencies,
+    }
+  }
+
+  planRemoveElement(input: CascadeRemoveElementInput): SourceEditPlan {
+    const located = this.locateElement(input.target, input.project)
+    const candidates = this.dependencyCandidates(located)
+    const dependencies = candidates.map(({ removalEdit: _edit, ...dependency }) => dependency)
+    const report: RemovalDependencyReport = {
+      target: input.target,
+      revision: reportRevision(located.document, dependencies),
+      dependencies,
+    }
+    const approved = new Set(input.approvedDependencyIds ?? [])
+
+    if (dependencies.length > 0) {
+      if (input.dependencyRevision !== report.revision) {
+        throw new DocumentEditError(
+          'stale-document',
+          'Removal dependencies changed; inspect them again before approving cascade removal',
+          report,
+        )
+      }
+      const missing = dependencies.filter(dependency => !approved.has(dependency.id))
+      const unknown = [...approved].filter(id => !dependencies.some(dependency => dependency.id === id))
+      if (missing.length > 0 || unknown.length > 0) {
+        throw new DocumentEditError(
+          'dependencies-not-approved',
+          'Every current dependency must be approved explicitly',
+          report,
+        )
+      }
+      if (dependencies.some(dependency => dependency.removal === 'unsupported')) {
+        throw new DocumentEditError(
+          'unsupported-cascade',
+          'At least one dependency cannot be removed safely by the current source-preserving planner',
+          report,
+        )
+      }
+    }
+
+    const edits: DocumentTextEdit[] = [this.removalEdit(located.document, located.node)]
+    for (const candidate of candidates) {
+      if (candidate.removal === 'separate' && candidate.removalEdit && approved.has(candidate.id)) {
+        edits.push(candidate.removalEdit)
+      }
+    }
+    return this.planFromEdits(collapseContainedEdits(edits))
+  }
+
+  private dependencyCandidates(located: LocatedElement): DependencyCandidate[] {
+    const targetRange = this.removalEdit(located.document, located.node).range
     const candidates: DependencyCandidate[] = []
 
     for (const parsedDocument of this.langium.likec4.likec4.ModelParser.documents(located.projectId)) {
       for (const element of parsedDocument.c4Elements) {
-        if (element.id === input.target || !element.id.startsWith(`${input.target}.`)) {
+        if (element.id === located.target || !element.id.startsWith(`${located.target}.`)) {
           continue
         }
         const node = this.langium.likec4.workspace.AstNodeLocator.getAstNode(
           parsedDocument.parseResult.value,
           element.astPath,
         )
-        const range = node?.$cstNode?.range
-        if (!node || !range) {
+        if (!node?.$cstNode) {
           continue
         }
+        const range = node.$cstNode.range
         candidates.push({
           id: dependencyId('child-element', parsedDocument.uri.toString(), range),
           kind: 'child-element',
@@ -221,112 +268,24 @@ export class DocumentEditService {
         sourceDocument.parseResult.value,
         reference.sourcePath,
       )
-      const property = sourceNode ? findReferenceProperty(sourceNode, reference.segment.range) : undefined
-      const kind = classifyDependency(sourceNode, property)
+      const kind = classifyDependency(sourceNode)
       const removableNode = sourceNode ? findRemovableAncestor(sourceNode, kind) : undefined
-      const removalEdit = removableNode?.$cstNode
-        ? this.removalEdit(sourceDocument, removableNode)
-        : undefined
-      const referenceRange = reference.segment.range
-      const isContained = sourceDocument.uri.toString() === located.document.uri.toString()
-        && rangeContains(targetRange, referenceRange)
+      const removalEdit = removableNode ? this.removalEdit(sourceDocument, removableNode) : undefined
+      const range = reference.segment.range
+      const contained = sourceDocument.uri.toString() === located.document.uri.toString()
+        && rangeContains(targetRange, range)
 
       candidates.push({
-        id: dependencyId(kind, sourceDocument.uri.toString(), referenceRange),
+        id: dependencyId(kind, sourceDocument.uri.toString(), range),
         kind,
         uri: sourceDocument.uri.toString(),
-        range: referenceRange,
-        removal: isContained ? 'contained' : removalEdit ? 'separate' : 'unsupported',
-        ...(!isContained && removalEdit ? { removalEdit } : {}),
+        range,
+        removal: contained ? 'contained' : removalEdit ? 'separate' : 'unsupported',
+        ...(!contained && removalEdit ? { removalEdit } : {}),
       })
     }
 
-    const dependencies = dedupeDependencies(candidates)
-    return {
-      target: input.target,
-      revision: reportRevision(located.document, dependencies),
-      dependencies,
-    }
-  }
-
-  planRemoveElement(input: CascadeRemoveElementInput): SourceEditPlan {
-    const located = this.locateElement(input.target, input.project)
-    const report = this.inspectRemoveElement(input)
-    const approved = new Set(input.approvedDependencyIds ?? [])
-
-    if (report.dependencies.length > 0) {
-      if (input.dependencyRevision !== report.revision) {
-        throw new DocumentEditError(
-          'stale-document',
-          'Removal dependencies changed; inspect them again before approving cascade removal',
-          report,
-        )
-      }
-      const missing = report.dependencies.filter(dependency => !approved.has(dependency.id))
-      const unknown = [...approved].filter(id => !report.dependencies.some(dependency => dependency.id === id))
-      if (missing.length > 0 || unknown.length > 0) {
-        throw new DocumentEditError(
-          'dependencies-not-approved',
-          'Every current dependency must be approved explicitly',
-          report,
-        )
-      }
-      const unsupported = report.dependencies.filter(dependency => dependency.removal === 'unsupported')
-      if (unsupported.length > 0) {
-        throw new DocumentEditError(
-          'unsupported-cascade',
-          'At least one dependency cannot be removed safely by the current source-preserving planner',
-          report,
-        )
-      }
-    }
-
-    const edits: DocumentTextEdit[] = [this.removalEdit(located.document, located.node)]
-    const candidates = this.inspectDependencyCandidates(located)
-    for (const candidate of candidates) {
-      if (candidate.removal === 'separate' && candidate.removalEdit && approved.has(candidate.id)) {
-        edits.push(candidate.removalEdit)
-      }
-    }
-
-    return this.planFromWorkspaceEdits(collapseContainedEdits(edits))
-  }
-
-  private inspectDependencyCandidates(located: LocatedElement): readonly DependencyCandidate[] {
-    const report = this.inspectRemoveElement({ target: this.elementFqn(located), project: located.projectId })
-    const result: DependencyCandidate[] = []
-    for (const dependency of report.dependencies) {
-      if (dependency.removal !== 'separate') {
-        result.push(dependency)
-        continue
-      }
-      const document = this.langium.shared.workspace.LangiumDocuments.getDocument(URI.parse(dependency.uri))
-      if (!document) {
-        result.push({ ...dependency, removal: 'unsupported' })
-        continue
-      }
-      const reference = this.referencesTo(located.node).find(candidate => {
-        return candidate.sourceUri.toString() === dependency.uri
-          && rangesEqual(candidate.segment.range, dependency.range)
-      })
-      const sourceNode = reference
-        ? this.langium.likec4.workspace.AstNodeLocator.getAstNode(document.parseResult.value, reference.sourcePath)
-        : undefined
-      const removable = sourceNode ? findRemovableAncestor(sourceNode, dependency.kind) : undefined
-      result.push({
-        ...dependency,
-        ...(removable ? { removalEdit: this.removalEdit(document, removable) } : { removal: 'unsupported' as const }),
-      })
-    }
-    return result
-  }
-
-  private elementFqn(located: LocatedElement): Fqn {
-    const parsed = this.langium.likec4.likec4.ModelLocator.getParsedElement(located.node as never)
-    if (!parsed) {
-      throw new DocumentEditError('not-found', 'Element is no longer available')
-    }
-    return parsed.element.id
+    return dedupeCandidates(candidates)
   }
 
   private locateElement(target: Fqn, project?: string): LocatedElement {
@@ -342,11 +301,7 @@ export class DocumentEditService {
     if (!node?.$cstNode) {
       throw new DocumentEditError('not-found', `Source range for "${target}" was not found`)
     }
-    return {
-      projectId: located.projectId,
-      document: located.document,
-      node,
-    }
+    return { target, projectId: located.projectId, document: located.document, node }
   }
 
   private referencesTo(node: AstNode): ReferenceDescription[] {
@@ -378,10 +333,6 @@ export class DocumentEditService {
     }
   }
 
-  private removalRange(document: LangiumDocument, node: AstNode): Range {
-    return this.removalEdit(document, node).range
-  }
-
   private removalEdit(document: LangiumDocument, node: AstNode): DocumentTextEdit {
     const cst = node.$cstNode
     if (!cst) {
@@ -408,15 +359,7 @@ export class DocumentEditService {
     }
   }
 
-  private planFromEdits(document: LangiumDocument, edits: readonly DocumentTextEdit[]): SourceEditPlan {
-    return {
-      baseRevisions: { [document.uri.toString()]: sourceRevision(document.textDocument.getText()) },
-      edits: normalizeEdits(edits),
-      affectedDocuments: [document.uri.toString()],
-    }
-  }
-
-  private planFromWorkspaceEdits(edits: readonly DocumentTextEdit[]): SourceEditPlan {
+  private planFromEdits(edits: readonly DocumentTextEdit[]): SourceEditPlan {
     const normalized = normalizeEdits(edits)
     const affectedDocuments = [...new Set(normalized.map(edit => edit.uri))].sort()
     const baseRevisions: Record<string, string> = {}
@@ -431,13 +374,13 @@ export class DocumentEditService {
   }
 }
 
-/** Create the public edit planner for a LikeC4 browser or Node instance. */
+/** Create a public edit planner for a browser or Node LikeC4 instance. */
 export function createDocumentEditService(likec4: LikeC4): DocumentEditService {
   const langium = (likec4 as unknown as { readonly langium: LikeC4Langium }).langium
   return new DocumentEditService(langium)
 }
 
-/** Stable revision digest used to reject stale plans without Node crypto APIs. */
+/** Stable revision digest without Node-only crypto APIs. */
 export function sourceRevision(source: string): string {
   let hash = 0x811c9dc5
   for (let index = 0; index < source.length; index++) {
@@ -447,7 +390,7 @@ export function sourceRevision(source: string): string {
   return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, '0')}:${source.length}`
 }
 
-/** Apply one document's plan after checking the exact source revision. */
+/** Apply one document's edits after checking the exact source revision. */
 export function applyDocumentTextEdits(
   source: string,
   edits: readonly Pick<DocumentTextEdit, 'range' | 'newText'>[],
@@ -478,8 +421,54 @@ export function applyDocumentTextEdits(
   return result
 }
 
+function classifyDependency(node: AstNode | undefined): RemovalDependencyKind {
+  let current = node
+  const containerProperties = new Set<string>()
+  while (current) {
+    if (current.$containerProperty) {
+      containerProperties.add(current.$containerProperty)
+    }
+    const type = current.$type
+    if (type.includes('Relation')) {
+      if (containerProperties.has('source')) {
+        return 'outgoing-relation'
+      }
+      if (containerProperties.has('target')) {
+        return 'incoming-relation'
+      }
+      return 'semantic-reference'
+    }
+    if (type === 'ElementView') {
+      return containerProperties.has('viewOf') ? 'scoped-view' : 'view-reference'
+    }
+    if (type.includes('View') || type.includes('Rule') || type.includes('Predicate')) {
+      return 'view-reference'
+    }
+    current = current.$container
+  }
+  return 'semantic-reference'
+}
+
+function findRemovableAncestor(node: AstNode, kind: RemovalDependencyKind): AstNode | undefined {
+  let current: AstNode | undefined = node
+  while (current) {
+    const type = current.$type
+    if (
+      ((kind === 'incoming-relation' || kind === 'outgoing-relation') && type.includes('Relation'))
+      || (kind === 'scoped-view' && type === 'ElementView')
+      || (kind === 'view-reference' && (type.includes('Rule') || type.includes('Predicate')))
+    ) {
+      return current
+    }
+    current = current.$container
+  }
+  return undefined
+}
+
 function reportRevision(document: LangiumDocument, dependencies: readonly RemovalDependency[]): string {
-  return sourceRevision(`${document.uri.toString()}\n${sourceRevision(document.textDocument.getText())}\n${dependencies.map(d => d.id).join('\n')}`)
+  return sourceRevision(
+    `${document.uri.toString()}\n${sourceRevision(document.textDocument.getText())}\n${dependencies.map(d => d.id).join('\n')}`,
+  )
 }
 
 function parentFqn(fqn: Fqn): string | undefined {
@@ -495,73 +484,12 @@ function dependencyId(kind: RemovalDependencyKind, uri: string, range: Range): s
   return `${kind}:${uri}:${range.start.line}:${range.start.character}:${range.end.line}:${range.end.character}`
 }
 
-function dedupeDependencies(candidates: readonly DependencyCandidate[]): RemovalDependency[] {
-  const byId = new Map<string, RemovalDependency>()
+function dedupeCandidates(candidates: readonly DependencyCandidate[]): DependencyCandidate[] {
+  const byId = new Map<string, DependencyCandidate>()
   for (const candidate of candidates) {
-    const { removalEdit: _removalEdit, ...dependency } = candidate
-    byId.set(candidate.id, dependency)
+    byId.set(candidate.id, candidate)
   }
   return [...byId.values()].sort((left, right) => left.id.localeCompare(right.id))
-}
-
-function classifyDependency(node: AstNode | undefined, property: string | undefined): RemovalDependencyKind {
-  let current = node
-  while (current) {
-    const type = current.$type
-    if (type.includes('Relation')) {
-      if (property === 'source') {
-        return 'outgoing-relation'
-      }
-      if (property === 'target') {
-        return 'incoming-relation'
-      }
-      return 'semantic-reference'
-    }
-    if ((type === 'ElementView' || type.endsWith('View')) && property === 'viewOf') {
-      return 'scoped-view'
-    }
-    if (type.includes('View') || type.includes('Rule') || type.includes('Predicate')) {
-      return 'view-reference'
-    }
-    current = current.$container
-  }
-  return 'semantic-reference'
-}
-
-function findRemovableAncestor(node: AstNode, kind: RemovalDependencyKind): AstNode | undefined {
-  let current: AstNode | undefined = node
-  while (current) {
-    const type = current.$type
-    if (
-      (kind === 'incoming-relation' || kind === 'outgoing-relation') && type.includes('Relation')
-      || kind === 'scoped-view' && (type === 'ElementView' || type.endsWith('View'))
-      || kind === 'view-reference' && (type.includes('Rule') || type.includes('Predicate'))
-    ) {
-      return current
-    }
-    current = current.$container
-  }
-  return undefined
-}
-
-function findReferenceProperty(node: AstNode, targetRange: Range): string | undefined {
-  for (const [key, value] of Object.entries(node)) {
-    if (key.startsWith('$')) {
-      continue
-    }
-    const values = Array.isArray(value) ? value : [value]
-    for (const candidate of values) {
-      if (
-        candidate
-        && typeof candidate === 'object'
-        && '$refNode' in candidate
-        && rangesEqual((candidate as { $refNode?: CstNode }).$refNode?.range, targetRange)
-      ) {
-        return key
-      }
-    }
-  }
-  return undefined
 }
 
 function normalizeEdits(edits: readonly DocumentTextEdit[]): DocumentTextEdit[] {
@@ -596,10 +524,8 @@ function comparePositions(left: Position, right: Position): number {
   return left.line - right.line || left.character - right.character
 }
 
-function rangesEqual(left: Range | undefined, right: Range | undefined): boolean {
-  return !!left && !!right
-    && comparePositions(left.start, right.start) === 0
-    && comparePositions(left.end, right.end) === 0
+function rangesEqual(left: Range, right: Range): boolean {
+  return comparePositions(left.start, right.start) === 0 && comparePositions(left.end, right.end) === 0
 }
 
 function rangeContains(outer: Range, inner: Range): boolean {
