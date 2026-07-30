@@ -129,28 +129,28 @@ export interface CommandIssue {
 
 export type CommandResult =
   | {
-      readonly status: 'applied'
-      readonly command: 'element.create'
-      readonly revision: Revision
-      readonly createdElementId: Fqn
-    }
+    readonly status: 'applied'
+    readonly command: 'element.create'
+    readonly revision: Revision
+    readonly createdElementId: Fqn
+  }
   | {
-      readonly status: 'applied'
-      readonly command: 'relation.create'
-      readonly revision: Revision
-      readonly createdRelationId: RelationId
-    }
+    readonly status: 'applied'
+    readonly command: 'relation.create'
+    readonly revision: Revision
+    readonly createdRelationId: RelationId
+  }
   | {
-      readonly status: 'applied'
-      readonly command: 'history.undo'
-      readonly revision: Revision
-    }
+    readonly status: 'applied'
+    readonly command: 'history.undo'
+    readonly revision: Revision
+  }
   | {
-      readonly status: 'rejected'
-      readonly revision: Revision
-      readonly issues: readonly CommandIssue[]
-    }
+    readonly status: 'rejected'
+    readonly revision: Revision
+    readonly issues: readonly CommandIssue[]
+  }
   | {
-      readonly status: 'conflict'
-      readonly revision: Revision
-    }
+    readonly status: 'conflict'
+    readonly revision: Revision
+  }

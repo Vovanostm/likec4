@@ -53,15 +53,17 @@ const compiler: CompilerPort = async request => {
   }
 }
 
-const editElement: ElementEditPort = async (currentSources, input) => currentSources.map(source => ({
-  ...source,
-  content: `${source.content}\n${input.kind} ${input.id}\n`,
-}))
+const editElement: ElementEditPort = async (currentSources, input) =>
+  currentSources.map(source => ({
+    ...source,
+    content: `${source.content}\n${input.kind} ${input.id}\n`,
+  }))
 
-const editRelation: RelationEditPort = async (currentSources, input) => currentSources.map(source => ({
-  ...source,
-  content: `${source.content}\n${input.sourceId} -> ${input.targetId}\n`,
-}))
+const editRelation: RelationEditPort = async (currentSources, input) =>
+  currentSources.map(source => ({
+    ...source,
+    content: `${source.content}\n${input.sourceId} -> ${input.targetId}\n`,
+  }))
 
 function elementOperation(kind: ElementKind, expectedRevision = 0) {
   return {

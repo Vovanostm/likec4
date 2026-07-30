@@ -43,7 +43,7 @@ function availableKinds(state: EditorWorkspaceState): Set<string> {
 function allocateId(state: EditorWorkspaceState, kind: ElementKind): string {
   const existing = new Set(Object.keys(state.lastValidModel?.$data.elements ?? {}))
   if (!existing.has(kind)) return kind
-  for (let suffix = 2; ; suffix += 1) {
+  for (let suffix = 2;; suffix += 1) {
     const candidate = `${kind}${suffix}`
     if (!existing.has(candidate)) return candidate
   }
@@ -344,7 +344,9 @@ export class EditorWorkspace {
         return {
           status: 'rejected',
           revision: state.revision,
-          issues: [issue('undo-compile-rejected', 'Не удалось отменить изменение: предыдущая версия не компилируется.')],
+          issues: [
+            issue('undo-compile-rejected', 'Не удалось отменить изменение: предыдущая версия не компилируется.'),
+          ],
         }
       }
       this.pendingCompileRevision = Math.max(this.pendingCompileRevision, revision)

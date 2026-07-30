@@ -250,7 +250,13 @@ export function App() {
     }
   }
 
-  if (!state) return <main className="editor-shell"><p>Загрузка редактора…</p></main>
+  if (!state) {
+    return (
+      <main className="editor-shell">
+        <p>Загрузка редактора…</p>
+      </main>
+    )
+  }
 
   const source = state.draftSources[0]?.content ?? ''
   const renderModel = state.compilation.model ?? state.lastValidModel
@@ -368,7 +374,9 @@ export function App() {
                   ))}
                 </select>
               </label>
-              <button type="button" onClick={() => completeRelation(relationSource, relationTarget)}>Создать связь</button>
+              <button type="button" onClick={() => completeRelation(relationSource, relationTarget)}>
+                Создать связь
+              </button>
             </section>
           )}
           {feedback && <p role="status" aria-live="polite">{feedback}</p>}
@@ -388,7 +396,8 @@ export function App() {
               <ul>
                 {state.compilation.diagnostics.map((diagnostic, index) => (
                   <li key={`${diagnostic.line ?? 0}-${index}`}>
-                    {diagnostic.line ? `Строка ${diagnostic.line}: ` : ''}{diagnostic.message}
+                    {diagnostic.line ? `Строка ${diagnostic.line}: ` : ''}
+                    {diagnostic.message}
                   </li>
                 ))}
               </ul>

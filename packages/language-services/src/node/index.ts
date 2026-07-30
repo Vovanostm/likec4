@@ -22,15 +22,14 @@ export type {
 export { LikeC4 } from '../common/LikeC4'
 
 export {
-  applyDocumentTextEdits,
-  createDocumentEditService,
-  DocumentEditError,
-  DocumentEditService,
-  sourceRevision,
   type AddElementInput,
   type AddRelationInput,
+  applyDocumentTextEdits,
   type CascadeRemoveElementInput,
+  createDocumentEditService,
+  DocumentEditError,
   type DocumentEditErrorCode,
+  DocumentEditService,
   type DocumentTextEdit,
   type RemovalDependency,
   type RemovalDependencyKind,
@@ -38,6 +37,7 @@ export {
   type RemoveElementInput,
   type RenameElementInput,
   type SourceEditPlan,
+  sourceRevision,
 } from '../common/DocumentEditService'
 
 /**

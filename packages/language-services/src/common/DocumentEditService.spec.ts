@@ -27,7 +27,10 @@ views {
 }
 `
 
-function applySingleDocumentPlan(currentSource: string, plan: Awaited<ReturnType<ReturnType<typeof createDocumentEditService>['planRenameElement']>>) {
+function applySingleDocumentPlan(
+  currentSource: string,
+  plan: Awaited<ReturnType<ReturnType<typeof createDocumentEditService>['planRenameElement']>>,
+) {
   const uri = plan.affectedDocuments[0]!
   return applyDocumentTextEdits(
     currentSource,
@@ -48,46 +51,46 @@ describe('DocumentEditService', () => {
     })
     const candidate = applySingleDocumentPlan(source, plan)
 
-    expect(candidate).toContain("  system billing 'Billing'\n}")
+    expect(candidate).toContain('  system billing \'Billing\'\n}')
     expect(candidate).toContain('// shop must stay unchanged in this comment')
-    expect(candidate).toContain("system shop 'shop title must stay unchanged'")
+    expect(candidate).toContain('system shop \'shop title must stay unchanged\'')
 
     const reparsed = await fromSource(candidate)
     expect(reparsed.hasErrors()).toBe(false)
   })
 
   it('adds one directed relation without rewriting comments or neighboring declarations', async () => {
-  const likec4 = await fromSources({ 'model.c4': source })
-  const service = createDocumentEditService(likec4)
+    const likec4 = await fromSources({ 'model.c4': source })
+    const service = createDocumentEditService(likec4)
 
-  const plan = await service.planAddRelation({
-    source: 'shop' as Fqn,
-    target: 'user' as Fqn,
+    const plan = await service.planAddRelation({
+      source: 'shop' as Fqn,
+      target: 'user' as Fqn,
+    })
+    const candidate = applySingleDocumentPlan(source, plan)
+
+    expect(candidate).toContain('// shop must stay unchanged in this comment')
+    expect(candidate).toContain('system shop \'shop title must stay unchanged\'')
+    expect(candidate.match(/shop -> user/g)).toHaveLength(1)
+    expect(candidate.indexOf('shop -> user')).toBeGreaterThan(candidate.indexOf('user -> shop'))
+
+    const reparsed = await fromSource(candidate)
+    expect(reparsed.hasErrors()).toBe(false)
   })
-  const candidate = applySingleDocumentPlan(source, plan)
 
-  expect(candidate).toContain('// shop must stay unchanged in this comment')
-  expect(candidate).toContain("system shop 'shop title must stay unchanged'")
-  expect(candidate.match(/shop -> user/g)).toHaveLength(1)
-  expect(candidate.indexOf('shop -> user')).toBeGreaterThan(candidate.indexOf('user -> shop'))
+  it('rejects missing and self relation endpoints without producing edits', async () => {
+    const likec4 = await fromSources({ 'model.c4': source })
+    const service = createDocumentEditService(likec4)
 
-  const reparsed = await fromSource(candidate)
-  expect(reparsed.hasErrors()).toBe(false)
-})
+    await expect(service.planAddRelation({ source: 'missing' as Fqn, target: 'user' as Fqn })).rejects
+      .toMatchObject({ code: 'not-found' })
+    await expect(service.planAddRelation({ source: 'user' as Fqn, target: 'missing' as Fqn })).rejects
+      .toMatchObject({ code: 'not-found' })
+    await expect(service.planAddRelation({ source: 'user' as Fqn, target: 'user' as Fqn })).rejects
+      .toMatchObject({ code: 'invalid-operation' })
+  })
 
-it('rejects missing and self relation endpoints without producing edits', async () => {
-  const likec4 = await fromSources({ 'model.c4': source })
-  const service = createDocumentEditService(likec4)
-
-  await expect(service.planAddRelation({ source: 'missing' as Fqn, target: 'user' as Fqn })).rejects
-    .toMatchObject({ code: 'not-found' })
-  await expect(service.planAddRelation({ source: 'user' as Fqn, target: 'missing' as Fqn })).rejects
-    .toMatchObject({ code: 'not-found' })
-  await expect(service.planAddRelation({ source: 'user' as Fqn, target: 'user' as Fqn })).rejects
-    .toMatchObject({ code: 'invalid-operation' })
-})
-
-it('renames only the declaration and resolved semantic references', async () => {
+  it('renames only the declaration and resolved semantic references', async () => {
     const likec4 = await fromSources({ 'model.c4': source })
     const service = createDocumentEditService(likec4)
 
@@ -98,7 +101,7 @@ it('renames only the declaration and resolved semantic references', async () => 
     const candidate = applySingleDocumentPlan(source, plan)
 
     expect(candidate).toContain('// shop must stay unchanged in this comment')
-    expect(candidate).toContain("system store 'shop title must stay unchanged'")
+    expect(candidate).toContain('system store \'shop title must stay unchanged\'')
     expect(candidate).toContain('user -> store')
     expect(candidate).toContain('view index of store')
     expect(candidate).toContain('include store')
@@ -130,11 +133,13 @@ it('renames only the declaration and resolved semantic references', async () => 
     expect(report.dependencies.some(dependency => dependency.kind === 'scoped-view')).toBe(true)
 
     expect(() => service.planRemoveElement({ target: 'shop' as Fqn })).toThrowError(DocumentEditError)
-    expect(() => service.planRemoveElement({
-      target: 'shop' as Fqn,
-      dependencyRevision: 'stale',
-      approvedDependencyIds: report.dependencies.map(dependency => dependency.id),
-    })).toThrowError(expect.objectContaining({ code: 'stale-document' }))
+    expect(() =>
+      service.planRemoveElement({
+        target: 'shop' as Fqn,
+        dependencyRevision: 'stale',
+        approvedDependencyIds: report.dependencies.map(dependency => dependency.id),
+      })
+    ).toThrowError(expect.objectContaining({ code: 'stale-document' }))
   })
 
   it('removes an element and every explicitly approved removable dependency atomically', async () => {
@@ -150,7 +155,7 @@ it('renames only the declaration and resolved semantic references', async () => 
     const candidate = applySingleDocumentPlan(source, plan)
 
     expect(candidate).toContain('// shop must stay unchanged in this comment')
-    expect(candidate).not.toContain("system shop 'shop title must stay unchanged'")
+    expect(candidate).not.toContain('system shop \'shop title must stay unchanged\'')
     expect(candidate).not.toContain('user -> shop')
     expect(candidate).not.toContain('view index of shop')
 
@@ -160,10 +165,12 @@ it('renames only the declaration and resolved semantic references', async () => 
 
   it('rejects applying a plan to a stale source revision', () => {
     const expected = sourceRevision(source)
-    expect(() => applyDocumentTextEdits(
-      `${source}// changed\n`,
-      [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: '' }],
-      expected,
-    )).toThrowError(expect.objectContaining({ code: 'stale-document' }))
+    expect(() =>
+      applyDocumentTextEdits(
+        `${source}// changed\n`,
+        [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: '' }],
+        expected,
+      )
+    ).toThrowError(expect.objectContaining({ code: 'stale-document' }))
   })
 })
