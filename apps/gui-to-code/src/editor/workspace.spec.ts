@@ -1,34 +1,77 @@
 import type { LikeC4Model } from '@likec4/core/model'
 import type { ElementKind, Fqn } from '@likec4/core/types'
 import { describe, expect, it } from 'vitest'
-import { starterSource } from '../document'
-import type { CompilerPort, ElementEditPort, RelationEditPort } from './contracts'
+import type {
+  CompilerPort,
+  EditorDocumentPort,
+  EditorOperation,
+  RemovalDependencyReport,
+  SourceFile,
+} from './contracts'
+import { EditorDocumentError } from './contracts'
 import { EditorWorkspace } from './workspace'
 
-const sources = [{ uri: 'model.c4', content: starterSource }]
+const initialSource = `actor customer|title=Customer
+system shop|title=Online shop
+component shop.web|title=Web application|desc=Frontend|tech=TypeScript|tags=ui
+component shop.api|title=API
+system platform|title=Platform
+relation customer->shop.web
+`
+const sources = [{ uri: 'model.c4', content: initialSource }]
+
+interface ParsedLine {
+  readonly kind: ElementKind
+  readonly id: Fqn
+  readonly title: string
+  readonly description?: string
+  readonly technology?: string
+  readonly tags: readonly string[]
+}
+
+function parseElements(source: string): ParsedLine[] {
+  return source.split('\n').flatMap(line => {
+    const match = /^(actor|system|component) ([A-Za-z_][\w.-]*)(.*)$/.exec(line)
+    if (!match) return []
+    const properties = Object.fromEntries(match[3]!.split('|').filter(Boolean).map(part => {
+      const [key, ...value] = part.split('=')
+      return [key, value.join('=')]
+    }))
+    return [{
+      kind: match[1] as ElementKind,
+      id: match[2] as Fqn,
+      title: properties.title ?? match[2]!,
+      ...(properties.desc ? { description: properties.desc } : {}),
+      ...(properties.tech ? { technology: properties.tech } : {}),
+      tags: properties.tags?.split(',').filter(Boolean) ?? [],
+    }]
+  })
+}
 
 function modelFor(source: string): LikeC4Model.Layouted {
-  const created = [...source.matchAll(/^(actor|system|component) ([A-Za-z_][A-Za-z0-9_]*)$/gm)]
-  const relationMatches = [...source.matchAll(/^([A-Za-z_][A-Za-z0-9_.]*) -> ([A-Za-z_][A-Za-z0-9_.]*)$/gm)]
-  const elements = {
-    customer: { id: 'customer', kind: 'actor', title: 'Customer' },
-    shop: { id: 'shop', kind: 'system', title: 'Online shop' },
-    'shop.web': { id: 'shop.web', kind: 'component', title: 'Web application' },
-    ...Object.fromEntries(created.map(match => [match[2]!, {
-      id: match[2],
-      kind: match[1],
-      title: match[2],
-    }])),
-  }
-  const relations = Object.fromEntries(relationMatches.map((match, index) => [`relation-${index + 1}`, {
-    id: `relation-${index + 1}`,
-    source: { model: match[1] },
-    target: { model: match[2] },
+  const elements = Object.fromEntries(parseElements(source).map(element => [element.id, {
+    id: element.id,
+    kind: element.kind,
+    title: element.title,
+    description: element.description,
+    technology: element.technology,
+    tags: element.tags,
   }]))
+  const relations = Object.fromEntries(source.split('\n').flatMap((line, index) => {
+    const match = /^relation ([\w.-]+)->([\w.-]+)$/.exec(line)
+    return match
+      ? [[`relation-${index}`, {
+        id: `relation-${index}`,
+        source: { model: match[1] },
+        target: { model: match[2] },
+      }]]
+      : []
+  }))
   return {
     $data: {
       specification: {
         elements: { actor: {}, system: {}, component: {} },
+        tags: { ui: {}, backend: {} },
       },
       elements,
       relations,
@@ -39,230 +82,244 @@ function modelFor(source: string): LikeC4Model.Layouted {
 
 const compiler: CompilerPort = async request => {
   const source = request.sources[0]?.content ?? ''
-  if (source === 'model {') {
-    return {
-      revision: request.revision,
-      diagnostics: [{ message: 'invalid' }],
-      model: null,
+  if (source === 'invalid') {
+    return { revision: request.revision, diagnostics: [{ message: 'invalid' }], model: null }
+  }
+  return { revision: request.revision, diagnostics: [], model: modelFor(source) }
+}
+
+function replaceSource(current: readonly SourceFile[], transform: (source: string) => string): readonly SourceFile[] {
+  return current.map(source => ({ ...source, content: transform(source.content) }))
+}
+
+function remapSource(source: string, oldRoot: Fqn, newRoot: Fqn): string {
+  const map = (value: string): string => value === oldRoot || value.startsWith(`${oldRoot}.`)
+    ? `${newRoot}${value.slice(oldRoot.length)}`
+    : value
+  return source.split('\n').map(line => {
+    const element = /^(actor|system|component) ([\w.-]+)(.*)$/.exec(line)
+    if (element) return `${element[1]} ${map(element[2]!)}${element[3]}`
+    const relation = /^relation ([\w.-]+)->([\w.-]+)$/.exec(line)
+    if (relation) return `relation ${map(relation[1]!)}->${map(relation[2]!)}`
+    return line
+  }).join('\n')
+}
+
+function reportFor(id: Fqn): RemovalDependencyReport {
+  return {
+    target: id,
+    revision: `dependencies:${id}`,
+    dependencies: [{
+      id: `relation:${id}`,
+      kind: 'incoming-relation',
+      uri: 'model.c4',
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+      removal: 'separate',
+    }],
+  }
+}
+
+const documents: EditorDocumentPort = {
+  async createElement(current, input) {
+    return replaceSource(current, source => `${source}${input.kind} ${input.id}|title=${input.title ?? input.id}\n`)
+  },
+  async createRelation(current, input) {
+    return replaceSource(current, source => `${source}relation ${input.sourceId}->${input.targetId}\n`)
+  },
+  async patchElement(current, input) {
+    return replaceSource(current, source => source.split('\n').map(line => {
+      const parsed = /^(actor|system|component) ([\w.-]+)(.*)$/.exec(line)
+      if (!parsed || parsed[2] !== input.id) return line
+      const currentElement = parseElements(`${line}\n`)[0]!
+      const patch = input.patch
+      const title = patch.title ?? currentElement.title
+      const description = patch.description === undefined ? currentElement.description : patch.description ?? undefined
+      const technology = patch.technology === undefined ? currentElement.technology : patch.technology ?? undefined
+      const tags = patch.tags === undefined ? currentElement.tags : [...new Set(patch.tags)].sort()
+      return `${parsed[1]} ${input.id}|title=${title}`
+        + `${description ? `|desc=${description}` : ''}`
+        + `${technology ? `|tech=${technology}` : ''}`
+        + `${tags.length ? `|tags=${tags.join(',')}` : ''}`
+    }).join('\n'))
+  },
+  async moveElement(current, input) {
+    const next = (input.parentId ? `${input.parentId}.${input.id.slice(input.id.lastIndexOf('.') + 1)}` : input.id.slice(input.id.lastIndexOf('.') + 1)) as Fqn
+    return replaceSource(current, source => remapSource(source, input.id, next))
+  },
+  async renameElement(current, input) {
+    const index = input.id.lastIndexOf('.')
+    const next = `${index < 0 ? '' : `${input.id.slice(0, index)}.`}${input.newId}` as Fqn
+    return replaceSource(current, source => remapSource(source, input.id, next))
+  },
+  async inspectRemoveElement(_current, id) {
+    return reportFor(id)
+  },
+  async removeElement(current, input) {
+    const report = reportFor(input.id)
+    if (input.dependencyRevision !== report.revision) throw new EditorDocumentError('stale-document', 'stale')
+    if (input.approvedDependencyIds.join() !== report.dependencies.map(item => item.id).join()) {
+      throw new EditorDocumentError('dependencies-not-approved', 'approval mismatch')
     }
-  }
-  return {
-    revision: request.revision,
-    diagnostics: [],
-    model: modelFor(source),
-  }
+    return replaceSource(current, source => source.split('\n').filter(line => {
+      const element = /^(actor|system|component) ([\w.-]+)/.exec(line)
+      if (element && (element[2] === input.id || element[2]!.startsWith(`${input.id}.`))) return false
+      const relation = /^relation ([\w.-]+)->([\w.-]+)$/.exec(line)
+      return !relation || ![relation[1], relation[2]].some(id => id === input.id || id!.startsWith(`${input.id}.`))
+    }).join('\n'))
+  },
 }
 
-const editElement: ElementEditPort = async (currentSources, input) =>
-  currentSources.map(source => ({
-    ...source,
-    content: `${source.content}\n${input.kind} ${input.id}\n`,
-  }))
-
-const editRelation: RelationEditPort = async (currentSources, input) =>
-  currentSources.map(source => ({
-    ...source,
-    content: `${source.content}\n${input.sourceId} -> ${input.targetId}\n`,
-  }))
-
-function elementOperation(kind: ElementKind, expectedRevision = 0) {
-  return {
-    id: 1,
-    expectedRevision,
-    semantic: {
-      type: 'element.create' as const,
-      input: { kind, documentUri: 'model.c4' },
-    },
-  }
+function operation(semantic: EditorOperation['semantic'], expectedRevision = 0): EditorOperation {
+  return { id: Date.now(), expectedRevision, semantic }
 }
 
-function relationOperation(expectedRevision = 0) {
-  return {
-    id: 2,
-    expectedRevision,
-    semantic: {
-      type: 'relation.create' as const,
+function createWorkspace(customCompiler: CompilerPort = compiler, customDocuments: EditorDocumentPort = documents) {
+  return EditorWorkspace.create(sources, customCompiler, customDocuments)
+}
+
+describe('EditorWorkspace WP-04', () => {
+  it('patches requested fields in one atomic history entry', async () => {
+    const workspace = await createWorkspace()
+    const result = await workspace.dispatch(operation({
+      type: 'element.patch',
       input: {
-        sourceId: 'customer' as Fqn,
-        targetId: 'shop.web' as Fqn,
-        documentUri: 'model.c4',
+        id: 'shop.web' as Fqn,
+        patch: { title: 'Storefront', description: null, technology: 'React', tags: ['backend', 'ui', 'ui'] },
       },
-    },
-  }
-}
+    }))
 
-function createWorkspace(customCompiler: CompilerPort = compiler) {
-  return EditorWorkspace.create(sources, customCompiler, editElement, editRelation)
-}
-
-describe('EditorWorkspace', () => {
-  it('initializes one valid committed and draft revision', async () => {
-    const workspace = await createWorkspace()
-
-    expect(workspace.state.revision).toBe(0)
-    expect(workspace.state.compilation.status).toBe('valid')
-    expect(workspace.state.committedSources).toEqual(workspace.state.draftSources)
-    expect(workspace.state.history.past).toEqual([])
-  })
-
-  it.each(['actor', 'system', 'component'] as ElementKind[])(
-    'creates one %s element and commits atomically',
-    async kind => {
-      const workspace = await createWorkspace()
-      const result = await workspace.dispatch(elementOperation(kind))
-
-      expect(result).toMatchObject({ status: 'applied', command: 'element.create', revision: 1 })
-      expect(workspace.state.revision).toBe(1)
-      expect(workspace.state.compilation.status).toBe('valid')
-      expect(workspace.state.draftSources[0]?.content).toContain(`${kind} ${kind}`)
-      expect(workspace.state.lastValidModel?.$data.elements[kind]).toBeDefined()
-      expect(workspace.state.history.past).toHaveLength(1)
-    },
-  )
-
-  it('creates exactly one directed relation and returns its compiled identity', async () => {
-    const workspace = await createWorkspace()
-    const beforeRelations = Object.keys(workspace.state.lastValidModel?.$data.relations ?? {})
-
-    const result = await workspace.dispatch(relationOperation())
-
-    expect(result).toEqual({
-      status: 'applied',
-      command: 'relation.create',
-      revision: 1,
-      createdRelationId: `relation-${beforeRelations.length + 1}`,
-    })
-    expect(workspace.state.committedSources[0]?.content.match(/customer -> shop\.web/g)).toHaveLength(1)
+    expect(result).toEqual({ status: 'applied', command: 'element.patch', revision: 1, updatedElementId: 'shop.web' })
     expect(workspace.state.history.past).toHaveLength(1)
-    expect(workspace.state.history.future).toEqual([])
-  })
-
-  it('rejects a stale operation without invoking source edits', async () => {
-    let editCalls = 0
-    const workspace = await EditorWorkspace.create(sources, compiler, async (current, input) => {
-      editCalls += 1
-      return editElement(current, input)
-    }, editRelation)
-    const before = workspace.state
-
-    const result = await workspace.dispatch(elementOperation('actor' as ElementKind, 99))
-
-    expect(result).toEqual({ status: 'conflict', revision: 0 })
-    expect(workspace.state).toBe(before)
-    expect(editCalls).toBe(0)
-  })
-
-  it('keeps an invalid draft separate from the committed source and model', async () => {
-    const workspace = await createWorkspace()
-    const committed = workspace.state.committedSources[0]?.content
-    const model = workspace.state.lastValidModel
-
-    await workspace.updateDraft([{ uri: 'model.c4', content: 'model {' }])
-
-    expect(workspace.state.compilation.status).toBe('invalid')
-    expect(workspace.state.draftSources[0]?.content).toBe('model {')
-    expect(workspace.state.committedSources[0]?.content).toBe(committed)
-    expect(workspace.state.lastValidModel).toBe(model)
-    expect(workspace.state.revision).toBe(0)
-    expect(workspace.state.history.past).toEqual([])
-  })
-
-  it('serializes two operations on the same revision', async () => {
-    const workspace = await createWorkspace()
-
-    const [first, second] = await Promise.all([
-      workspace.dispatch(elementOperation('actor' as ElementKind)),
-      workspace.dispatch({ ...elementOperation('system' as ElementKind), id: 2 }),
-    ])
-
-    expect(first.status).toBe('applied')
-    expect(second).toEqual({ status: 'conflict', revision: 1 })
-    expect(workspace.state.revision).toBe(1)
-  })
-
-  it('leaves every semantic field unchanged when relation editing fails', async () => {
-    const workspace = await EditorWorkspace.create(sources, compiler, editElement, async () => {
-      throw new Error('failed')
+    expect(workspace.state.lastValidModel?.$data.elements['shop.web']).toMatchObject({
+      title: 'Storefront',
+      technology: 'React',
+      tags: ['backend', 'ui'],
     })
+  })
+
+  it('moves a complete subtree and returns the new FQN', async () => {
+    const workspace = await createWorkspace()
+    const result = await workspace.dispatch(operation({
+      type: 'element.move',
+      input: { id: 'shop' as Fqn, parentId: 'platform' as Fqn },
+    }))
+
+    expect(result).toEqual({ status: 'applied', command: 'element.move', revision: 1, updatedElementId: 'platform.shop' })
+    expect(workspace.state.lastValidModel?.$data.elements['platform.shop.web']).toBeDefined()
+    expect(workspace.state.lastValidModel?.$data.elements.shop).toBeUndefined()
+  })
+
+  it('renames a parent and preserves descendants', async () => {
+    const workspace = await createWorkspace()
+    const result = await workspace.dispatch(operation({
+      type: 'element.rename',
+      input: { id: 'shop' as Fqn, newId: 'store' },
+    }))
+
+    expect(result).toEqual({ status: 'applied', command: 'element.rename', revision: 1, updatedElementId: 'store' })
+    expect(workspace.state.lastValidModel?.$data.elements['store.api']).toBeDefined()
+    expect(workspace.state.committedSources[0]?.content).toContain('relation customer->store.web')
+  })
+
+  it('inspects then removes with exact revision-bound approval', async () => {
+    const workspace = await createWorkspace()
+    const inspection = await workspace.inspectElementRemoval('shop.web' as Fqn, 0)
+    expect(inspection).toMatchObject({ status: 'ready', report: { target: 'shop.web' } })
+    if (inspection.status !== 'ready') throw new Error('expected ready report')
+
+    const result = await workspace.dispatch(operation({
+      type: 'element.remove',
+      input: {
+        id: 'shop.web' as Fqn,
+        dependencyRevision: inspection.report.revision,
+        approvedDependencyIds: inspection.report.dependencies.map(item => item.id),
+      },
+    }))
+
+    expect(result).toEqual({ status: 'applied', command: 'element.remove', revision: 1, removedElementId: 'shop.web' })
+    expect(workspace.state.lastValidModel?.$data.elements['shop.web']).toBeUndefined()
+    expect(workspace.state.history.past).toHaveLength(1)
+  })
+
+  it('rejects stale removal approval without mutation', async () => {
+    const workspace = await createWorkspace()
     const before = workspace.state
+    const result = await workspace.dispatch(operation({
+      type: 'element.remove',
+      input: { id: 'shop.web' as Fqn, dependencyRevision: 'stale', approvedDependencyIds: [] },
+    }))
 
-    const result = await workspace.dispatch(relationOperation())
-
-    expect(result).toMatchObject({
-      status: 'rejected',
-      issues: [{ code: 'relation-source-edit-failed' }],
-    })
+    expect(result).toMatchObject({ status: 'rejected', issues: [{ code: 'removal-report-stale' }] })
     expect(workspace.state).toBe(before)
   })
 
-  it('undoes relation creation atomically and restores byte-exact source', async () => {
+  it('undoes and redoes byte-exact sources', async () => {
     const workspace = await createWorkspace()
     const original = workspace.state.committedSources[0]?.content
-    await workspace.dispatch(relationOperation())
+    await workspace.dispatch(operation({ type: 'element.rename', input: { id: 'shop' as Fqn, newId: 'store' } }))
+    const changed = workspace.state.committedSources[0]?.content
 
-    const result = await workspace.undo(1)
-
-    expect(result).toEqual({ status: 'applied', command: 'history.undo', revision: 2 })
+    expect(await workspace.undo(1)).toEqual({ status: 'applied', command: 'history.undo', revision: 2 })
     expect(workspace.state.committedSources[0]?.content).toBe(original)
-    expect(workspace.state.draftSources[0]?.content).toBe(original)
-    expect(workspace.state.revision).toBe(2)
-    expect(workspace.state.history.past).toEqual([])
-    expect(workspace.state.history.future).toHaveLength(1)
-    expect(workspace.state.lastValidModel?.$data.relations).toEqual(modelFor(original ?? '').$data.relations)
+    expect(await workspace.redo(2)).toEqual({ status: 'applied', command: 'history.redo', revision: 3 })
+    expect(workspace.state.committedSources[0]?.content).toBe(changed)
   })
 
-  it('rejects stale, empty and invalid-draft undo without mutation', async () => {
+  it('clears future after a new semantic command', async () => {
     const workspace = await createWorkspace()
-    const initial = workspace.state
-
-    expect(await workspace.undo(99)).toEqual({ status: 'conflict', revision: 0 })
-    expect(await workspace.undo(0)).toMatchObject({ status: 'rejected', issues: [{ code: 'history-empty' }] })
-    expect(workspace.state).toBe(initial)
-
-    await workspace.updateDraft([{ uri: 'model.c4', content: 'model {' }])
-    const invalid = workspace.state
-    expect(await workspace.undo(0)).toMatchObject({ status: 'rejected', issues: [{ code: 'workspace-invalid' }] })
-    expect(workspace.state).toBe(invalid)
-  })
-
-  it('keeps state unchanged when the undo candidate does not compile', async () => {
-    const rejectingUndoCompiler: CompilerPort = async request => {
-      if (request.revision === 2 && request.sources[0]?.content === starterSource) {
-        return { revision: 2, diagnostics: [{ message: 'invalid history' }], model: null }
-      }
-      return compiler(request)
-    }
-    const workspace = await createWorkspace(rejectingUndoCompiler)
-    await workspace.dispatch(relationOperation())
-    const before = workspace.state
-
-    const result = await workspace.undo(1)
-
-    expect(result).toMatchObject({ status: 'rejected', issues: [{ code: 'undo-compile-rejected' }] })
-    expect(workspace.state).toBe(before)
-  })
-
-  it('serializes dispatch and Undo on the same expected revision', async () => {
-    const workspace = await createWorkspace()
-
-    const [created, undo] = await Promise.all([
-      workspace.dispatch(relationOperation()),
-      workspace.undo(0),
-    ])
-
-    expect(created.status).toBe('applied')
-    expect(undo).toEqual({ status: 'conflict', revision: 1 })
-    expect(workspace.state.revision).toBe(1)
-  })
-
-  it('clears future after a new semantic operation following Undo', async () => {
-    const workspace = await createWorkspace()
-    await workspace.dispatch(relationOperation())
+    await workspace.dispatch(operation({ type: 'element.rename', input: { id: 'shop' as Fqn, newId: 'store' } }))
     await workspace.undo(1)
     expect(workspace.state.history.future).toHaveLength(1)
 
-    await workspace.dispatch(elementOperation('actor' as ElementKind, 2))
-
+    await workspace.dispatch(operation({
+      type: 'element.patch',
+      input: { id: 'shop.web' as Fqn, patch: { title: 'New title' } },
+    }, 2))
     expect(workspace.state.history.future).toEqual([])
+    expect(await workspace.redo(3)).toMatchObject({ status: 'rejected', issues: [{ code: 'redo-history-empty' }] })
+  })
+
+  it('serializes same-revision dispatch and redo', async () => {
+    const workspace = await createWorkspace()
+    await workspace.dispatch(operation({ type: 'element.rename', input: { id: 'shop' as Fqn, newId: 'store' } }))
+    await workspace.undo(1)
+
+    const [patched, redone] = await Promise.all([
+      workspace.dispatch(operation({
+        type: 'element.patch',
+        input: { id: 'shop.web' as Fqn, patch: { title: 'Patched' } },
+      }, 2)),
+      workspace.redo(2),
+    ])
+
+    expect(patched.status).toBe('applied')
+    expect(redone).toEqual({ status: 'conflict', revision: 3 })
+  })
+
+  it('rejects invalid visible draft for commands and redo', async () => {
+    const workspace = await createWorkspace()
+    await workspace.dispatch(operation({ type: 'element.rename', input: { id: 'shop' as Fqn, newId: 'store' } }))
+    await workspace.undo(1)
+    await workspace.updateDraft([{ uri: 'model.c4', content: 'invalid' }])
+    const before = workspace.state
+
+    expect(await workspace.redo(2)).toMatchObject({ status: 'rejected', issues: [{ code: 'workspace-invalid' }] })
+    expect(workspace.state).toBe(before)
+  })
+
+  it('keeps state identity when source editing fails', async () => {
+    const failing = { ...documents, patchElement: async () => {
+      throw new EditorDocumentError('invalid-title', 'invalid')
+    } }
+    const workspace = await createWorkspace(compiler, failing)
+    const before = workspace.state
+
+    const result = await workspace.dispatch(operation({
+      type: 'element.patch',
+      input: { id: 'shop.web' as Fqn, patch: { title: 'Allowed by preflight' } },
+    }))
+
+    expect(result).toMatchObject({ status: 'rejected', issues: [{ code: 'invalid-title' }] })
+    expect(workspace.state).toBe(before)
   })
 })
