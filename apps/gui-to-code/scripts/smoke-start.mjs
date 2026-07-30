@@ -30,8 +30,8 @@ async function probe(url) {
           reject(new Error(`Preview returned HTTP ${status}.`))
           return
         }
-        if (!html.includes('id="root"')) {
-          reject(new Error('Preview HTML does not contain the application root.'))
+        if (!html.includes('id="likec4-root"')) {
+          reject(new Error('Preview HTML does not contain #likec4-root.'))
           return
         }
         resolve()
