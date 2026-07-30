@@ -24,6 +24,7 @@ const child = spawn('pnpm', ['exec', 'vite', 'preview', '--host', '127.0.0.1', '
   stdio: ['ignore', 'pipe', 'pipe'],
 })
 let output = ''
+let passed = false
 child.stdout.on('data', chunk => output += chunk)
 child.stderr.on('data', chunk => output += chunk)
 
@@ -37,13 +38,13 @@ try {
       if (!response.ok) throw new Error(`Preview returned HTTP ${response.status}.`)
       if (!html.includes('<div id="root"></div>')) throw new Error('Preview HTML does not contain the application root.')
       console.log(`GUI-to-code startup smoke passed at ${url}`)
-      process.exitCode = 0
+      passed = true
       break
     } catch {
       await new Promise(resolve => setTimeout(resolve, 150))
     }
   }
-  if (Date.now() >= deadline) throw new Error(`Preview did not become ready.\n${output}`)
+  if (!passed) throw new Error(`Preview did not become ready.\n${output}`)
 } finally {
   child.kill('SIGTERM')
   await Promise.race([
