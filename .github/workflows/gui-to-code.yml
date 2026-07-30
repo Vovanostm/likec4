@@ -10,6 +10,7 @@ on:
       - 'packages/language-server/**'
       - 'packages/layouts/**'
       - 'styled-system/preset/**'
+      - 'styled-system/styles/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/gui-to-code.yml'
@@ -23,6 +24,7 @@ on:
       - 'packages/language-server/**'
       - 'packages/layouts/**'
       - 'styled-system/preset/**'
+      - 'styled-system/styles/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/gui-to-code.yml'
@@ -44,6 +46,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @likec4/style-preset sources
+      - run: pnpm --filter @likec4/styles sources
       - run: pnpm --filter @likec4/language-server generate
       - run: pnpm --filter @likec4/layouts generate
       - run: pnpm --filter @likec4/gui-to-code generate
