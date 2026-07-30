@@ -1,0 +1,233 @@
+name: WP03 bootstrap
+
+on:
+  push:
+    branches:
+      - feat/gui-to-code-wp03-relation-undo
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/gui-to-code-wp03-relation-undo
+          fetch-depth: 0
+      - name: Apply relation source-edit and diagram connection seams
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              content = file.read_text()
+              count = content.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one match, found {count}')
+              file.write_text(content.replace(old, new, 1))
+
+          service = Path('packages/language-services/src/common/DocumentEditService.ts')
+          if 'async planAddRelation(' not in service.read_text():
+              replace_once(
+                  str(service),
+                  '''export interface AddElementInput {
+            readonly id: string
+            readonly kind: ElementKind
+            readonly title?: string
+            readonly documentUri?: string
+            readonly project?: string
+          }
+
+          export interface RenameElementInput {''',
+                  '''export interface AddElementInput {
+            readonly id: string
+            readonly kind: ElementKind
+            readonly title?: string
+            readonly documentUri?: string
+            readonly project?: string
+          }
+
+          export interface AddRelationInput {
+            readonly source: Fqn
+            readonly target: Fqn
+            readonly documentUri?: string
+            readonly project?: string
+          }
+
+          export interface RenameElementInput {''',
+              )
+              replace_once(
+                  str(service),
+                  '''  async planRenameElement(input: RenameElementInput): Promise<SourceEditPlan> {''',
+                  '''  async planAddRelation(input: AddRelationInput): Promise<SourceEditPlan> {
+            if (input.source === input.target) {
+              throw new DocumentEditError('invalid-operation', 'A logical relation requires different source and target elements')
+            }
+            const sourceElement = this.locateElement(input.source, input.project)
+            const targetElement = this.locateElement(input.target, input.project)
+            if (sourceElement.projectId !== targetElement.projectId) {
+              throw new DocumentEditError('invalid-operation', 'Cross-project logical relations are not supported by this edit planner')
+            }
+
+            const document = this.findModelDocument(sourceElement.projectId, input.documentUri)
+            const root = document.parseResult.value as AstNode & { models?: readonly AstNode[] }
+            const modelCst = root.models?.[0]?.$cstNode
+            if (!modelCst) {
+              throw new DocumentEditError('not-found', 'No model block found in the selected document')
+            }
+
+            const source = document.textDocument.getText()
+            const closingOffset = Math.max(modelCst.offset, modelCst.end - 1)
+            const closingLineStart = source.lastIndexOf('\\n', Math.max(0, closingOffset - 1)) + 1
+            const closingIndent = source.slice(closingLineStart, closingOffset)
+            const insertionOffset = /^\\s*$/.test(closingIndent) ? closingLineStart : closingOffset
+            const actualClosingIndent = /^\\s*$/.test(closingIndent) ? closingIndent : ''
+            const childIndent = `${actualClosingIndent}  `
+            const prefix = insertionOffset > 0 && source[insertionOffset - 1] !== '\\n' ? '\\n' : ''
+            const newText = `${prefix}${childIndent}${input.source} -> ${input.target}\\n${actualClosingIndent}`
+            const position = document.textDocument.positionAt(insertionOffset)
+
+            return this.planFromEdits([{
+              uri: document.uri.toString(),
+              range: { start: position, end: position },
+              newText,
+            }])
+          }
+
+          async planRenameElement(input: RenameElementInput): Promise<SourceEditPlan> {''',
+              )
+
+              for path in [
+                  'packages/language-services/src/browser/index.ts',
+                  'packages/language-services/src/node/index.ts',
+              ]:
+                  replace_once(path, '  type AddElementInput,\n', '  type AddElementInput,\n  type AddRelationInput,\n')
+
+              replace_once(
+                  'packages/language-services/src/common/DocumentEditService.spec.ts',
+                  "  it('renames only the declaration and resolved semantic references', async () => {",
+                  """  it('adds one directed relation without rewriting comments or neighboring declarations', async () => {
+            const likec4 = await fromSources({ 'model.c4': source })
+            const service = createDocumentEditService(likec4)
+
+            const plan = await service.planAddRelation({
+              source: 'shop' as Fqn,
+              target: 'user' as Fqn,
+            })
+            const candidate = applySingleDocumentPlan(source, plan)
+
+            expect(candidate).toContain('// shop must stay unchanged in this comment')
+            expect(candidate).toContain("system shop 'shop title must stay unchanged'")
+            expect(candidate.match(/shop -> user/g)).toHaveLength(1)
+            expect(candidate.indexOf('shop -> user')).toBeGreaterThan(candidate.indexOf('user -> shop'))
+
+            const reparsed = await fromSource(candidate)
+            expect(reparsed.hasErrors()).toBe(false)
+          })
+
+          it('rejects missing and self relation endpoints without producing edits', async () => {
+            const likec4 = await fromSources({ 'model.c4': source })
+            const service = createDocumentEditService(likec4)
+
+            await expect(service.planAddRelation({ source: 'missing' as Fqn, target: 'user' as Fqn })).rejects
+              .toMatchObject({ code: 'not-found' })
+            await expect(service.planAddRelation({ source: 'user' as Fqn, target: 'missing' as Fqn })).rejects
+              .toMatchObject({ code: 'not-found' })
+            await expect(service.planAddRelation({ source: 'user' as Fqn, target: 'user' as Fqn })).rejects
+              .toMatchObject({ code: 'invalid-operation' })
+          })
+
+          it('renames only the declaration and resolved semantic references', async () => {""",
+              )
+
+          props = Path('packages/diagram/src/LikeC4Diagram.props.ts')
+          if 'export type OnConnect<' not in props.read_text():
+              replace_once(
+                  str(props),
+                  '''export type OnCanvasContextMenu = (event: ReactMouseEvent) => void
+
+          export type OnInitialized''',
+                  '''export type OnCanvasContextMenu = (event: ReactMouseEvent) => void
+
+          export type OnConnect<A extends Any = Unknown> = (
+            sourceId: Fqn<A>,
+            targetId: Fqn<A>,
+          ) => void
+
+          export type OnInitialized''',
+              )
+              replace_once(
+                  str(props),
+                  '''  onCanvasDblClick?: OnCanvasClick | null | undefined
+
+            // if set, will render a logo icon''',
+                  '''  onCanvasDblClick?: OnCanvasClick | null | undefined
+            onConnect?: OnConnect<A> | null | undefined
+
+            // if set, will render a logo icon''',
+              )
+              replace_once(
+                  'packages/diagram/src/context/DiagramEventHandlers.tsx',
+                  '''  onCanvasDblClick: null,
+            onLogoClick: null,''',
+                  '''  onCanvasDblClick: null,
+            onConnect: null,
+            onLogoClick: null,''',
+              )
+              replace_once(
+                  'packages/diagram/src/LikeC4Diagram.tsx',
+                  '''  onCanvasDblClick,
+            onEdgeClick,''',
+                  '''  onCanvasDblClick,
+            onConnect,
+            onEdgeClick,''',
+              )
+              replace_once(
+                  'packages/diagram/src/LikeC4Diagram.tsx',
+                  '''                  onCanvasDblClick,
+                            onEdgeClick,''',
+                  '''                  onCanvasDblClick,
+                            onConnect,
+                            onEdgeClick,''',
+              )
+              replace_once(
+                  'packages/diagram/src/likec4diagram/DiagramXYFlow.tsx',
+                  '''    onCanvasDblClick,
+            } = useDiagramEventHandlers()''',
+                  '''    onCanvasDblClick,
+              onConnect,
+            } = useDiagramEventHandlers()''',
+              )
+              replace_once(
+                  'packages/diagram/src/likec4diagram/DiagramXYFlow.tsx',
+                  '''      onDelete={useCallbackRef(({ nodes, edges }) => {''',
+                  '''      nodesConnectable={!!onConnect}
+                onConnect={useCallbackRef(({ source, target }) => {
+                  if (!onConnect || !source || !target) return
+                  const sourceNode = nodes.find(node => node.id === source)
+                  const targetNode = nodes.find(node => node.id === target)
+                  const sourceId = sourceNode && 'modelFqn' in sourceNode.data ? sourceNode.data.modelFqn : null
+                  const targetId = targetNode && 'modelFqn' in targetNode.data ? targetNode.data.modelFqn : null
+                  if (sourceId && targetId) {
+                    onConnect(sourceId, targetId)
+                  }
+                })}
+                onDelete={useCallbackRef(({ nodes, edges }) => {''',
+              )
+          PY
+      - name: Commit bootstrap changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No bootstrap changes required'
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages/language-services packages/diagram
+          git commit -m "feat: add WP-03 relation edit and connect seams"
+          git push origin HEAD:feat/gui-to-code-wp03-relation-undo
