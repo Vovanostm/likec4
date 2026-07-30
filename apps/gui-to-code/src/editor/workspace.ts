@@ -11,6 +11,11 @@ import type {
 
 const supportedKinds = new Set<ElementKind>(['actor', 'system', 'component'] as ElementKind[])
 
+const defaultElementEdit: ElementEditPort = async (sources, input) => {
+  const { editElementWithLanguageServices } = await import('./language-services-adapter')
+  return editElementWithLanguageServices(sources, input)
+}
+
 function cloneSources(sources: readonly SourceFile[]): SourceFile[] {
   return sources.map(source => ({ ...source }))
 }
@@ -48,7 +53,7 @@ export class EditorWorkspace {
   static async create(
     sources: readonly SourceFile[],
     compiler: CompilerPort,
-    editElement: ElementEditPort,
+    editElement: ElementEditPort = defaultElementEdit,
     projectId = 'default',
   ): Promise<EditorWorkspace> {
     const compilation = await compiler({ revision: 0, sources })
