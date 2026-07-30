@@ -8,11 +8,17 @@ import { EditorWorkspace } from './workspace'
 const sources = [{ uri: 'model.c4', content: starterSource }]
 
 function modelFor(source: string): LikeC4Model.Layouted {
-  const elements = Object.fromEntries(
-    [...source.matchAll(/\b(actor|system|component)\s+([A-Za-z_][A-Za-z0-9_]*)/g)]
-      .filter(match => match[2] !== match[1])
-      .map(match => [match[2]!, { id: match[2], kind: match[1], title: match[2] }]),
-  )
+  const created = [...source.matchAll(/^(actor|system|component) ([A-Za-z_][A-Za-z0-9_]*)$/gm)]
+  const elements = {
+    customer: { id: 'customer', kind: 'actor', title: 'Customer' },
+    shop: { id: 'shop', kind: 'system', title: 'Online shop' },
+    'shop.web': { id: 'shop.web', kind: 'component', title: 'Web application' },
+    ...Object.fromEntries(created.map(match => [match[2]!, {
+      id: match[2],
+      kind: match[1],
+      title: match[2],
+    }])),
+  }
   return {
     $data: {
       specification: {
@@ -83,9 +89,9 @@ describe('EditorWorkspace', () => {
 
   it('rejects a stale operation without invoking source edits', async () => {
     let editCalls = 0
-    const workspace = await EditorWorkspace.create(sources, compiler, async (...args) => {
+    const workspace = await EditorWorkspace.create(sources, compiler, async (current, input) => {
       editCalls += 1
-      return editElement(...args)
+      return editElement(current, input)
     })
     const before = workspace.state
 
