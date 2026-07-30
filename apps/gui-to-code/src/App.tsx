@@ -38,12 +38,17 @@ export function App() {
   const [relation, setRelation] = useState({ source: '', target: '', title: '' })
   const [view, setView] = useState({ id: '', of: '' })
   const compilationSequence = useRef(new CompilationSequence())
+  const validatedSource = useRef<string | null>(null)
 
   const source = runtime.source
   const compilation = runtime.compilation
 
   useEffect(() => {
     localStorage.setItem(storageKey, source)
+    if (validatedSource.current === source) {
+      validatedSource.current = null
+      return
+    }
     const sequence = compilationSequence.current.next()
     void compile(source).then(result => {
       if (!compilationSequence.current.isCurrent(sequence)) return
@@ -52,6 +57,7 @@ export function App() {
   }, [source])
 
   const updateDraftSource = (nextSource: string): void => {
+    validatedSource.current = null
     setCommandError(null)
     setRuntime(current => ({ ...current, source: nextSource }))
   }
@@ -81,6 +87,7 @@ export function App() {
       return false
     }
     compilationSequence.current.next()
+    validatedSource.current = result.state.source
     setRuntime(result.state)
     setCommandError(null)
     return true
