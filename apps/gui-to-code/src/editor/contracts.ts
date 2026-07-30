@@ -34,21 +34,101 @@ export interface CreateElementEditInput {
   readonly documentUri?: string
 }
 
-export type ElementEditPort = (
-  sources: readonly SourceFile[],
-  input: CreateElementEditInput,
-) => Promise<readonly SourceFile[]>
-
 export interface CreateRelationEditInput {
   readonly sourceId: Fqn
   readonly targetId: Fqn
   readonly documentUri?: string
 }
 
-export type RelationEditPort = (
-  sources: readonly SourceFile[],
-  input: CreateRelationEditInput,
-) => Promise<readonly SourceFile[]>
+export interface ElementPatch {
+  readonly title?: string
+  readonly description?: string | null
+  readonly technology?: string | null
+  readonly tags?: readonly string[]
+}
+
+export interface PatchElementEditInput {
+  readonly id: Fqn
+  readonly patch: ElementPatch
+}
+
+export interface MoveElementEditInput {
+  readonly id: Fqn
+  readonly parentId: Fqn | null
+}
+
+export interface RenameElementEditInput {
+  readonly id: Fqn
+  readonly newId: string
+}
+
+export interface RemoveElementEditInput {
+  readonly id: Fqn
+  readonly dependencyRevision: string
+  readonly approvedDependencyIds: readonly string[]
+}
+
+export type RemovalDependencyKind =
+  | 'child-element'
+  | 'incoming-relation'
+  | 'outgoing-relation'
+  | 'scoped-view'
+  | 'view-reference'
+  | 'semantic-reference'
+
+export interface RemovalDependency {
+  readonly id: string
+  readonly kind: RemovalDependencyKind
+  readonly uri: string
+  readonly range: {
+    readonly start: { readonly line: number; readonly character: number }
+    readonly end: { readonly line: number; readonly character: number }
+  }
+  readonly removal: 'contained' | 'separate' | 'unsupported'
+}
+
+export interface RemovalDependencyReport {
+  readonly target: Fqn
+  readonly revision: string
+  readonly dependencies: readonly RemovalDependency[]
+}
+
+export type EditorDocumentErrorCode =
+  | 'ambiguous-reference'
+  | 'collision'
+  | 'dependencies-not-approved'
+  | 'invalid-identifier'
+  | 'invalid-operation'
+  | 'invalid-parent'
+  | 'invalid-tag'
+  | 'invalid-title'
+  | 'move-cycle'
+  | 'not-found'
+  | 'stale-document'
+  | 'unsupported-cascade'
+  | 'unsupported-reference'
+  | 'unknown'
+
+export class EditorDocumentError extends Error {
+  constructor(
+    readonly code: EditorDocumentErrorCode,
+    message: string,
+    readonly report?: RemovalDependencyReport,
+  ) {
+    super(message)
+    this.name = 'EditorDocumentError'
+  }
+}
+
+export interface EditorDocumentPort {
+  createElement(sources: readonly SourceFile[], input: CreateElementEditInput): Promise<readonly SourceFile[]>
+  createRelation(sources: readonly SourceFile[], input: CreateRelationEditInput): Promise<readonly SourceFile[]>
+  patchElement(sources: readonly SourceFile[], input: PatchElementEditInput): Promise<readonly SourceFile[]>
+  moveElement(sources: readonly SourceFile[], input: MoveElementEditInput): Promise<readonly SourceFile[]>
+  renameElement(sources: readonly SourceFile[], input: RenameElementEditInput): Promise<readonly SourceFile[]>
+  inspectRemoveElement(sources: readonly SourceFile[], id: Fqn): Promise<RemovalDependencyReport>
+  removeElement(sources: readonly SourceFile[], input: RemoveElementEditInput): Promise<readonly SourceFile[]>
+}
 
 export interface EditorHistoryEntry {
   readonly revision: Revision
@@ -97,7 +177,42 @@ export interface CreateRelationCommand {
   }
 }
 
-export type EditorCommand = CreateElementCommand | CreateRelationCommand
+export interface PatchElementCommand {
+  readonly type: 'element.patch'
+  readonly input: {
+    readonly id: Fqn
+    readonly patch: ElementPatch
+  }
+}
+
+export interface MoveElementCommand {
+  readonly type: 'element.move'
+  readonly input: {
+    readonly id: Fqn
+    readonly parentId: Fqn | null
+  }
+}
+
+export interface RenameElementCommand {
+  readonly type: 'element.rename'
+  readonly input: {
+    readonly id: Fqn
+    readonly newId: string
+  }
+}
+
+export interface RemoveElementCommand {
+  readonly type: 'element.remove'
+  readonly input: RemoveElementEditInput
+}
+
+export type EditorCommand =
+  | CreateElementCommand
+  | CreateRelationCommand
+  | PatchElementCommand
+  | MoveElementCommand
+  | RenameElementCommand
+  | RemoveElementCommand
 
 export interface EditorOperation {
   readonly id: OperationId
@@ -121,13 +236,36 @@ export type CommandIssueCode =
   | 'created-relation-not-found'
   | 'history-empty'
   | 'undo-compile-rejected'
+  | 'element-not-found'
+  | 'invalid-title'
+  | 'invalid-tag'
+  | 'patch-source-edit-failed'
+  | 'patch-verification-failed'
+  | 'invalid-parent'
+  | 'move-cycle'
+  | 'move-collision'
+  | 'move-source-edit-failed'
+  | 'move-verification-failed'
+  | 'invalid-identifier'
+  | 'rename-collision'
+  | 'rename-source-edit-failed'
+  | 'rename-verification-failed'
+  | 'unsupported-reference'
+  | 'removal-inspection-failed'
+  | 'removal-report-stale'
+  | 'removal-approval-mismatch'
+  | 'removal-unsupported'
+  | 'remove-source-edit-failed'
+  | 'remove-verification-failed'
+  | 'redo-history-empty'
+  | 'redo-compile-rejected'
 
 export interface CommandIssue {
   readonly code: CommandIssueCode
   readonly message: string
 }
 
-export type CommandResult =
+export type AppliedCommandResult =
   | {
     readonly status: 'applied'
     readonly command: 'element.create'
@@ -142,8 +280,45 @@ export type CommandResult =
   }
   | {
     readonly status: 'applied'
-    readonly command: 'history.undo'
+    readonly command: 'element.patch'
     readonly revision: Revision
+    readonly updatedElementId: Fqn
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'element.move' | 'element.rename'
+    readonly revision: Revision
+    readonly updatedElementId: Fqn
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'element.remove'
+    readonly revision: Revision
+    readonly removedElementId: Fqn
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'history.undo' | 'history.redo'
+    readonly revision: Revision
+  }
+
+export type CommandResult =
+  | AppliedCommandResult
+  | {
+    readonly status: 'rejected'
+    readonly revision: Revision
+    readonly issues: readonly CommandIssue[]
+  }
+  | {
+    readonly status: 'conflict'
+    readonly revision: Revision
+  }
+
+export type RemovalInspectionResult =
+  | {
+    readonly status: 'ready'
+    readonly revision: Revision
+    readonly report: RemovalDependencyReport
   }
   | {
     readonly status: 'rejected'
