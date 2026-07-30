@@ -46,6 +46,9 @@
         "^sources"
       ]
     },
+    "@likec4/generators#sources": {
+      "dependsOn": []
+    },
     "typecheck": {
       "dependsOn": [
         "^typecheck",
