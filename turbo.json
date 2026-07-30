@@ -61,6 +61,17 @@
       ],
       "outputLogs": "new-only"
     },
+    "@likec4/generators#typecheck": {
+      "dependsOn": [
+        "sources",
+        "generate"
+      ],
+      "outputs": [
+        "lib/**",
+        "*.tsbuildinfo"
+      ],
+      "outputLogs": "new-only"
+    },
     "test": {
       "dependsOn": [
         "generate",
@@ -75,6 +86,24 @@
     "build": {
       "dependsOn": [
         "^build",
+        "sources",
+        "generate"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!**/*.spec.ts",
+        "!**/*.test-d.ts",
+        "!**/__test*/**",
+        "!**/__snapshots__/**",
+        "!**/__fixtures__/**"
+      ],
+      "outputs": [
+        "dist/**"
+      ],
+      "outputLogs": "new-only"
+    },
+    "@likec4/generators#build": {
+      "dependsOn": [
         "sources",
         "generate"
       ],
