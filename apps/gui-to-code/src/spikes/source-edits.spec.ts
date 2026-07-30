@@ -7,7 +7,7 @@ describe('source-preserving edit proof', () => {
     const ranges = [...source.matchAll(/\bshop\b/g)]
       .filter(match => !source.slice(0, match.index).endsWith('// '))
       .map(match => ({ start: match.index, end: match.index + match[0].length }))
-    const result = applyTextEdits(source, identifierEdits(source, ranges, 'store'))
+    const result = applyTextEdits(source, identifierEdits(ranges, 'store'))
     expect(result).toContain('// shop stays in this comment')
     expect(result).toContain("store = system 'Shop'")
     expect(result).toContain('user -> store')
