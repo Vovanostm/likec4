@@ -18,7 +18,7 @@ export function applyTextEdits(source: string, edits: readonly TextEdit[]): stri
   return result
 }
 
-export function identifierEdits(source: string, ranges: readonly { start: number; end: number }[], nextId: string): TextEdit[] {
+export function identifierEdits(ranges: readonly { start: number; end: number }[], nextId: string): TextEdit[] {
   return ranges.map(range => ({ ...range, text: nextId }))
 }
 
