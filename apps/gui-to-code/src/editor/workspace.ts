@@ -1,15 +1,11 @@
 import type { ElementKind, Fqn } from '@likec4/core/types'
-import {
-  applyDocumentTextEdits,
-  createDocumentEditService,
-  fromSources,
-} from '@likec4/language-services/browser'
 import type {
   CommandIssue,
   CommandResult,
   CompilerPort,
   EditorOperation,
   EditorWorkspaceState,
+  ElementEditPort,
   SourceFile,
 } from './contracts'
 
@@ -44,6 +40,7 @@ export class EditorWorkspace {
   private constructor(
     state: EditorWorkspaceState,
     private readonly compiler: CompilerPort,
+    private readonly editElement: ElementEditPort,
   ) {
     this.current = state
   }
@@ -51,6 +48,7 @@ export class EditorWorkspace {
   static async create(
     sources: readonly SourceFile[],
     compiler: CompilerPort,
+    editElement: ElementEditPort,
     projectId = 'default',
   ): Promise<EditorWorkspace> {
     const compilation = await compiler({ revision: 0, sources })
@@ -69,7 +67,7 @@ export class EditorWorkspace {
       lastValidModel: compilation.model,
       history: { past: [], future: [] },
     }
-    return new EditorWorkspace(state, compiler)
+    return new EditorWorkspace(state, compiler, editElement)
   }
 
   get state(): EditorWorkspaceState {
@@ -154,31 +152,13 @@ export class EditorWorkspace {
         issues: [issue('kind-unavailable', 'Этот тип элемента недоступен в текущей спецификации.')],
       }
     }
-    const source = state.committedSources.find(candidate => candidate.uri === (command.input.documentUri ?? 'model.c4'))
-      ?? state.committedSources[0]
-    if (!source) {
-      return {
-        status: 'rejected',
-        revision: state.revision,
-        issues: [issue('source-edit-failed', 'Не удалось найти исходный документ проекта.')],
-      }
-    }
     const id = command.input.id ?? allocateId(state, command.input.kind)
     try {
-      const likec4 = await fromSources(Object.fromEntries(state.committedSources.map(item => [item.uri, item.content])))
-      const plan = await createDocumentEditService(likec4).planAddElement({
+      const candidateSources = await this.editElement(state.committedSources, {
         id,
         kind: command.input.kind,
         ...(command.input.title ? { title: command.input.title } : {}),
-      })
-      const candidateSources = state.committedSources.map(item => {
-        const edits = plan.edits.filter(edit => edit.uri === item.uri)
-        return edits.length === 0
-          ? item
-          : {
-            ...item,
-            content: applyDocumentTextEdits(item.content, edits, plan.baseRevisions[item.uri]!),
-          }
+        ...(command.input.documentUri ? { documentUri: command.input.documentUri } : {}),
       })
       const revision = state.revision + 1
       const compilation = await this.compiler({ revision, sources: candidateSources })
