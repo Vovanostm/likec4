@@ -28,7 +28,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -37,7 +37,7 @@ jobs:
           node-version-file: .tool-versions
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @likec4/gui-to-code generate
+      - run: pnpm generate
       - run: pnpm --filter @likec4/gui-to-code typecheck
       - run: pnpm --filter @likec4/gui-to-code test
       - run: pnpm --filter @likec4/gui-to-code build
