@@ -7,6 +7,9 @@ on:
       - 'packages/core/**'
       - 'packages/diagram/**'
       - 'packages/language-services/**'
+      - 'packages/language-server/**'
+      - 'packages/layouts/**'
+      - 'styled-system/preset/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/gui-to-code.yml'
@@ -17,6 +20,9 @@ on:
       - 'packages/core/**'
       - 'packages/diagram/**'
       - 'packages/language-services/**'
+      - 'packages/language-server/**'
+      - 'packages/layouts/**'
+      - 'styled-system/preset/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/gui-to-code.yml'
@@ -37,7 +43,10 @@ jobs:
           node-version-file: .tool-versions
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm generate
+      - run: pnpm --filter @likec4/style-preset sources
+      - run: pnpm --filter @likec4/language-server generate
+      - run: pnpm --filter @likec4/layouts generate
+      - run: pnpm --filter @likec4/gui-to-code generate
       - run: pnpm --filter @likec4/gui-to-code typecheck
       - run: pnpm --filter @likec4/gui-to-code test
       - run: pnpm --filter @likec4/gui-to-code build
