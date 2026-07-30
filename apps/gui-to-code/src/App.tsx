@@ -1,4 +1,4 @@
-import type { ElementKind } from '@likec4/core/types'
+import type { ElementKind, Fqn, RelationId } from '@likec4/core/types'
 import {
   createCanvasIntentController,
   LikeC4ModelProvider,
@@ -9,6 +9,7 @@ import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { compile } from './compiler'
 import { starterSource } from './document'
+import { completeRelationConnection } from './editor/canvas-relation-intents'
 import type { EditorWorkspaceState } from './editor/contracts'
 import { EditorWorkspace } from './editor/workspace'
 import { userError, userMessages } from './user-messages'
@@ -34,10 +35,23 @@ export function downloadSource(source: string): void {
   URL.revokeObjectURL(url)
 }
 
+function relationFeedback(state: EditorWorkspaceState, relationId: RelationId): string {
+  const views = Object.values(state.lastValidModel?.$data.views ?? {})
+  if (views.length === 0) {
+    return 'Связь создана в модели, но в проекте нет подходящего вида для отображения.'
+  }
+  const selectedView = views.find(candidate => candidate.id === 'index') ?? views[0]!
+  const visible = selectedView.edges.some(edge => edge.relations.includes(relationId))
+  return visible ? 'Связь создана.' : 'Связь создана в модели, но текущий вид её не отображает.'
+}
+
 export function App() {
   const workspace = useRef<EditorWorkspace | null>(null)
   const [state, setState] = useState<EditorWorkspaceState | null>(null)
   const [activeKind, setActiveKind] = useState<ElementKind | null>(null)
+  const [relationActive, setRelationActive] = useState(false)
+  const [relationSource, setRelationSource] = useState('')
+  const [relationTarget, setRelationTarget] = useState('')
   const [commandError, setCommandError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const intentHandler = useRef<(intent: CanvasIntent) => void>(() => undefined)
@@ -66,6 +80,13 @@ export function App() {
     }
   }
 
+  const resetTools = (): void => {
+    setActiveKind(null)
+    setRelationActive(false)
+    setRelationSource('')
+    setRelationTarget('')
+  }
+
   const updateDraftSource = (content: string): void => {
     const current = workspace.current
     if (!current) return
@@ -85,8 +106,8 @@ export function App() {
       semantic: { type: 'element.create', input: { kind, documentUri } },
     })
     refresh()
-    setActiveKind(null)
-    if (result.status === 'applied') {
+    resetTools()
+    if (result.status === 'applied' && result.command === 'element.create') {
       setCommandError(null)
       setFeedback(`Создан элемент ${result.createdElementId}.`)
       return
@@ -95,7 +116,53 @@ export function App() {
       setCommandError('Проект изменился. Повторите действие на актуальной версии.')
       return
     }
-    setCommandError(result.issues[0]?.message ?? 'Не удалось создать элемент.')
+    if (result.status === 'rejected') {
+      setCommandError(result.issues[0]?.message ?? 'Не удалось создать элемент.')
+    }
+  }
+
+  const createRelation = async (sourceId: Fqn, targetId: Fqn): Promise<void> => {
+    const current = workspace.current
+    if (!current) return
+    const result = await current.dispatch({
+      id: Date.now(),
+      expectedRevision: current.state.revision,
+      semantic: { type: 'relation.create', input: { sourceId, targetId, documentUri } },
+    })
+    refresh()
+    resetTools()
+    if (result.status === 'applied' && result.command === 'relation.create') {
+      setCommandError(null)
+      setFeedback(relationFeedback(current.state, result.createdRelationId))
+      return
+    }
+    if (result.status === 'conflict') {
+      setCommandError('Проект изменился. Повторите действие на актуальной версии.')
+      return
+    }
+    if (result.status === 'rejected') {
+      setCommandError(result.issues[0]?.message ?? 'Не удалось создать связь.')
+    }
+  }
+
+  const undo = async (): Promise<void> => {
+    const current = workspace.current
+    if (!current) return
+    const result = await current.undo(current.state.revision)
+    refresh()
+    resetTools()
+    if (result.status === 'applied' && result.command === 'history.undo') {
+      setCommandError(null)
+      setFeedback('Изменение отменено.')
+      return
+    }
+    if (result.status === 'conflict') {
+      setCommandError('Проект изменился. Повторите действие на актуальной версии.')
+      return
+    }
+    if (result.status === 'rejected') {
+      setCommandError(result.issues[0]?.message ?? 'Не удалось отменить изменение.')
+    }
   }
 
   intentHandler.current = intent => {
@@ -103,11 +170,14 @@ export function App() {
       case 'element.create.requested':
         void createElement(intent.elementKind)
         return
+      case 'relation.create.requested':
+        void createRelation(intent.sourceId, intent.targetId)
+        return
       case 'interaction.cancelled':
-        setActiveKind(null)
+        resetTools()
+        setFeedback(intent.interaction === 'relation-create' ? 'Создание связи отменено.' : null)
         return
       case 'selection.changed':
-      case 'relation.create.requested':
         return
     }
   }
@@ -115,11 +185,43 @@ export function App() {
   const activateCreateTool = (kind: ElementKind): void => {
     controller.current?.startElementCreation(kind)
     setActiveKind(kind)
+    setRelationActive(false)
     setFeedback(null)
     setCommandError(null)
   }
 
-  const confirmKeyboardCreate = (event: ReactKeyboardEvent<HTMLElement>): void => {
+  const activateRelationTool = (): void => {
+    controller.current?.startRelationCreation()
+    setActiveKind(null)
+    setRelationActive(true)
+    setRelationSource('')
+    setRelationTarget('')
+    setFeedback('Выберите исходный элемент.')
+    setCommandError(null)
+  }
+
+  const completeRelation = (sourceId: string, targetId: string): void => {
+    const currentController = controller.current
+    if (!currentController || !sourceId) {
+      setCommandError('Выберите исходный элемент.')
+      return
+    }
+    if (!targetId) {
+      setCommandError('Выберите целевой элемент.')
+      return
+    }
+    const completed = completeRelationConnection(currentController, sourceId as Fqn, targetId as Fqn)
+    if (!completed && sourceId === targetId) {
+      setCommandError('Нельзя связать элемент с самим собой.')
+    }
+  }
+
+  const handleEditorKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+      event.preventDefault()
+      void undo()
+      return
+    }
     if (event.key === 'Escape') {
       if (controller.current?.handleKeyDown(event.key)) event.preventDefault()
       return
@@ -155,14 +257,18 @@ export function App() {
   const views = renderModel ? Object.values(renderModel.$data.views) : []
   const selectedView = views.find(candidate => candidate.id === 'index') ?? views[0]
   const availableKinds = new Set(Object.keys(state.lastValidModel?.$data.specification.elements ?? {}))
+  const elements = Object.values(state.lastValidModel?.$data.elements ?? {})
+    .map(element => ({ id: element.id as Fqn, title: element.title }))
+    .sort((left, right) => left.id.localeCompare(right.id))
   const canvasDisabled = state.compilation.status !== 'valid'
+  const undoDisabled = state.history.past.length === 0 || state.compilation.status !== 'valid'
 
   return (
-    <main className="editor-shell">
+    <main className="editor-shell" onKeyDown={handleEditorKeyDown}>
       <header className="topbar">
         <div>
           <h1>LikeC4: визуальный редактор</h1>
-          <p>Создавайте элементы на диаграмме; исходный код обновляется автоматически.</p>
+          <p>Создавайте элементы и связи на диаграмме; исходный код обновляется автоматически.</p>
         </div>
         <div className="actions">
           <label className="button">
@@ -170,6 +276,13 @@ export function App() {
             <input type="file" accept=".c4,text/plain" onChange={event => void importSource(event)} />
           </label>
           <button type="button" onClick={() => downloadSource(source)}>Экспортировать model.c4</button>
+          <button
+            type="button"
+            aria-label="Отменить последнее изменение"
+            disabled={undoDisabled}
+            onClick={() => void undo()}>
+            Отменить
+          </button>
           <button type="button" onClick={() => updateDraftSource(starterSource)}>Восстановить пример</button>
         </div>
       </header>
@@ -178,11 +291,10 @@ export function App() {
         <section
           className="panel diagram-panel"
           aria-label="Холст диаграммы"
-          tabIndex={0}
-          onKeyDown={confirmKeyboardCreate}>
+          tabIndex={0}>
           <header>
             <h2>Диаграмма</h2>
-            <div className="actions" aria-label="Создание элемента">
+            <div className="actions" aria-label="Инструменты диаграммы">
               {createKinds.map(([kind, label]) => {
                 const unavailable = !availableKinds.has(kind)
                 const disabled = canvasDisabled || unavailable
@@ -199,6 +311,14 @@ export function App() {
                   </button>
                 )
               })}
+              <button
+                type="button"
+                aria-label="Связать элементы"
+                aria-pressed={relationActive}
+                disabled={canvasDisabled || elements.length < 2}
+                onClick={activateRelationTool}>
+                Связать
+              </button>
             </div>
           </header>
           {renderModel && selectedView ?
@@ -207,6 +327,9 @@ export function App() {
                 <ReactLikeC4
                   viewId={selectedView.id}
                   className="diagram"
+                  onConnect={relationActive
+                    ? (sourceId, targetId) => completeRelation(sourceId, targetId)
+                    : null}
                   onCanvasClick={event => {
                     if (!activeKind) return
                     controller.current?.requestElementCreation({ x: event.clientX, y: event.clientY })
@@ -215,7 +338,40 @@ export function App() {
             ) :
             <p className="empty">В проекте нет подходящего вида для отображения.</p>}
           {activeKind && <p aria-live="polite">Кликните по холсту или нажмите Enter, чтобы создать элемент.</p>}
-          {feedback && <p role="status">{feedback}</p>}
+          {relationActive && (
+            <section className="relation-controls" aria-label="Создание связи с клавиатуры">
+              <p aria-live="polite">Перетащите маркер исходного элемента на целевой или выберите элементы ниже.</p>
+              <label>
+                Исходный элемент
+                <select
+                  aria-label="Исходный элемент связи"
+                  value={relationSource}
+                  onChange={event => {
+                    setRelationSource(event.target.value)
+                    setFeedback('Выберите целевой элемент.')
+                  }}>
+                  <option value="">Выберите исходный элемент</option>
+                  {elements.map(element => (
+                    <option key={element.id} value={element.id}>{element.title} ({element.id})</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Целевой элемент
+                <select
+                  aria-label="Целевой элемент связи"
+                  value={relationTarget}
+                  onChange={event => setRelationTarget(event.target.value)}>
+                  <option value="">Выберите целевой элемент</option>
+                  {elements.map(element => (
+                    <option key={element.id} value={element.id}>{element.title} ({element.id})</option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" onClick={() => completeRelation(relationSource, relationTarget)}>Создать связь</button>
+            </section>
+          )}
+          {feedback && <p role="status" aria-live="polite">{feedback}</p>}
           {commandError && <p className="error" role="alert">{commandError}</p>}
         </section>
 
