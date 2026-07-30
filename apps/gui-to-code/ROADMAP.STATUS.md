@@ -3,6 +3,7 @@
 Дата актуализации: 30 июля 2026
 Ветка: `feat/gui-to-code-wp00-wp01-prep`
 PR: #1 — Complete gui-to-code WP-00 and prepare WP-01 decisions
+Проверенный HEAD: `c3e23326c2b517debb52d9462cfe8496e0a78c05`
 
 Этот файл — изменяемая часть плана. Стабильные outcomes, acceptance criteria и границы work packages находятся в `ROADMAP.md`. Следующий агент обязан прочитать оба файла до выбора `WP-*`.
 
@@ -10,7 +11,7 @@ PR: #1 — Complete gui-to-code WP-00 and prepare WP-01 decisions
 
 ```yaml
 # managed-state:v2
-revision: 2
+revision: 3
 contract_review: complete
 active: []
 done:
@@ -43,7 +44,9 @@ blocked: []
 - добавлен production-build startup smoke;
 - README приведён к фактическому состоянию;
 - добавлен отдельный CI workflow `GUI-to-code` с явным ordered bootstrap generated dependencies;
-- исправлен Vite resolution: удалён ошибочный app-local override `@likec4/styles`, используется canonical workspace package.
+- исправлен Vite resolution: удалён ошибочный app-local override `@likec4/styles`, используется canonical workspace package;
+- общий Turborepo task graph исправлен package-specific overrides для `@likec4/generators`: test-only обратная devDependency больше не создаёт циклы `generate`, `sources`, `typecheck` и `build`;
+- общий monorepo quality gate и отдельный GUI-to-code workflow проходят на одном HEAD.
 
 Основные пути:
 
@@ -55,6 +58,7 @@ blocked: []
 - `vite.config.ts`
 - `README.md`
 - `.github/workflows/gui-to-code.yml`
+- `turbo.json`
 
 Verification gate:
 
@@ -72,6 +76,12 @@ pnpm --filter @likec4/gui-to-code smoke:start
 pnpm check:agent-instructions
 git diff --check
 ```
+
+Фактические CI-доказательства на проверенном HEAD:
+
+- dedicated `GUI-to-code`: generation, typecheck, tests, build, startup smoke, instructions и diff check — PASS;
+- general quality gate: Linux и Windows generation/tests, repository typecheck/type tests, package build/lint/pack smoke, docs, playground, GUI-to-code, E2E types и Playwright E2E — PASS;
+- `checks / 🚦 quality gate` — PASS.
 
 ## WP-01 — ready, partially prepared
 
@@ -99,13 +109,14 @@ git diff --check
 - `@likec4/diagram` не должен импортировать app contracts или эмитить `EditorCommand`.
 - Canvas semantic intents нельзя добавлять в `ViewChange`; layout и semantic editing остаются разными контрактами.
 - App-local `styled-system` не является заменой canonical `@likec4/styles` package для bundling.
+- Package-specific Turbo overrides для `@likec4/generators` должны сохраняться, пока обратная dependency на language-services остаётся test-only; не возвращать для этого пакета `^generate`, `^sources`, `^typecheck` или `^build` без устранения package graph cycle.
 - Один task выполняет ровно один `WP-*`; следующий допустимый пакет — WP-01.
 
 ## Handoff следующему агенту
 
 Начать с:
 
-1. Проверить, что PR #1 и его `GUI-to-code` workflow зелёные на текущем head.
+1. Проверить, что PR #1, общий quality gate и `GUI-to-code` workflow зелёные на текущем head.
 2. Прочитать `AGENTS.md`, `README.md`, `SPEC.md`, `ROADMAP.md`, этот файл и обе DG ADR.
 3. Взять только WP-01.
 4. Сначала исследовать фактические Langium/diagram owning APIs; не переносить app spikes напрямую в public API.
