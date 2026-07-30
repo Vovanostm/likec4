@@ -23,9 +23,9 @@ model {
   system shop 'Shop' {
     // nested comment must move with the subtree
     component web 'Web application' {
+      #ui
       description 'Frontend'
       technology 'TypeScript'
-      #ui
     }
     component api 'API'
   }
