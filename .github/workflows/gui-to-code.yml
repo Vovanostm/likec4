@@ -47,6 +47,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @likec4/style-preset sources
       - run: pnpm --filter @likec4/styles sources
+      - run: pnpm --filter @likec4/styles emit-pkg
       - run: pnpm --filter @likec4/language-server generate
       - run: pnpm --filter @likec4/layouts generate
       - run: pnpm --filter @likec4/gui-to-code generate
