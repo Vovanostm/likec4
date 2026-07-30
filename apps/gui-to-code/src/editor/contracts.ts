@@ -27,6 +27,18 @@ export interface CompileResult {
 
 export type CompilerPort = (request: CompileRequest) => Promise<CompileResult>
 
+export interface CreateElementEditInput {
+  readonly kind: ElementKind
+  readonly id: string
+  readonly title?: string
+  readonly documentUri?: string
+}
+
+export type ElementEditPort = (
+  sources: readonly SourceFile[],
+  input: CreateElementEditInput,
+) => Promise<readonly SourceFile[]>
+
 export interface EditorHistoryEntry {
   readonly revision: Revision
   readonly sources: readonly SourceFile[]
