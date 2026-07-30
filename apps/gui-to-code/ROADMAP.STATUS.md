@@ -112,12 +112,14 @@ Owning package: `@likec4/diagram`.
 
 ### Integration proof
 
-`apps/gui-to-code/src/wp01-contracts.ts` и tests подтверждают:
+`apps/gui-to-code/src/wp01-contracts.ts` является compile-only adapter и подтверждает:
 
 - `CanvasIntent` преобразуется только в app-level command candidate;
-- source edit plan применяется к in-memory candidate;
+- revision-bound source edit plan может быть применён к in-memory candidate;
 - diagram не выполняет semantic mutation;
 - production canvas CRUD не начат.
+
+Runtime semantics edit planner и canvas controller покрыты тестами в owning packages. Отдельный app-runtime test удалён как дублирующий: dedicated GUI-to-code workflow запускает app tests до package build и не предназначен для загрузки runtime entry опубликованного `language-services` package.
 
 ### Release
 
