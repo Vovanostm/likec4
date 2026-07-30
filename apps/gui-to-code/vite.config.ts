@@ -15,7 +15,6 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
     alias: {
       '@likec4/style-preset': resolve(import.meta.dirname, '../../styled-system/preset/src'),
-      '@likec4/styles': resolve(import.meta.dirname, 'styled-system'),
     },
   },
 })
