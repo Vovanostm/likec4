@@ -1,10 +1,10 @@
 # Состояние исполнения roadmap
 
-Дата актуализации: 30 июля 2026
-Ветка: `feat/gui-to-code-wp02-editor-workspace-create`
-PR: #3 — Complete gui-to-code WP-02 canvas element creation
-Базовый commit: `869835bb646d31b6883cc1301cf486b7df13a3c6`
-Проверенный implementation head: `1ce64c4ce5007887d9bc56e4e319f4eb85cd38b5`
+Дата актуализации: 31 июля 2026
+Ветка: `feat/gui-to-code-wp03-relation-undo`
+PR: `https://github.com/Vovanostm/likec4/pull/4`
+Базовый commit: `69e8fff7810aab16d789a153857994197a9466eb`
+Проверенный implementation head: `293173d216c696e9af922fda9ff0b50d90571f3b`
 
 Этот файл — изменяемая часть плана. Стабильные outcomes, acceptance criteria и границы work packages находятся в `ROADMAP.md`. Следующий агент обязан прочитать оба файла до выбора `WP-*`.
 
@@ -12,17 +12,17 @@ PR: #3 — Complete gui-to-code WP-02 canvas element creation
 
 ```yaml
 # managed-state:v2
-revision: 5
+revision: 6
 contract_review: complete
 active: []
 done:
   - WP-00
   - WP-01
   - WP-02
-ready:
   - WP-03
-planned:
+ready:
   - WP-04
+planned:
   - WP-05
   - WP-06
   - WP-07
@@ -30,198 +30,90 @@ planned:
 blocked: []
 ```
 
-## WP-00 — done
+## WP-03 — done
 
-Реализованы русский пользовательский UX, source/import/export vertical slice, last-valid preservation, compile-before-commit form commands, stale compilation suppression, startup smoke и dedicated GUI-to-code workflow.
+### Relation edit API
 
-## WP-01 — done
+`@likec4/language-services` предоставляет browser/Node-compatible `DocumentEditService.planAddRelation`.
 
-### DG-01 — source-preserving document edits
+Фактический контракт:
 
-`@likec4/language-services` предоставляет browser-compatible AST/CST-backed `DocumentEditService`, revision-bound `SourceEditPlan`, `DocumentTextEdit`, `applyDocumentTextEdits`, rename/remove dependency contracts и stale-source protection.
+- вход: `source`, `target`, optional `documentUri` и `project`;
+- endpoints разрешаются через linked Langium model locator;
+- relation вставляется по CST boundary model block;
+- план содержит URI-aware edits и exact source revision digest;
+- comments, declarations и unrelated bytes не генерируются заново;
+- missing endpoint, cross-project и self relation fail-closed.
 
-### DG-02 — canvas intents
+### Workspace relation operation
 
-`@likec4/diagram` предоставляет `CanvasIntent`, `CanvasIntentHandler`, `createCanvasIntentController` и optional `LikeC4EditorCallbacks.onCanvasIntent`. Diagram владеет только transient gesture lifecycle и не выполняет semantic mutation.
-
-## WP-02 — done
-
-### Фактический EditorWorkspace API
-
-Owning files:
-
-- `src/editor/contracts.ts`;
-- `src/editor/workspace.ts`;
-- `src/editor/adapters/language-services.ts`;
-- `src/compiler.ts`;
-- `src/App.tsx`.
-
-`EditorWorkspace` является единственным runtime owner:
-
-- `committedSources`;
-- `draftSources`;
-- monotonically increasing `revision`;
-- revision-aware compilation state;
-- `lastValidModel`;
-- history foundation `past/future`;
-- serialized semantic dispatch.
-
-React хранит только transient UI state: active tool, feedback, focus и pointer/keyboard interaction state.
-
-### Operation/result contracts
-
-Реализован только фактически поддерживаемый semantic command:
+`relation.create` проходит один production path:
 
 ```text
-EditorOperation {
-  id
-  expectedRevision
-  semantic: element.create
-}
+CanvasIntent
+→ revision-guarded EditorOperation
+→ source-preserving relation edit
+→ isolated candidate compile
+→ compiled relation set difference
+→ exact source/target verification
+→ atomic workspace commit
 ```
 
-Результат имеет варианты `applied`, `rejected` и `conflict`. Stale operation не мутирует workspace. Две операции на одной revision сериализуются: максимум одна применяется, следующая получает conflict.
+Успешная операция увеличивает revision один раз, добавляет ровно один `past` snapshot, очищает `future` и возвращает фактический `RelationId` compiled model. Stale, invalid, source-edit, compile и identity-verification failures не меняют semantic state.
 
-### Compiler port
+### Atomic Undo
 
-Compiler принимает `{ revision, sources[] }` и возвращает `{ revision, diagnostics, model }`.
+`EditorWorkspace.undo(expectedRevision)` использует ту же очередь, что и dispatch:
 
-Семантическая операция выполняется по схеме:
+- stale Undo возвращает conflict;
+- invalid visible draft и empty history fail-closed;
+- предыдущие exact source bytes компилируются на `revision + 1` до restore;
+- successful Undo удаляет один `past` entry, переносит текущий snapshot в `future`, восстанавливает committed/draft sources и derived model атомарно;
+- новая semantic operation после Undo очищает `future`;
+- Redo UI не входит в WP-03.
 
-```text
-validate expectedRevision
-→ plan source edit
-→ apply isolated candidate
-→ compile candidate revision
-→ verify created FQN
-→ atomic source/revision/model commit
-```
+### Canvas и keyboard UX
 
-Invalid candidate не меняет committed sources, revision, model или history. Invalid direct draft остаётся видимым отдельно, while last-valid model сохраняется. Stale asynchronous result не заменяет актуальное состояние.
+- «Связать» активирует relation interaction;
+- pointer drag использует существующие XYFlow source/target handles и optional logical `onConnect` seam `@likec4/diagram`;
+- callback передаёт только logical FQN endpoints и не мутирует diagram edges;
+- keyboard source/target chooser вызывает тот же `completeRelationConnection`, `CanvasIntentController` и `EditorOperation` path;
+- duplicate completion подавляется controller state;
+- Escape/tool change отменяют transient interaction;
+- Undo доступен кнопкой «Отменить» и Ctrl/Cmd+Z;
+- пользовательские состояния и ошибки русифицированы.
 
-### Canvas adapter и UX
+### Verification
 
-Canvas является primary area. Toolbar предоставляет:
+Focused suites включают:
 
-- «Актор»;
-- «Система»;
-- «Компонент».
+- relation source preservation, direction, missing/self endpoint и stale-source protection;
+- relation workspace commit, actual identity, failure atomicity и same-revision serialization;
+- Undo byte-exact restore, past/future transitions, stale/empty/invalid/compile-rejected paths;
+- shared pointer/keyboard intent adapter and self-connect rejection;
+- существующие element-create и direct source regressions.
 
-Pointer click и keyboard Enter/Space проходят через один `createCanvasIntentController`. Escape отменяет active tool. Canvas point не сохраняется в DSL или отдельный geometry store.
+Проверенные workflow для implementation head `293173d216c696e9af922fda9ff0b50d90571f3b`:
 
-Доступность kind определяется по `lastValidModel.$data.specification.elements`. Недоступный kind disabled и имеет русское объяснение.
+- `GUI-to-code` run `30587665149` — success: generate, typecheck, tests, build, startup smoke, agent instructions и `git diff --check`;
+- `CI (PR & push)` run `30587665366` — success: TypeScript/type tests, Linux tests, package build/lint, MCP packed smoke, Windows generation/tests, E2E types, Playwright E2E, docs, playground, GUI-to-code и final quality gate.
 
-### Source edits и ID allocation
+### Reviews
 
-Production source-edit adapter использует:
+Correctness review complete: проверены one gesture → one intent → one operation → one relation → one history entry, direction, identity diff, duplicate suppression, compile-before-commit, compile-before-restore, exact-source Undo и failure atomicity.
 
-- `createDocumentEditService`;
-- `DocumentEditService.planAddElement`;
-- `applyDocumentTextEdits`.
+Architecture review complete: `EditorWorkspace` остаётся единственным owner sources/revision/history, DSL остаётся persisted semantic SSOT, diagram остаётся gesture layer, `ViewChange` не изменён, second semantic graph не создан и WP-04 scope не начат.
 
-Legacy brace scanner не используется canvas create path.
+## Handoff для WP-04
 
-ID выделяется детерминированно и collision-free в root scope:
+WP-04 получает:
 
-```text
-actor → actor2 → actor3
-system → system2 → system3
-component → component2 → component3
-```
-
-После candidate compile workspace проверяет наличие created FQN в resulting model.
-
-### Persistence и ограничения
-
-Сохранена backward-compatible localStorage schema: persisted source string, workspace реконструируется при startup. Новая persisted schema, IndexedDB и multi-project model не вводились.
-
-Не реализованы в WP-02:
-
-- relation creation;
-- nesting;
-- rename/remove/patch;
-- view CRUD;
-- product undo/redo controls;
-- manual layout;
-- IndexedDB/ZIP;
-- backend/RPC;
-- parallel semantic graph.
-
-`@likec4/diagram` public API и `ViewChange` не изменялись, changeset не требуется.
-
-## Verification
-
-На implementation head `1ce64c4ce5007887d9bc56e4e319f4eb85cd38b5` успешно завершены:
-
-- `GUI-to-code` workflow run `30564643270`;
-- `CI (PR & push)` workflow run `30564643477`;
-- `push` workflow run `30564643390`.
-
-Dedicated GUI-to-code gate подтвердил на одном head:
-
-```bash
-pnpm --filter @likec4/style-preset sources
-pnpm --filter @likec4/styles sources
-pnpm --filter @likec4/styles emit-pkg
-pnpm --filter @likec4/language-server generate
-pnpm --filter @likec4/layouts generate
-pnpm --filter @likec4/gui-to-code generate
-pnpm --filter @likec4/gui-to-code typecheck
-pnpm --filter @likec4/gui-to-code test
-pnpm --filter @likec4/gui-to-code build
-pnpm --filter @likec4/gui-to-code smoke:start
-pnpm check:agent-instructions
-git diff --check
-```
-
-Финальные documentation commits обязаны повторно пройти те же required checks перед merge.
-
-## Reviews
-
-### Correctness review
-
-Проверено и исправлено:
-
-- workspace revision увеличивается только после valid commit;
-- stale operation fail-closed;
-- concurrent same-revision operations не дают silent last-write-wins;
-- candidate компилируется до mutation committed state;
-- invalid draft не меняет committed source, revision, model или history;
-- source edit и compiler выделены в injected ports, поэтому workspace core тестируется без запуска browser language server;
-- ID allocation детерминирован;
-- created FQN проверяется в compiled model;
-- point не попадает в semantic source;
-- relation intent не выполняет semantic command в WP-02;
-- user-facing errors и statuses на русском.
-
-### Architecture/product-boundary review
-
-Подтверждено:
-
-- `EditorWorkspace` — единственный owner sources/revision/history foundation;
-- DSL остаётся semantic persisted SSOT;
-- compiled model и diagram derived;
-- второго mutable graph нет;
-- diagram не импортирует workspace/language-services;
-- `ViewChange` не расширен semantic CRUD;
-- parser, generators, manual layout, persistence schema и backend не изменялись;
-- relation/view/inspector scope не начат;
-- public package API не расширялся.
-
-## Handoff для WP-03
-
-WP-03 готов к началу после merge PR #3.
-
-Следующий агент получает:
-
-- stable `EditorWorkspace.dispatch`;
-- `EditorOperation.expectedRevision`;
-- serialized operation boundary;
-- history foundation;
-- revision-aware compiler port;
-- source-preserving language-services adapter;
-- canvas intent controller integration;
+- стабильные element/relation creation operations;
+- source-preserving relation adapter;
+- compiled relation identity verification;
+- revision-safe queued Undo;
+- валидные `past/future` transitions;
 - transient selection/tool state;
-- compile-before-commit invariant.
+- compile-before-commit и compile-before-restore invariants.
 
-WP-03 должен реализовать только directed relation creation и atomic Undo в границах соответствующего task packet. Не менять SSOT и не начинать inspector/view/manual-layout/persistence work packages.
+WP-04 не должен заменять workspace или history owner.

@@ -70,6 +70,13 @@ export interface AddElementInput {
   readonly project?: string
 }
 
+export interface AddRelationInput {
+  readonly source: Fqn
+  readonly target: Fqn
+  readonly documentUri?: string
+  readonly project?: string
+}
+
 export interface RenameElementInput {
   readonly target: Fqn
   readonly newId: string
@@ -137,6 +144,47 @@ export class DocumentEditService {
     const prefix = insertionOffset > 0 && source[insertionOffset - 1] !== '\n' ? '\n' : ''
     const title = input.title ? ` '${escapeSingleQuoted(input.title)}'` : ''
     const newText = `${prefix}${childIndent}${input.kind} ${input.id}${title}\n${actualClosingIndent}`
+    const position = document.textDocument.positionAt(insertionOffset)
+
+    return this.planFromEdits([{
+      uri: document.uri.toString(),
+      range: { start: position, end: position },
+      newText,
+    }])
+  }
+
+  async planAddRelation(input: AddRelationInput): Promise<SourceEditPlan> {
+    if (input.source === input.target) {
+      throw new DocumentEditError(
+        'invalid-operation',
+        'A logical relation requires different source and target elements',
+      )
+    }
+    const sourceElement = this.locateElement(input.source, input.project)
+    const targetElement = this.locateElement(input.target, input.project)
+    if (sourceElement.projectId !== targetElement.projectId) {
+      throw new DocumentEditError(
+        'invalid-operation',
+        'Cross-project logical relations are not supported by this edit planner',
+      )
+    }
+
+    const document = this.findModelDocument(sourceElement.projectId, input.documentUri)
+    const root = document.parseResult.value as AstNode & { models?: readonly AstNode[] }
+    const modelCst = root.models?.[0]?.$cstNode
+    if (!modelCst) {
+      throw new DocumentEditError('not-found', 'No model block found in the selected document')
+    }
+
+    const source = document.textDocument.getText()
+    const closingOffset = Math.max(modelCst.offset, modelCst.end - 1)
+    const closingLineStart = source.lastIndexOf('\n', Math.max(0, closingOffset - 1)) + 1
+    const closingIndent = source.slice(closingLineStart, closingOffset)
+    const insertionOffset = /^\s*$/.test(closingIndent) ? closingLineStart : closingOffset
+    const actualClosingIndent = /^\s*$/.test(closingIndent) ? closingIndent : ''
+    const childIndent = `${actualClosingIndent}  `
+    const prefix = insertionOffset > 0 && source[insertionOffset - 1] !== '\n' ? '\n' : ''
+    const newText = `${prefix}${childIndent}${input.source} -> ${input.target}\n${actualClosingIndent}`
     const position = document.textDocument.positionAt(insertionOffset)
 
     return this.planFromEdits([{
@@ -467,7 +515,9 @@ function findRemovableAncestor(node: AstNode, kind: RemovalDependencyKind): AstN
 
 function reportRevision(document: LangiumDocument, dependencies: readonly RemovalDependency[]): string {
   return sourceRevision(
-    `${document.uri.toString()}\n${sourceRevision(document.textDocument.getText())}\n${dependencies.map(d => d.id).join('\n')}`,
+    `${document.uri.toString()}\n${sourceRevision(document.textDocument.getText())}\n${
+      dependencies.map(d => d.id).join('\n')
+    }`,
   )
 }
 
@@ -477,7 +527,7 @@ function parentFqn(fqn: Fqn): string | undefined {
 }
 
 function escapeSingleQuoted(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")
+  return value.replaceAll('\\', '\\\\').replaceAll('\'', '\\\'')
 }
 
 function dependencyId(kind: RemovalDependencyKind, uri: string, range: Range): string {

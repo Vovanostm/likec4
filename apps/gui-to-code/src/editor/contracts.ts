@@ -1,5 +1,5 @@
 import type { LikeC4Model } from '@likec4/core/model'
-import type { ElementKind, Fqn } from '@likec4/core/types'
+import type { ElementKind, Fqn, RelationId } from '@likec4/core/types'
 
 export type Revision = number
 export type OperationId = number
@@ -37,6 +37,17 @@ export interface CreateElementEditInput {
 export type ElementEditPort = (
   sources: readonly SourceFile[],
   input: CreateElementEditInput,
+) => Promise<readonly SourceFile[]>
+
+export interface CreateRelationEditInput {
+  readonly sourceId: Fqn
+  readonly targetId: Fqn
+  readonly documentUri?: string
+}
+
+export type RelationEditPort = (
+  sources: readonly SourceFile[],
+  input: CreateRelationEditInput,
 ) => Promise<readonly SourceFile[]>
 
 export interface EditorHistoryEntry {
@@ -77,7 +88,16 @@ export interface CreateElementCommand {
   }
 }
 
-export type EditorCommand = CreateElementCommand
+export interface CreateRelationCommand {
+  readonly type: 'relation.create'
+  readonly input: {
+    readonly sourceId: Fqn
+    readonly targetId: Fqn
+    readonly documentUri?: string
+  }
+}
+
+export type EditorCommand = CreateElementCommand | CreateRelationCommand
 
 export interface EditorOperation {
   readonly id: OperationId
@@ -93,6 +113,14 @@ export type CommandIssueCode =
   | 'source-edit-failed'
   | 'compile-rejected'
   | 'created-element-not-found'
+  | 'source-element-not-found'
+  | 'target-element-not-found'
+  | 'same-endpoint'
+  | 'relation-not-allowed'
+  | 'relation-source-edit-failed'
+  | 'created-relation-not-found'
+  | 'history-empty'
+  | 'undo-compile-rejected'
 
 export interface CommandIssue {
   readonly code: CommandIssueCode
@@ -101,16 +129,28 @@ export interface CommandIssue {
 
 export type CommandResult =
   | {
-      readonly status: 'applied'
-      readonly revision: Revision
-      readonly createdElementId: Fqn
-    }
+    readonly status: 'applied'
+    readonly command: 'element.create'
+    readonly revision: Revision
+    readonly createdElementId: Fqn
+  }
   | {
-      readonly status: 'rejected'
-      readonly revision: Revision
-      readonly issues: readonly CommandIssue[]
-    }
+    readonly status: 'applied'
+    readonly command: 'relation.create'
+    readonly revision: Revision
+    readonly createdRelationId: RelationId
+  }
   | {
-      readonly status: 'conflict'
-      readonly revision: Revision
-    }
+    readonly status: 'applied'
+    readonly command: 'history.undo'
+    readonly revision: Revision
+  }
+  | {
+    readonly status: 'rejected'
+    readonly revision: Revision
+    readonly issues: readonly CommandIssue[]
+  }
+  | {
+    readonly status: 'conflict'
+    readonly revision: Revision
+  }

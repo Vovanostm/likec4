@@ -148,6 +148,7 @@ export function LikeC4DiagramXYFlow({
     onEdgeClick,
     onCanvasClick,
     onCanvasDblClick,
+    onConnect,
   } = useDiagramEventHandlers()
 
   const { reducedGraphics, $panning } = useRootContainer()
@@ -239,6 +240,17 @@ export function LikeC4DiagramXYFlow({
         }
         e.stopPropagation()
         diagram.send({ type: 'xyflow.edgeDoubleClick', edge })
+      })}
+      nodesConnectable={!!onConnect}
+      onConnect={useCallbackRef(({ source, target }) => {
+        if (!onConnect || !source || !target) return
+        const sourceNode = nodes.find(node => node.id === source)
+        const targetNode = nodes.find(node => node.id === target)
+        const sourceId = sourceNode && 'modelFqn' in sourceNode.data ? sourceNode.data.modelFqn : null
+        const targetId = targetNode && 'modelFqn' in targetNode.data ? targetNode.data.modelFqn : null
+        if (sourceId && targetId) {
+          onConnect(sourceId, targetId)
+        }
       })}
       onDelete={useCallbackRef(({ nodes, edges }) => {
         if (enableReadOnly) {
