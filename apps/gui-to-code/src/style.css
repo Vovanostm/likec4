@@ -21,11 +21,15 @@ form { border-top: 1px solid #374151; display: grid; gap: .5rem; margin-top: .75
 h2 { font-size: 1rem; } h3 { font-size: .875rem; font-weight: 600; }
 button, .button { background: #2563eb; border: 0; border-radius: .375rem; color: white; cursor: pointer; font: inherit; padding: .5rem .75rem; }
 .button input { display: none; } button:hover, .button:hover { background: #1d4ed8; }
-input, textarea { background: #030712; border: 1px solid #4b5563; border-radius: .25rem; color: inherit; font: inherit; padding: .5rem; }
+button:disabled { cursor: not-allowed; opacity: .5; }
+button:focus-visible, .button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+input, select, textarea { background: #030712; border: 1px solid #4b5563; border-radius: .25rem; color: inherit; font: inherit; padding: .5rem; }
 .code-panel { display: grid; gap: .75rem; grid-template-rows: auto minmax(0, 1fr) auto; }
 textarea { min-height: 24rem; resize: none; width: 100%; }
 .diagram-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: .75rem; }
 .diagram { border: 1px solid #374151; border-radius: .5rem; min-height: 28rem; }
+.relation-controls { border: 1px solid #374151; border-radius: .5rem; display: grid; gap: .5rem; padding: .75rem; }
+.relation-controls label { display: grid; gap: .25rem; }
 .tree { color: #d1d5db; display: grid; gap: .35rem; list-style: none; padding: 0; }
 .tree code { color: #93c5fd; } .tree span { color: #9ca3af; }
 .diagnostics, .error { background: #450a0a; border: 1px solid #b91c1c; border-radius: .375rem; color: #fecaca; padding: .5rem .75rem; }
