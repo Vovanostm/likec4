@@ -1,5 +1,5 @@
 import type { ElementKind, Fqn } from '@likec4/core/types'
-import { sourceRevision } from '@likec4/language-services/browser'
+import { sourceRevision } from '@likec4/language-services'
 import { describe, expect, it } from 'vitest'
 import { applyPlanToCandidate, canvasIntentToCommandCandidate } from './wp01-contracts'
 
