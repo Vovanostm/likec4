@@ -1,27 +1,77 @@
 # DG-01 — Source-preserving edits
 
+## Status
+
+Accepted and implemented by WP-01.
+
 ## Decision
 
-Use LikeC4 language-service AST/CST identity and source ranges to produce validated, non-overlapping text edits. The app document layer owns applying those edits and recompiling the candidate revision. Canonical generation is not an edit path.
+`@likec4/language-services` owns the production source-edit planning boundary through:
 
-## Evidence
+- `createDocumentEditService(likec4)`;
+- `DocumentEditService`;
+- `SourceEditPlan` and `DocumentTextEdit`;
+- `RemovalDependencyReport`;
+- `applyDocumentTextEdits` and `sourceRevision`.
 
-`src/spikes/source-edits.spec.ts` proves the required mechanics: range edits preserve unrelated text and comments byte-for-byte, typed identifier ranges can be renamed together, insertions do not reformat neighbors, and removal is blocked while dependencies exist.
+The service uses linked Langium documents, the LikeC4 model locator, AST node locator, CST ranges, the language-service name provider, and resolved Langium references. The application owns applying a plan to candidate source and recompiling before commit.
 
-## Required owning-package follow-up
+Canonical DSL generation is not an edit path.
 
-WP-01 must expose a browser-compatible adapter from `@likec4/language-services` that resolves declarations and typed references to source ranges. The spike deliberately does not infer references using regex; its ranges stand in for language-service output.
+## Browser boundary
 
-## Alternatives
+The contract is exported from `@likec4/language-services/browser` and from the conditional root export. It uses in-memory Langium documents and contains no filesystem, process, or child-process dependency.
 
-- Full AST regeneration: rejected because LikeC4 generation is lossy for comments, formatting and source positions.
-- Extending the prototype brace parser: rejected as an append-only WP-00 implementation detail.
-- Direct AST mutation: rejected unless it can emit minimal source edits with the same preservation guarantees.
+Every edit identifies its document by URI. A plan records a source revision for each affected document.
 
-## Failure behavior
+## Source-preservation guarantees
 
-Overlapping or invalid ranges are rejected. Rename applies declaration and all typed reference edits atomically. Remove first returns dependencies; cascade must be an explicit later command.
+- add inserts at the CST-backed closing boundary of a model block;
+- rename changes the declaration name node and resolved typed references only;
+- remove uses declaration/dependency CST ranges;
+- edits are deterministic and checked for overlap;
+- comments, titles, free strings, and unrelated source are not searched or rewritten;
+- full AST serialization and canonical generation are not used.
 
-## Public API impact
+Positions use the LSP/JavaScript UTF-16 coordinate model exposed by Langium text documents.
 
-No public API changes in this PR. WP-01 may add a narrow browser source-edit adapter after its ranges are proven against real Langium documents.
+## Rename behavior
+
+Rename validates the new local identifier, resolves the target declaration, checks the resulting FQN for collision, and creates one atomic workspace plan for the declaration and all resolved references.
+
+A collision, invalid identifier, missing declaration/range, ambiguous overlapping edits, or stale source fails closed and produces no applied mutation.
+
+## Removal protocol
+
+Removal is two-phase:
+
+1. `inspectRemoveElement` returns a language-neutral dependency report with stable IDs, kinds, URI/range, and removal capability.
+2. `planRemoveElement` requires the exact dependency-report revision and explicit approval of every current dependency ID.
+
+Dependencies are classified as child element, incoming/outgoing relation, scoped view, view reference, or other semantic reference. Dependencies contained by the target declaration require approval but no duplicate edit. Separately removable relations/views/rules produce CST-backed edits. Unsupported cascades fail closed.
+
+The planner collapses contained removal ranges and rejects overlapping final edits. The candidate must still be compiled by the caller before commit.
+
+## Multi-document model
+
+Plans contain `affectedDocuments`, document URIs, and per-document base revisions. Rename may return edits for more than one linked document. GUI-to-code remains single-file in WP-01, but the public shape does not impose that limitation.
+
+## Executable evidence
+
+- `packages/language-services/src/common/DocumentEditService.spec.ts`;
+- package browser build/typecheck;
+- GUI-to-code compile integration.
+
+## Rejected alternatives
+
+- full AST regeneration: lossy for comments, formatting, and source positions;
+- regex/global string replacement: not semantic and may rewrite comments or unrelated strings;
+- extending the app-local brace parser: wrong owner and incomplete language semantics;
+- direct AST mutation without minimal text edits: cannot provide source-preservation guarantees;
+- applying edits inside the service: would bypass application compile-before-commit.
+
+## Known limitations
+
+- WP-01 implements element add/rename/remove primitives only;
+- cascade is intentionally fail-closed for semantic references without a proven removable AST owner;
+- product confirmation UI, command history, and multi-file UX belong to later work packages.
