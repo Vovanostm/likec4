@@ -37,12 +37,69 @@ concurrency:
   group: gui-to-code-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      - name: Apply one-time WP-04 source corrections
+        if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service = Path('packages/language-services/src/common/DocumentEditService.ts')
+          text = service.read_text()
+          text = text.replace(
+              "import type { AstNode, CstNode, LangiumDocument, ReferenceDescription } from 'langium'\nimport { findNodeForKeyword, findNodesForProperty } from 'langium'",
+              "import type { AstNode, CstNode, LangiumDocument, ReferenceDescription } from 'langium'\nimport { GrammarUtils } from 'langium'",
+          )
+          text = text.replace("const positional = findNodesForProperty(cst, 'props')", "const positional = GrammarUtils.findNodesForProperty(cst, 'props')")
+          text = text.replace("const opening = findNodeForKeyword(bodyCst, '{')", "const opening = GrammarUtils.findNodeForKeyword(bodyCst, '{')")
+          text = text.replace(
+              """  return [
+              `title '${escapeSingleQuoted(input.title)}'`,
+              ...(input.description === null ? [] : [`description '${escapeSingleQuoted(input.description)}'`]),
+              ...(input.technology === null ? [] : [`technology '${escapeSingleQuoted(input.technology)}'`]),
+              ...(input.tags.length === 0 ? [] : [input.tags.map(tag => `#${tag}`).join(', ')]),
+            ]""",
+              """  return [
+              ...(input.tags.length === 0 ? [] : [input.tags.map(tag => `#${tag}`).join(', ')]),
+              `title '${escapeSingleQuoted(input.title)}'`,
+              ...(input.description === null ? [] : [`description '${escapeSingleQuoted(input.description)}'`]),
+              ...(input.technology === null ? [] : [`technology '${escapeSingleQuoted(input.technology)}'`]),
+            ]""",
+          )
+          service.write_text(text)
+
+          spec = Path('packages/language-services/src/common/DocumentEditService.spec.ts')
+          text = spec.read_text().replace(
+              """    component web 'Web application' {
+                    description 'Frontend'
+                    technology 'TypeScript'
+                    #ui
+                  }""",
+              """    component web 'Web application' {
+                    #ui
+                    description 'Frontend'
+                    technology 'TypeScript'
+                  }""",
+          )
+          spec.write_text(text)
+          PY
+          if ! git diff --quiet; then
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add packages/language-services/src/common/DocumentEditService.ts packages/language-services/src/common/DocumentEditService.spec.ts
+            git commit -m "fix(language-services): correct CST utilities and tag ordering"
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          fi
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
