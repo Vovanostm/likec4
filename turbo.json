@@ -30,14 +30,39 @@
       ],
       "outputLogs": "new-only"
     },
+    "@likec4/generators#generate": {
+      "dependsOn": [],
+      "outputs": [
+        "src/generated/**",
+        "src/generated-lib/**",
+        "all.js",
+        "all.d.ts",
+        "schema.json"
+      ],
+      "outputLogs": "new-only"
+    },
     "sources": {
       "dependsOn": [
         "^sources"
       ]
     },
+    "@likec4/generators#sources": {
+      "dependsOn": []
+    },
     "typecheck": {
       "dependsOn": [
         "^typecheck",
+        "sources",
+        "generate"
+      ],
+      "outputs": [
+        "lib/**",
+        "*.tsbuildinfo"
+      ],
+      "outputLogs": "new-only"
+    },
+    "@likec4/generators#typecheck": {
+      "dependsOn": [
         "sources",
         "generate"
       ],
@@ -61,6 +86,24 @@
     "build": {
       "dependsOn": [
         "^build",
+        "sources",
+        "generate"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!**/*.spec.ts",
+        "!**/*.test-d.ts",
+        "!**/__test*/**",
+        "!**/__snapshots__/**",
+        "!**/__fixtures__/**"
+      ],
+      "outputs": [
+        "dist/**"
+      ],
+      "outputLogs": "new-only"
+    },
+    "@likec4/generators#build": {
+      "dependsOn": [
         "sources",
         "generate"
       ],
