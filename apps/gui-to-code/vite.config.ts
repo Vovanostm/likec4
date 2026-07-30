@@ -14,8 +14,8 @@ export default defineConfig({
     conditions: ['sources', 'module', 'import', 'default'],
     dedupe: ['react', 'react-dom'],
     alias: {
-      '@likec4/style-preset': resolve('../../styled-system/preset/src'),
-      '@likec4/styles': resolve('styled-system'),
+      '@likec4/style-preset': resolve(import.meta.dirname, '../../styled-system/preset/src'),
+      '@likec4/styles': resolve(import.meta.dirname, 'styled-system'),
     },
   },
 })
