@@ -2,9 +2,9 @@
 
 Дата актуализации: 31 июля 2026
 Ветка: `feat/gui-to-code-wp03-relation-undo`
-PR: Complete gui-to-code WP-03 relation creation and undo
+PR: `https://github.com/Vovanostm/likec4/pull/4`
 Базовый commit: `69e8fff7810aab16d789a153857994197a9466eb`
-Проверенный implementation head: будет зафиксирован после final-head CI
+Проверенный implementation head: `293173d216c696e9af922fda9ff0b50d90571f3b`
 
 Этот файл — изменяемая часть плана. Стабильные outcomes, acceptance criteria и границы work packages находятся в `ROADMAP.md`. Следующий агент обязан прочитать оба файла до выбора `WP-*`.
 
@@ -93,13 +93,16 @@ Focused suites включают:
 - shared pointer/keyboard intent adapter and self-connect rejection;
 - существующие element-create и direct source regressions.
 
-Final workflow run IDs и verified head добавляются после успешного final-head CI.
+Проверенные workflow для implementation head `293173d216c696e9af922fda9ff0b50d90571f3b`:
+
+- `GUI-to-code` run `30587665149` — success: generate, typecheck, tests, build, startup smoke, agent instructions и `git diff --check`;
+- `CI (PR & push)` run `30587665366` — success: TypeScript/type tests, Linux tests, package build/lint, MCP packed smoke, Windows generation/tests, E2E types, Playwright E2E, docs, playground, GUI-to-code и final quality gate.
 
 ### Reviews
 
-Correctness review проверяет one gesture → one intent → one operation → one relation → one history entry, direction, identity diff, compile-before-commit, compile-before-restore и byte-exact Undo.
+Correctness review complete: проверены one gesture → one intent → one operation → one relation → one history entry, direction, identity diff, duplicate suppression, compile-before-commit, compile-before-restore, exact-source Undo и failure atomicity.
 
-Architecture review подтверждает, что `EditorWorkspace` остаётся единственным owner sources/revision/history, DSL остаётся persisted semantic SSOT, diagram остаётся gesture layer, `ViewChange` не изменён и WP-04 scope не начат.
+Architecture review complete: `EditorWorkspace` остаётся единственным owner sources/revision/history, DSL остаётся persisted semantic SSOT, diagram остаётся gesture layer, `ViewChange` не изменён, second semantic graph не создан и WP-04 scope не начат.
 
 ## Handoff для WP-04
 
