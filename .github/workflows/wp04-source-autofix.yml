@@ -1,0 +1,73 @@
+name: WP-04 source autofix
+
+on:
+  push:
+    branches:
+      - feat/gui-to-code-wp04-inspector-safe-edit
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/gui-to-code-wp04-inspector-safe-edit
+      - name: Apply deterministic source fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service = Path('packages/language-services/src/common/DocumentEditService.ts')
+          text = service.read_text()
+          text = text.replace(
+              "import type { AstNode, CstNode, LangiumDocument, ReferenceDescription } from 'langium'\nimport { findNodeForKeyword, findNodesForProperty } from 'langium'",
+              "import type { AstNode, CstNode, LangiumDocument, ReferenceDescription } from 'langium'\nimport { GrammarUtils } from 'langium'",
+          )
+          text = text.replace("const positional = findNodesForProperty(cst, 'props')", "const positional = GrammarUtils.findNodesForProperty(cst, 'props')")
+          text = text.replace("const opening = findNodeForKeyword(bodyCst, '{')", "const opening = GrammarUtils.findNodeForKeyword(bodyCst, '{')")
+          old = """  return [
+    `title '${escapeSingleQuoted(input.title)}'`,
+    ...(input.description === null ? [] : [`description '${escapeSingleQuoted(input.description)}'`]),
+    ...(input.technology === null ? [] : [`technology '${escapeSingleQuoted(input.technology)}'`]),
+    ...(input.tags.length === 0 ? [] : [input.tags.map(tag => `#${tag}`).join(', ')]),
+  ]"""
+          new = """  return [
+    ...(input.tags.length === 0 ? [] : [input.tags.map(tag => `#${tag}`).join(', ')]),
+    `title '${escapeSingleQuoted(input.title)}'`,
+    ...(input.description === null ? [] : [`description '${escapeSingleQuoted(input.description)}'`]),
+    ...(input.technology === null ? [] : [`technology '${escapeSingleQuoted(input.technology)}'`]),
+  ]"""
+          if old not in text:
+              raise SystemExit('propertyLines target not found')
+          service.write_text(text.replace(old, new))
+
+          spec = Path('packages/language-services/src/common/DocumentEditService.spec.ts')
+          text = spec.read_text()
+          old = """    component web 'Web application' {
+      description 'Frontend'
+      technology 'TypeScript'
+      #ui
+    }"""
+          new = """    component web 'Web application' {
+      #ui
+      description 'Frontend'
+      technology 'TypeScript'
+    }"""
+          if old not in text:
+              raise SystemExit('fixture target not found')
+          spec.write_text(text.replace(old, new))
+          PY
+      - name: Commit fixes
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages/language-services/src/common/DocumentEditService.ts packages/language-services/src/common/DocumentEditService.spec.ts
+          git commit -m "fix(language-services): correct CST utilities and tag ordering"
+          git push origin HEAD:feat/gui-to-code-wp04-inspector-safe-edit
