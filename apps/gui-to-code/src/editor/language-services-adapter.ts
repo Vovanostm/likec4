@@ -17,10 +17,17 @@ interface ApplicableEditPlan {
   }[]
 }
 
+function sourceKey(uri: string): string {
+  const virtualPrefix = 'virtual:/workspace/'
+  return uri.startsWith(virtualPrefix) ? uri.slice(virtualPrefix.length) : uri
+}
+
 function applyPlan(sources: readonly SourceFile[], plan: ApplicableEditPlan): readonly SourceFile[] {
   return sources.map(source => {
-    const revision = plan.baseRevisions[source.uri]
-    const edits = plan.edits.filter(edit => edit.uri === source.uri)
+    const planUri = Object.keys(plan.baseRevisions).find(uri => sourceKey(uri) === source.uri)
+    if (!planUri) return source
+    const revision = plan.baseRevisions[planUri]
+    const edits = plan.edits.filter(edit => edit.uri === planUri)
     if (!revision || edits.length === 0) return source
     return {
       ...source,
@@ -35,7 +42,6 @@ export const editElementWithLanguageServices: ElementEditPort = async (sources, 
     id: input.id,
     kind: input.kind,
     ...(input.title ? { title: input.title } : {}),
-    ...(input.documentUri ? { documentUri: input.documentUri } : {}),
   })
   return applyPlan(sources, plan)
 }
@@ -45,7 +51,6 @@ export const editRelationWithLanguageServices: RelationEditPort = async (sources
   const plan = await createDocumentEditService(likec4).planAddRelation({
     source: input.sourceId,
     target: input.targetId,
-    ...(input.documentUri ? { documentUri: input.documentUri } : {}),
   })
   return applyPlan(sources, plan)
 }
