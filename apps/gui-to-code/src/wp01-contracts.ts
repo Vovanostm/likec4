@@ -2,7 +2,7 @@ import type { CanvasIntent } from '@likec4/diagram'
 import {
   applyDocumentTextEdits,
   type SourceEditPlan,
-} from '@likec4/language-services/browser'
+} from '@likec4/language-services'
 
 export type EditorCommandCandidate =
   | {
