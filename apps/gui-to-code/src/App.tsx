@@ -9,17 +9,17 @@ import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { compile } from './compiler'
 import { starterSource } from './document'
-import type { EditorWorkspaceState, SourceFile } from './editor/contracts'
+import type { EditorWorkspaceState } from './editor/contracts'
 import { EditorWorkspace } from './editor/workspace'
 import { userError, userMessages } from './user-messages'
 
 const storageKey = 'likec4.gui-to-code.source.v1'
 const documentUri = 'model.c4'
 const createKinds = [
-  ['actor', 'Актор'],
-  ['system', 'Система'],
-  ['component', 'Компонент'],
-] as const satisfies readonly (readonly [ElementKind, string])[]
+  ['actor' as ElementKind, 'Актор'],
+  ['system' as ElementKind, 'Система'],
+  ['component' as ElementKind, 'Компонент'],
+] as const
 
 function readInitialSource(): string {
   return localStorage.getItem(storageKey) ?? starterSource
@@ -121,9 +121,7 @@ export function App() {
 
   const confirmKeyboardCreate = (event: ReactKeyboardEvent<HTMLElement>): void => {
     if (event.key === 'Escape') {
-      if (controller.current?.handleKeyDown(event.key)) {
-        event.preventDefault()
-      }
+      if (controller.current?.handleKeyDown(event.key)) event.preventDefault()
       return
     }
     if ((event.key === 'Enter' || event.key === ' ') && activeKind) {
@@ -150,9 +148,7 @@ export function App() {
     }
   }
 
-  if (!state) {
-    return <main className="editor-shell"><p>Загрузка редактора…</p></main>
-  }
+  if (!state) return <main className="editor-shell"><p>Загрузка редактора…</p></main>
 
   const source = state.draftSources[0]?.content ?? ''
   const renderModel = state.compilation.model ?? state.lastValidModel
