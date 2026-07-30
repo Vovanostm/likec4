@@ -30,6 +30,17 @@
       ],
       "outputLogs": "new-only"
     },
+    "@likec4/generators#generate": {
+      "dependsOn": [],
+      "outputs": [
+        "src/generated/**",
+        "src/generated-lib/**",
+        "all.js",
+        "all.d.ts",
+        "schema.json"
+      ],
+      "outputLogs": "new-only"
+    },
     "sources": {
       "dependsOn": [
         "^sources"
