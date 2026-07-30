@@ -4,33 +4,34 @@
 
 ## Current behavior
 
-The WP-02 vertical slice supports:
+The WP-03 vertical slice supports:
 
 - importing one `.c4` source file, editing it directly, and exporting the exact current text as `model.c4`;
 - preserving the visible source draft in browser `localStorage` under the existing versioned key;
-- using the diagram as the primary workspace;
-- activating creation tools for «Актор», «Система» and «Компонент»;
-- creating one root element by canvas click or keyboard confirmation;
-- allocating deterministic collision-free identifiers such as `actor`, `actor2` and `actor3`;
-- applying source-preserving edits through `DocumentEditService.planAddElement`;
-- compiling an isolated candidate before committing source, revision and model atomically;
+- creating root actors, systems and components through the canvas-first tool path;
+- creating one directed logical relation by dragging an explicit source handle to a target element;
+- creating the same relation with an accessible source/target chooser through the same `CanvasIntent` and `EditorOperation` path;
+- applying source-preserving, revision-bound element and relation edits through `DocumentEditService`;
+- compiling an isolated candidate and verifying the actual created element or relation identity before commit;
+- recording one history entry per successful semantic operation;
+- restoring byte-exact previous source with one revision-guarded, compile-before-restore Undo;
 - preserving the last valid rendered model while a direct edit or import is invalid;
-- rejecting stale operations and ignoring stale asynchronous compilation responses;
-- deriving available element kinds from the loaded LikeC4 specification.
+- rejecting stale operations and stale Undo without mutating committed state.
 
-The current package does not yet implement relation creation on canvas, nesting, rename/remove, inspector CRUD, view CRUD, product undo/redo controls, manual layout, multi-file UI, IndexedDB, ZIP import/export, backend collaboration or AI generation.
+The current package does not yet implement relation metadata, relation update/remove, nesting, rename/remove, inspector CRUD, view CRUD, Redo UI, manual layout, multi-file UI, IndexedDB, ZIP import/export, backend collaboration or AI generation.
 
 ## Current architecture
 
-- `EditorWorkspace` is the only runtime owner of committed sources, draft sources, workspace revision, compilation state, last-valid model and history foundation.
+- `EditorWorkspace` is the only runtime owner of committed sources, draft sources, workspace revision, compilation state, last-valid model and semantic history.
 - LikeC4 DSL remains the persisted semantic representation. The compiled model and diagram are derived.
 - Semantic changes enter through typed `EditorOperation` values carrying `expectedRevision`.
-- Workspace operations are serialized; concurrent operations based on the same revision cannot silently overwrite each other.
+- Workspace dispatch and Undo share one serialization queue; concurrent same-revision actions cannot silently overwrite each other.
 - `src/compiler.ts` is the revision-aware browser compiler boundary.
-- `src/editor/adapters/language-services.ts` owns the production integration with `@likec4/language-services/browser`.
-- `DocumentEditService.planAddElement` and `applyDocumentTextEdits` produce and apply source-preserving candidate edits.
-- `createCanvasIntentController` owns only transient gesture lifecycle. It does not allocate DSL identifiers or mutate workspace state.
-- Canvas points, selection, focus and the active creation tool are transient UI state and are not persisted into the DSL.
+- `src/editor/language-services-adapter.ts` owns the production integration with `@likec4/language-services/browser`.
+- `DocumentEditService.planAddElement`, `DocumentEditService.planAddRelation` and `applyDocumentTextEdits` produce and apply AST/CST-backed source-preserving candidate edits.
+- Relation identity is verified by the exact set difference between previous and candidate compiled relation IDs, followed by source/target direction validation.
+- `createCanvasIntentController` owns only transient gesture lifecycle. It does not edit LikeC4 source or record history.
+- `@likec4/diagram` exposes a backward-compatible optional logical `onConnect` callback; XYFlow never becomes a second semantic graph.
 - `ViewChange` remains layout-only and is not used for semantic CRUD.
 
 The target product and architecture live in [SPEC.md](./SPEC.md). Delivery order and managed state live in [ROADMAP.md](./ROADMAP.md) and [ROADMAP.STATUS.md](./ROADMAP.STATUS.md).
