@@ -1,9 +1,9 @@
 # Состояние исполнения roadmap
 
 Дата актуализации: 30 июля 2026
-Ветка: `feat/gui-to-code-wp00-wp01-prep`
-PR: #1 — Complete gui-to-code WP-00 and prepare WP-01 decisions
-Проверенный HEAD: `c3e23326c2b517debb52d9462cfe8496e0a78c05`
+Ветка: `feat/gui-to-code-wp01-production-contracts`
+PR: #2 — Complete gui-to-code WP-01 production contracts
+Базовый commit: `6959b53d3f8d5373dba238713928e9f33e700c74`
 
 Этот файл — изменяемая часть плана. Стабильные outcomes, acceptance criteria и границы work packages находятся в `ROADMAP.md`. Следующий агент обязан прочитать оба файла до выбора `WP-*`.
 
@@ -11,15 +11,15 @@ PR: #1 — Complete gui-to-code WP-00 and prepare WP-01 decisions
 
 ```yaml
 # managed-state:v2
-revision: 3
+revision: 4
 contract_review: complete
 active: []
 done:
   - WP-00
-ready:
   - WP-01
-planned:
+ready:
   - WP-02
+planned:
   - WP-03
   - WP-04
   - WP-05
@@ -44,23 +44,108 @@ blocked: []
 - добавлен production-build startup smoke;
 - README приведён к фактическому состоянию;
 - добавлен отдельный CI workflow `GUI-to-code` с явным ordered bootstrap generated dependencies;
-- исправлен Vite resolution: удалён ошибочный app-local override `@likec4/styles`, используется canonical workspace package;
-- общий Turborepo task graph исправлен package-specific overrides для `@likec4/generators`: test-only обратная devDependency больше не создаёт циклы `generate`, `sources`, `typecheck` и `build`;
-- общий monorepo quality gate и отдельный GUI-to-code workflow проходят на одном HEAD.
+- исправлен Vite resolution: используется canonical workspace package `@likec4/styles`;
+- сохранены package-specific Turbo overrides для `@likec4/generators`.
 
-Основные пути:
+## WP-01 — done
 
-- `src/App.tsx`
-- `src/editor-state.ts`
-- `src/editor-state.spec.ts`
-- `src/user-messages.ts`
-- `scripts/smoke-start.mjs`
-- `vite.config.ts`
-- `README.md`
-- `.github/workflows/gui-to-code.yml`
-- `turbo.json`
+### DG-01 — source-preserving document edits
 
-Verification gate:
+Owning package: `@likec4/language-services`.
+
+Публичные primitives:
+
+- `createDocumentEditService`;
+- `DocumentEditService`;
+- `SourceEditPlan` и `DocumentTextEdit`;
+- `RemovalDependencyReport`;
+- `applyDocumentTextEdits`;
+- `sourceRevision`.
+
+Реализовано:
+
+- browser-compatible AST/CST-backed add element;
+- semantic rename declaration и resolved Langium references;
+- structured dependency inspection;
+- revision-bound explicit cascade approval;
+- deterministic non-overlapping workspace edits;
+- stale-source rejection;
+- URI-based multi-document-ready plan shape;
+- browser и Node public exports;
+- owning-package tests на реальные linked LikeC4 documents.
+
+Ограничения:
+
+- WP-01 покрывает element add/rename/remove primitives, но не product CRUD;
+- unsupported semantic cascade fail-closed;
+- применение edit plan и compile-before-commit остаются ответственностью приложения.
+
+### DG-02 — canvas intents
+
+Owning package: `@likec4/diagram`.
+
+Публичные primitives:
+
+- `CanvasIntent`;
+- `CanvasIntentHandler`;
+- `createCanvasIntentController`;
+- optional `LikeC4EditorCallbacks.onCanvasIntent`.
+
+Реализовано:
+
+- element-create request;
+- directed relation-create request;
+- selection change;
+- explicit cancellation contract;
+- Escape path;
+- tool-change/source-unavailable cancellation;
+- duplicate suppression;
+- deterministic self-connect rejection;
+- backward-compatible optional callback;
+- `ViewChange` не расширен semantic operations;
+- diagram не импортирует app contracts или language services.
+
+Ограничения:
+
+- production toolbar, drag-to-connect UX, inspector и semantic command execution не реализованы;
+- keyboard product UX должен использовать тот же controller в WP-02.
+
+### Integration proof
+
+`apps/gui-to-code/src/wp01-contracts.ts` является compile-only adapter и подтверждает:
+
+- `CanvasIntent` преобразуется только в app-level command candidate;
+- revision-bound source edit plan может быть применён к in-memory candidate;
+- diagram не выполняет semantic mutation;
+- production canvas CRUD не начат.
+
+Runtime semantics edit planner и canvas controller покрыты тестами в owning packages. Отдельный app-runtime test удалён как дублирующий: dedicated GUI-to-code workflow запускает app tests до package build и не предназначен для загрузки runtime entry опубликованного `language-services` package.
+
+### Release
+
+Changeset:
+
+- `.changeset/calm-otters-edit.md` для `@likec4/language-services` и `@likec4/diagram`.
+
+### Reviews
+
+Correctness review:
+
+- исправлена классификация Langium references через AST container chain для relation endpoints и scoped views;
+- cascade остаётся revision-bound и fail-closed;
+- проверены deterministic/non-overlapping edits и duplicate intent suppression.
+
+Architecture review:
+
+- source остаётся единственным persisted semantic SSOT;
+- `@likec4/diagram` не зависит от language services;
+- `ViewChange` не загрязнён semantic operations;
+- `EditorWorkspace`, history, persistence и WP-02 product UX не начаты;
+- Turbo dependency graph не изменён.
+
+## Verification gate
+
+Финальный PR должен пройти на одном head SHA:
 
 ```bash
 pnpm --filter @likec4/style-preset sources
@@ -77,47 +162,15 @@ pnpm check:agent-instructions
 git diff --check
 ```
 
-Фактические CI-доказательства на проверенном HEAD:
+Также обязательны общий Linux/Windows test gate, repository typecheck/type tests, package build/lint/pack smoke, docs, playground, E2E types, Playwright E2E и final quality gate.
 
-- dedicated `GUI-to-code`: generation, typecheck, tests, build, startup smoke, instructions и diff check — PASS;
-- general quality gate: Linux и Windows generation/tests, repository typecheck/type tests, package build/lint/pack smoke, docs, playground, GUI-to-code, E2E types и Playwright E2E — PASS;
-- `checks / 🚦 quality gate` — PASS.
+## Handoff для WP-02
 
-## WP-01 — ready, partially prepared
+Следующий агент должен:
 
-Подготовлено, но не считать production implementation:
-
-- `decisions/DG-01-source-preserving-edits.md`;
-- `src/spikes/source-edits.ts` и tests: range edits, preservation, dependency-aware remove proof;
-- `decisions/DG-02-canvas-intents.md`;
-- `src/spikes/canvas-intents.ts` и tests: directed connect lifecycle, cancellation, duplicate suppression;
-- spikes не импортируются production UI.
-
-Оставшийся обязательный scope WP-01:
-
-1. Доказать DG-01 на реальном browser-compatible AST/CST API в owning package `@likec4/language-services`, а не на переданных вручную ranges.
-2. Доказать DG-02 в owning package `@likec4/diagram` через narrow optional public callback и package tests.
-3. Провести public API review обоих контрактов.
-4. Добавить patch changeset, если меняются публичные exports.
-5. Обновить `SPEC.md` только после подтверждения фактических контрактов.
-6. Не начинать `EditorWorkspace`, production canvas CRUD или drag-to-connect до полного закрытия WP-01.
-
-## Известные решения и ограничения
-
-- `src/document.ts` остаётся append-only prototype и не должен расширяться regex/brace parsing для rename/remove.
-- Source-preserving edits должны исходить из typed language-service ranges.
-- `@likec4/diagram` не должен импортировать app contracts или эмитить `EditorCommand`.
-- Canvas semantic intents нельзя добавлять в `ViewChange`; layout и semantic editing остаются разными контрактами.
-- App-local `styled-system` не является заменой canonical `@likec4/styles` package для bundling.
-- Package-specific Turbo overrides для `@likec4/generators` должны сохраняться, пока обратная dependency на language-services остаётся test-only; не возвращать для этого пакета `^generate`, `^sources`, `^typecheck` или `^build` без устранения package graph cycle.
-- Один task выполняет ровно один `WP-*`; следующий допустимый пакет — WP-01.
-
-## Handoff следующему агенту
-
-Начать с:
-
-1. Проверить, что PR #1, общий quality gate и `GUI-to-code` workflow зелёные на текущем head.
-2. Прочитать `AGENTS.md`, `README.md`, `SPEC.md`, `ROADMAP.md`, этот файл и обе DG ADR.
-3. Взять только WP-01.
-4. Сначала исследовать фактические Langium/diagram owning APIs; не переносить app spikes напрямую в public API.
-5. После выполнения обновить этот managed state: WP-01 → `done`, WP-02 → `ready`.
+1. Проверить merge commit PR #2 и зелёные checks на финальном head.
+2. Взять только `WP-02`.
+3. Создать однопроектный `EditorWorkspace` как единственного owner sources/revision/history.
+4. Подключить `CanvasIntent → EditorOperation → DocumentEditService → compile-before-commit`.
+5. Не создавать параллельный semantic graph или persisted XYFlow graph.
+6. Сначала реализовать минимальный vertical slice create/connect/selection через существующие owning contracts.

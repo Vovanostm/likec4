@@ -45,6 +45,17 @@ export {
 } from './editor/LikeC4EditorCallbacks'
 
 export {
+  createCanvasIntentController,
+  type CanvasCancellationReason,
+  type CanvasIntent,
+  type CanvasIntentController,
+  type CanvasIntentControllerSnapshot,
+  type CanvasIntentHandler,
+  type CanvasInteraction,
+  type DiagramPoint,
+} from './editor/CanvasIntent'
+
+export {
   LikeC4ProjectsProvider,
   type LikeC4ProjectsProviderProps,
 } from './LikeC4ProjectsProvider'
@@ -123,4 +134,5 @@ export {
 export { SearchControl } from './components/SearchControl'
 
 export { DefaultMantineProvider } from './context/DefaultMantineProvider'
+
 export { FramerMotionConfig } from './context/FramerMotionConfig'

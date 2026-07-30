@@ -18,11 +18,14 @@ Forms do not yet cover nested/deployment elements, rename/remove, undo/redo, man
 
 ## Current architecture
 
-- The source string remains the WP-00 document owner and is the only persisted source of truth.
+- The source string remains the WP-01 document owner and is the only persisted source of truth.
 - `src/document.ts` applies the three append-only prototype commands to a candidate source string.
-- `src/compiler.ts` is the only browser language-services boundary.
+- `src/compiler.ts` is the only browser language-services compilation boundary.
 - `src/editor-state.ts` separates invalid draft updates from compile-before-commit semantic commands and preserves the last valid model.
-- `src/spikes/` contains executable WP-01 decision proofs only; it is not connected to the production UI.
+- `@likec4/language-services/browser` now exposes revision-bound AST/CST-backed source edit planning primitives for add, semantic rename, dependency inspection, and controlled removal.
+- `@likec4/diagram` now exposes an optional canvas intent callback and deterministic interaction controller without applying semantic commands or extending `ViewChange`.
+- `src/wp01-contracts.ts` is a compile/test adapter proving that owning-package intents can map to future app commands and edit plans can be applied to an in-memory candidate. It is not production canvas CRUD.
+- `src/spikes/` remains historical executable decision evidence and is not connected to the production UI.
 
 The target product and architecture live in [SPEC.md](./SPEC.md). Delivery order and managed state live in [ROADMAP.md](./ROADMAP.md).
 

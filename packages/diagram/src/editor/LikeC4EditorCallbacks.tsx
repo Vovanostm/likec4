@@ -1,4 +1,5 @@
 import type * as t from '@likec4/core/types'
+import type { CanvasIntentHandler } from './CanvasIntent'
 
 /**
  * Callbacks from LikeC4 Editor.
@@ -9,6 +10,14 @@ export interface LikeC4EditorCallbacks {
    * See vite-plugin settings for more details
    */
   applySemanticLayout?: undefined | ((viewId: t.ViewId) => Promise<void>)
+
+  /**
+   * Optional callback for transient canvas interaction intents.
+   *
+   * The diagram never applies semantic document changes itself. Consumers may
+   * translate these intents into their own validated document operations.
+   */
+  onCanvasIntent?: CanvasIntentHandler
 
   /**
    * Fetch a view by its ID and layout type.
