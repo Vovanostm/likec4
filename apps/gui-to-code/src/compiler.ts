@@ -1,8 +1,13 @@
+import type { LikeC4Model } from '@likec4/core/model'
 import { fromSources } from '@likec4/language-services/browser'
 import type { CompileRequest, CompileResult } from './editor/contracts'
 
-/** The only browser compiler boundary used by the UI. */
-export async function compile(request: CompileRequest): Promise<CompileResult> {
+export interface Compilation {
+  readonly errors: string[]
+  readonly model: LikeC4Model.Layouted | null
+}
+
+async function compileRequest(request: CompileRequest): Promise<CompileResult> {
   try {
     const likec4 = await fromSources(Object.fromEntries(request.sources.map(source => [source.uri, source.content])))
     const diagnostics = likec4.getErrors().map(error => ({
@@ -24,4 +29,23 @@ export async function compile(request: CompileRequest): Promise<CompileResult> {
       model: null,
     }
   }
+}
+
+export function compile(source: string): Promise<Compilation>
+export function compile(request: CompileRequest): Promise<CompileResult>
+/** The only browser compiler boundary used by the UI. */
+export async function compile(request: string | CompileRequest): Promise<Compilation | CompileResult> {
+  if (typeof request === 'string') {
+    const result = await compileRequest({
+      revision: 0,
+      sources: [{ uri: 'model.c4', content: request }],
+    })
+    return {
+      errors: result.diagnostics.map(diagnostic =>
+        diagnostic.line ? `Line ${diagnostic.line}: ${diagnostic.message}` : diagnostic.message
+      ),
+      model: result.model,
+    }
+  }
+  return compileRequest(request)
 }
