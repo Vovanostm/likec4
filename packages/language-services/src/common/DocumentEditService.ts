@@ -1,6 +1,6 @@
 import type { ElementKind, Fqn, ProjectId } from '@likec4/core/types'
 import type { AstNode, CstNode, LangiumDocument, ReferenceDescription } from 'langium'
-import { findNodeForKeyword, findNodesForProperty } from 'langium'
+import { GrammarUtils } from 'langium'
 import type { Position, Range } from 'vscode-languageserver-types'
 import { URI } from 'vscode-uri'
 import type { LikeC4, LikeC4Langium } from './LikeC4'
@@ -273,7 +273,7 @@ export class DocumentEditService {
     }
 
     const edits: OffsetEdit[] = []
-    const positional = findNodesForProperty(cst, 'props')
+    const positional = GrammarUtils.findNodesForProperty(cst, 'props')
     const body = located.node.body
     const bodyCst = body?.$cstNode
     if (positional.length > 0) {
@@ -301,7 +301,7 @@ export class DocumentEditService {
           edits.push(offsetRemoval(located.document, property.$cstNode))
         }
       }
-      const opening = findNodeForKeyword(bodyCst, '{')
+      const opening = GrammarUtils.findNodeForKeyword(bodyCst, '{')
       if (!opening) {
         throw new DocumentEditError('not-found', 'Element body opening brace was not found')
       }
@@ -765,10 +765,10 @@ function propertyLines(input: {
   readonly tags: readonly string[]
 }): string[] {
   return [
+    ...(input.tags.length === 0 ? [] : [input.tags.map(tag => `#${tag}`).join(', ')]),
     `title '${escapeSingleQuoted(input.title)}'`,
     ...(input.description === null ? [] : [`description '${escapeSingleQuoted(input.description)}'`]),
     ...(input.technology === null ? [] : [`technology '${escapeSingleQuoted(input.technology)}'`]),
-    ...(input.tags.length === 0 ? [] : [input.tags.map(tag => `#${tag}`).join(', ')]),
   ]
 }
 
