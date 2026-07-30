@@ -16,6 +16,24 @@ export type {
 
 export { LikeC4 }
 
+export {
+  applyDocumentTextEdits,
+  createDocumentEditService,
+  DocumentEditError,
+  DocumentEditService,
+  sourceRevision,
+  type AddElementInput,
+  type CascadeRemoveElementInput,
+  type DocumentEditErrorCode,
+  type DocumentTextEdit,
+  type RemovalDependency,
+  type RemovalDependencyKind,
+  type RemovalDependencyReport,
+  type RemoveElementInput,
+  type RenameElementInput,
+  type SourceEditPlan,
+} from '../common/DocumentEditService'
+
 /**
  * Create a LikeC4 instance from a workspace directory
  * @param _workspace - The workspace directory path
