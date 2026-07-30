@@ -1,41 +1,41 @@
 # LikeC4 GUI-to-code
 
-`@likec4/gui-to-code` is a private, browser-only semantic editor for LikeC4. It edits canonical LikeC4 source and renders the result in real time.
+`@likec4/gui-to-code` is a private, browser-only semantic editor for LikeC4. It edits canonical LikeC4 source and renders the result in real time. The user-facing interface and accessibility labels are in Russian; LikeC4 DSL and technical diagnostics remain in their canonical language.
 
 ## Current behavior
 
-The first usable vertical slice is intentionally small:
+The first usable source-first vertical slice intentionally supports:
 
-- import one `.c4` source file, edit it directly, and export `model.c4`;
-- preserve the source in browser `localStorage` under a versioned key;
-- add root elements, logical relations and scoped views through explicit forms;
-- compile with `@likec4/language-services/browser`, show diagnostics, and render the first available view with `@likec4/diagram`.
+- importing one `.c4` source file, editing it directly, and exporting the exact current text as `model.c4`;
+- preserving the source draft in browser `localStorage` under a versioned key;
+- adding root elements, logical relations and scoped views through explicit forms;
+- compiling with `@likec4/language-services/browser`, showing diagnostics, and rendering the first available view with `@likec4/diagram`;
+- preserving the last valid rendered model while a direct edit or import is invalid;
+- validating form-command candidates before committing them;
+- ignoring stale asynchronous compilation responses.
 
-Any valid LikeC4 DSL construct can be edited in the source pane and receives the same parser diagnostics. Forms do not yet cover nested/deployment elements, rename/remove, manual-layout editing, multi-file workspaces, config/library authoring, IndexedDB, or ZIP/snapshot export. Those are target capabilities, not hidden alternative sources of truth.
+Forms do not yet cover nested/deployment elements, rename/remove, undo/redo, manual-layout editing, multi-file workspaces, config/library authoring, IndexedDB, ZIP or snapshot export. Canvas-first semantic creation is not implemented yet.
 
 ## Current architecture
 
-- `src/App.tsx` owns the current source string and transient form state.
-- `src/document.ts` applies the three supported prototype commands to a candidate source string.
+- The source string remains the WP-00 document owner and is the only persisted source of truth.
+- `src/document.ts` applies the three append-only prototype commands to a candidate source string.
 - `src/compiler.ts` is the only browser language-services boundary.
-- A candidate form command is compiled before commit; direct source edits and imports may be invalid while the last valid model remains rendered.
-- `localStorage` stores the current source draft, including an invalid draft. There is no workspace history, worker, IndexedDB, semantic canvas editing or snapshot persistence yet.
+- `src/editor-state.ts` separates invalid draft updates from compile-before-commit semantic commands and preserves the last valid model.
+- `src/spikes/` contains executable WP-01 decision proofs only; it is not connected to the production UI.
 
-The target product and architecture live only in [SPEC.md](./SPEC.md). Delivery order, decision gates and agent work
-packages live only in [ROADMAP.md](./ROADMAP.md). Do not copy target contracts back into this current-state README.
+The target product and architecture live in [SPEC.md](./SPEC.md). Delivery order and managed state live in [ROADMAP.md](./ROADMAP.md).
 
-## Reference examples and verification
-
-- Browser source loading: `packages/language-services/src/browser/index.ts`
-- Builder round-trips: `packages/core/src/builder/Builder.fromParsed.spec.ts`
-- Diagram integration: `packages/diagram/README.md`
-- Existing layout editing: `packages/likec4-spa/src/pages/ViewEditor.tsx`
-
-Before merging editor work, run focused generator/core tests plus:
+## Verification
 
 ```bash
 pnpm --filter @likec4/gui-to-code generate
 pnpm --filter @likec4/gui-to-code typecheck
+pnpm --filter @likec4/gui-to-code test
 pnpm --filter @likec4/gui-to-code build
+pnpm --filter @likec4/gui-to-code smoke:start
 pnpm check:agent-instructions
+git diff --check
 ```
+
+`smoke:start` expects an existing production build and verifies only that Vite preview starts and serves the application root.
