@@ -14,6 +14,7 @@ export default defineConfig({
     conditions: ['sources', 'module', 'import', 'default'],
     dedupe: ['react', 'react-dom'],
     alias: {
+      '@likec4/language-services/browser': resolve(import.meta.dirname, '../../packages/language-services/src/browser/index.ts'),
       '@likec4/style-preset': resolve(import.meta.dirname, '../../styled-system/preset/src'),
     },
   },
