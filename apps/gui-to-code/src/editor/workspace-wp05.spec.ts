@@ -79,7 +79,8 @@ describe('EditorWorkspace WP-05 views and manual layouts', () => {
     })
     expect(editor.state.committedSources[0]?.content).toBe(original)
     expect(editor.state.manualLayouts[indexViewId]).toEqual(snapshot)
-    expect(editor.state.lastValidModel?.$data.views[indexViewId]?._layout).toBe('manual')
+    expect(editor.state.lastValidModel?.$data.views[indexViewId]?._layout).toBe('auto')
+    expect(editor.state.lastValidModel?.view(indexViewId).$layouted._layout).toBe('manual')
 
     expect(await editor.undo(1)).toEqual({ status: 'applied', command: 'history.undo', revision: 2 })
     expect(editor.state.manualLayouts[indexViewId]).toBeUndefined()
@@ -186,11 +187,12 @@ describe('EditorWorkspace WP-05 views and manual layouts', () => {
 
     expect(editor.state.revision).toBe(2)
     expect(editor.state.manualLayouts[indexViewId]).toEqual(snapshot)
-    expect(editor.state.lastValidModel?.$data.views[indexViewId]?.drifts).toContain('nodes-added')
+    expect(editor.state.lastValidModel?.view(indexViewId).$view.drifts).toContain('nodes-added')
+    expect(editor.state.lastValidModel?.view(indexViewId).$layouted._layout).toBe('manual')
 
     await editor.updateDraft([{ uri: 'model.c4', content: 'invalid' }])
     expect(editor.state.compilation.status).toBe('invalid')
     expect(editor.state.manualLayouts[indexViewId]).toEqual(snapshot)
-    expect(editor.state.lastValidModel?.$data.views[indexViewId]?._layout).toBe('manual')
+    expect(editor.state.lastValidModel?.view(indexViewId).$layouted._layout).toBe('manual')
   })
 })
