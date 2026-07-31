@@ -10,8 +10,24 @@ export default defineConfig({
         replacement: resolve(import.meta.dirname, '../../packages/core/src/index.ts'),
       },
       {
+        find: /^@likec4\/core\/builder$/,
+        replacement: resolve(import.meta.dirname, '../../packages/core/src/builder/index.ts'),
+      },
+      {
+        find: /^@likec4\/core\/compute-view$/,
+        replacement: resolve(import.meta.dirname, '../../packages/core/src/compute-view/index.ts'),
+      },
+      {
+        find: /^@likec4\/core\/geometry$/,
+        replacement: resolve(import.meta.dirname, '../../packages/core/src/geometry/index.ts'),
+      },
+      {
         find: /^@likec4\/core\/model$/,
         replacement: resolve(import.meta.dirname, '../../packages/core/src/model/index.ts'),
+      },
+      {
+        find: /^@likec4\/core\/styles$/,
+        replacement: resolve(import.meta.dirname, '../../packages/core/src/styles/index.ts'),
       },
       {
         find: /^@likec4\/core\/types$/,
