@@ -20,11 +20,12 @@ function stateWith(ids: readonly string[]): EditorWorkspaceState {
     },
   } as unknown as LikeC4Model.Layouted
   return {
-    version: 1,
+    version: 2,
     projectId: 'default',
     revision: 0,
     committedSources: [],
     draftSources: [],
+    manualLayouts: {},
     compilation: { revision: 0, status: 'valid', diagnostics: [], model },
     lastValidModel: model,
     history: { past: [], future: [] },
@@ -57,6 +58,21 @@ describe('selection helpers', () => {
       { status: 'applied', command: 'element.remove', revision: 2, removedElementId: 'store' as Fqn },
       stateWith([]),
     )).toBeNull()
+  })
+
+  it('keeps selection for view and layout operations', () => {
+    const state = stateWith(['shop'])
+    const selection = { type: 'element' as const, id: 'shop' as Fqn }
+    expect(selectionAfterResult(
+      selection,
+      { status: 'applied', command: 'view.create', revision: 1, createdViewId: 'shop_view' as never },
+      state,
+    )).toEqual(selection)
+    expect(selectionAfterResult(
+      selection,
+      { status: 'applied', command: 'layout.reset', revision: 2, viewId: 'index' as never },
+      state,
+    )).toEqual(selection)
   })
 
   it('clears stale selection after direct source deletion', () => {
