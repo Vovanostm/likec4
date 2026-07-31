@@ -26,6 +26,9 @@ export {
   type DocumentEditErrorCode,
   DocumentEditService,
   type DocumentTextEdit,
+  type ElementPatch,
+  type MoveElementInput,
+  type PatchElementInput,
   type RemovalDependency,
   type RemovalDependencyKind,
   type RemovalDependencyReport,
@@ -90,16 +93,13 @@ export async function fromSources(sources: Record<string, string>): Promise<Like
   })
 
   const logger = rootLogger.getChild('lang')
-
   const langium = createBrowserLanguageServices()
-
   return await createFromSources(langium, logger, sources, {})
 }
 
 /**
  * Create a LikeC4 instance from a single source string
  * @param source - The LikeC4 source code
-
  * @returns A Promise that resolves to a LikeC4 instance
  */
 export function fromSource(source: string): Promise<LikeC4> {

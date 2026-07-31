@@ -4,34 +4,38 @@
 
 ## Current behavior
 
-The WP-03 vertical slice supports:
+The WP-04 vertical slice supports:
 
 - importing one `.c4` source file, editing it directly, and exporting the exact current text as `model.c4`;
 - preserving the visible source draft in browser `localStorage` under the existing versioned key;
 - creating root actors, systems and components through the canvas-first tool path;
-- creating one directed logical relation by dragging an explicit source handle to a target element;
-- creating the same relation with an accessible source/target chooser through the same `CanvasIntent` and `EditorOperation` path;
-- applying source-preserving, revision-bound element and relation edits through `DocumentEditService`;
-- compiling an isolated candidate and verifying the actual created element or relation identity before commit;
-- recording one history entry per successful semantic operation;
-- restoring byte-exact previous source with one revision-guarded, compile-before-restore Undo;
+- creating one directed logical relation by dragging an explicit source handle or using the accessible source/target chooser;
+- selecting one logical element from the canvas or recursive «Структура» tree and keeping tree, diagram focus and inspector synchronized;
+- editing element title, description, technology and specification-backed tags in one atomic `element.patch` command;
+- moving an element and its complete subtree between root and parent scopes;
+- changing one local element ID while remapping the target subtree and typed semantic references;
+- inspecting removal dependencies before mutation and requiring an exact, revision-bound dependency approval;
+- removing an element, its subtree and approved removable dependencies in one atomic history entry;
+- restoring byte-exact previous and future source snapshots with compile-before-restore Undo and Redo;
+- using `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`, Delete/Backspace, Escape and keyboard-accessible tree/confirmation controls;
 - preserving the last valid rendered model while a direct edit or import is invalid;
-- rejecting stale operations and stale Undo without mutating committed state.
+- rejecting stale or unverifiable operations without mutating committed semantic state.
 
-The current package does not yet implement relation metadata, relation update/remove, nesting, rename/remove, inspector CRUD, view CRUD, Redo UI, manual layout, multi-file UI, IndexedDB, ZIP import/export, backend collaboration or AI generation.
+The current package does not yet implement relation metadata/update/remove, style editing, view CRUD, deployment or dynamic CRUD, manual layout, persistence migration, multi-file UI, IndexedDB, ZIP import/export, backend collaboration or AI generation.
 
 ## Current architecture
 
 - `EditorWorkspace` is the only runtime owner of committed sources, draft sources, workspace revision, compilation state, last-valid model and semantic history.
 - LikeC4 DSL remains the persisted semantic representation. The compiled model and diagram are derived.
 - Semantic changes enter through typed `EditorOperation` values carrying `expectedRevision`.
-- Workspace dispatch and Undo share one serialization queue; concurrent same-revision actions cannot silently overwrite each other.
+- Workspace dispatch, removal inspection, Undo and Redo share one serialization queue; concurrent same-revision actions cannot silently overwrite each other.
 - `src/compiler.ts` is the revision-aware browser compiler boundary.
-- `src/editor/language-services-adapter.ts` owns the production integration with `@likec4/language-services/browser`.
-- `DocumentEditService.planAddElement`, `DocumentEditService.planAddRelation` and `applyDocumentTextEdits` produce and apply AST/CST-backed source-preserving candidate edits.
-- Relation identity is verified by the exact set difference between previous and candidate compiled relation IDs, followed by source/target direction validation.
+- `src/editor/language-services-adapter.ts` is the only app integration with `@likec4/language-services/browser`; React UI components do not apply source edits or compile.
+- `DocumentEditService` produces AST/CST-backed, revision-bound edit plans for create, patch, move, subtree-safe rename and approved remove operations.
+- A centralized typed-reference remapper updates semantic references without global string replacement.
+- Selection and canvas tool state are transient React state and are not persisted or recorded in semantic history.
 - `createCanvasIntentController` owns only transient gesture lifecycle. It does not edit LikeC4 source or record history.
-- `@likec4/diagram` exposes a backward-compatible optional logical `onConnect` callback; XYFlow never becomes a second semantic graph.
+- `@likec4/diagram` remains a derived renderer; `DiagramApi.focusOnElement` is used only for UI focus.
 - `ViewChange` remains layout-only and is not used for semantic CRUD.
 
 The target product and architecture live in [SPEC.md](./SPEC.md). Delivery order and managed state live in [ROADMAP.md](./ROADMAP.md) and [ROADMAP.STATUS.md](./ROADMAP.STATUS.md).
@@ -39,6 +43,8 @@ The target product and architecture live in [SPEC.md](./SPEC.md). Delivery order
 ## Verification
 
 ```bash
+pnpm --filter @likec4/language-services test -- DocumentEditService
+pnpm --filter @likec4/language-services typecheck
 pnpm --filter @likec4/style-preset sources
 pnpm --filter @likec4/styles sources
 pnpm --filter @likec4/styles emit-pkg

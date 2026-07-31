@@ -1,10 +1,10 @@
 # Состояние исполнения roadmap
 
 Дата актуализации: 31 июля 2026
-Ветка: `feat/gui-to-code-wp03-relation-undo`
-PR: `https://github.com/Vovanostm/likec4/pull/4`
-Базовый commit: `69e8fff7810aab16d789a153857994197a9466eb`
-Проверенный implementation head: `293173d216c696e9af922fda9ff0b50d90571f3b`
+Ветка: `feat/gui-to-code-wp04-inspector-safe-edit`
+PR: `https://github.com/Vovanostm/likec4/pull/5`
+Базовый commit: `d7347951aa2a9f55d74ba8408cf59cae11167e2b`
+Проверенный implementation head: `6179676250dad9db9cde9d83da299e1c96e52035`
 
 Этот файл — изменяемая часть плана. Стабильные outcomes, acceptance criteria и границы work packages находятся в `ROADMAP.md`. Следующий агент обязан прочитать оба файла до выбора `WP-*`.
 
@@ -12,7 +12,7 @@ PR: `https://github.com/Vovanostm/likec4/pull/4`
 
 ```yaml
 # managed-state:v2
-revision: 6
+revision: 7
 contract_review: complete
 active: []
 done:
@@ -20,100 +20,141 @@ done:
   - WP-01
   - WP-02
   - WP-03
-ready:
   - WP-04
-planned:
+ready:
   - WP-05
+planned:
   - WP-06
   - WP-07
   - WP-08
 blocked: []
 ```
 
-## WP-03 — done
+## WP-04 — done
 
-### Relation edit API
+### Наблюдаемый результат
 
-`@likec4/language-services` предоставляет browser/Node-compatible `DocumentEditService.planAddRelation`.
+Inspector, дерево структуры и canvas используют один transient selection, а все semantic changes проходят через `EditorWorkspace` и source-preserving document port.
 
-Фактический контракт:
+Пользователь может:
 
-- вход: `source`, `target`, optional `documentUri` и `project`;
-- endpoints разрешаются через linked Langium model locator;
-- relation вставляется по CST boundary model block;
-- план содержит URI-aware edits и exact source revision digest;
-- comments, declarations и unrelated bytes не генерируются заново;
-- missing endpoint, cross-project и self relation fail-closed.
+- изменить title, description, technology и tags выбранного logical element;
+- переименовать локальный ID с обновлением полного subtree и типизированных ссылок;
+- переместить subtree между root и другим logical parent;
+- до удаления увидеть полный revision-bound dependency report;
+- подтвердить атомарное cascade removal только для точного актуального набора зависимостей;
+- отменить и повторить patch, move, rename и remove через общую историю;
+- использовать canvas, рекурсивное дерево и inspector с синхронным selection/focus;
+- открыть inspector клавишей Enter, удалить через Delete/Backspace, закрыть confirmation через Escape и выполнить Undo/Redo с клавиатуры.
 
-### Workspace relation operation
+### Document edit owner
 
-`relation.create` проходит один production path:
+`@likec4/language-services` предоставляет browser/Node-compatible `DocumentEditService` для:
+
+- `planPatchElement`;
+- `planMoveElement`;
+- `planRenameElement`;
+- `inspectRemoveElement`;
+- `planRemoveElement`.
+
+Правки строятся по linked Langium AST/CST и URI-aware source ranges. Глобальная строковая замена, отдельный brace parser и регенерация всего документа не используются.
+
+Rename/move формируют одно mapping старого subtree в новое, обновляют declaration и typed FQN references. Неоднозначная, недоступная или небезопасная ссылка отклоняет операцию до изменения workspace.
+
+Remove разделяет contained, separate и unsupported dependencies. Report связан с digest актуальных документов и dependency IDs. Cascade выполняется только при точном совпадении revision и полного approved set; stale, missing, unknown или unsupported dependency fail-closed.
+
+### Workspace и история
+
+Production path:
 
 ```text
-CanvasIntent
-→ revision-guarded EditorOperation
-→ source-preserving relation edit
+Canvas / Structure / Inspector intent
+→ revision-guarded queued EditorOperation
+→ source-preserving candidate sources
 → isolated candidate compile
-→ compiled relation set difference
-→ exact source/target verification
-→ atomic workspace commit
+→ command-specific semantic verification
+→ atomic commit + one history entry
 ```
 
-Успешная операция увеличивает revision один раз, добавляет ровно один `past` snapshot, очищает `future` и возвращает фактический `RelationId` compiled model. Stale, invalid, source-edit, compile и identity-verification failures не меняют semantic state.
+Инварианты:
 
-### Atomic Undo
+- `EditorWorkspace` остаётся единственным owner sources, revision, compile state и history;
+- DSL остаётся persisted semantic representation;
+- selection, focus, dialog и active tool не входят в document state/history;
+- patch/move/rename/remove сериализуются той же queue, что create/relation/Undo/Redo;
+- candidate compile выполняется до commit;
+- subtree move/rename подтверждает точное old→new соответствие каждого ID и сохранение element kind;
+- remove подтверждает отсутствие всего исходного subtree;
+- rejected/conflict операции сохраняют state identity;
+- Undo/Redo сначала компилируют exact source snapshot и только затем атомарно восстанавливают его;
+- новая semantic operation после Undo очищает future.
 
-`EditorWorkspace.undo(expectedRevision)` использует ту же очередь, что и dispatch:
+### UX и accessibility
 
-- stale Undo возвращает conflict;
-- invalid visible draft и empty history fail-closed;
-- предыдущие exact source bytes компилируются на `revision + 1` до restore;
-- successful Undo удаляет один `past` entry, переносит текущий snapshot в `future`, восстанавливает committed/draft sources и derived model атомарно;
-- новая semantic operation после Undo очищает `future`;
-- Redo UI не входит в WP-03.
-
-### Canvas и keyboard UX
-
-- «Связать» активирует relation interaction;
-- pointer drag использует существующие XYFlow source/target handles и optional logical `onConnect` seam `@likec4/diagram`;
-- callback передаёт только logical FQN endpoints и не мутирует diagram edges;
-- keyboard source/target chooser вызывает тот же `completeRelationConnection`, `CanvasIntentController` и `EditorOperation` path;
-- duplicate completion подавляется controller state;
-- Escape/tool change отменяют transient interaction;
-- Undo доступен кнопкой «Отменить» и Ctrl/Cmd+Z;
-- пользовательские состояния и ошибки русифицированы.
+- Inspector и рекурсивная «Структура» полностью русифицированы.
+- Canvas/tree/inspector selection синхронизирован без второго semantic graph.
+- Все destructive actions блокируются общим `busy` lifecycle.
+- Remove dialog имеет `role=dialog`, `aria-modal`, initial focus и локальную обработку Escape без двойного bubbling.
+- Cancel восстанавливает focus на initiator; successful remove переводит focus на доступную структуру или canvas.
+- Invalid workspace оставляет last valid model доступной, но блокирует semantic commands.
 
 ### Verification
 
-Focused suites включают:
+Focused suites покрывают:
 
-- relation source preservation, direction, missing/self endpoint и stale-source protection;
-- relation workspace commit, actual identity, failure atomicity и same-revision serialization;
-- Undo byte-exact restore, past/future transitions, stale/empty/invalid/compile-rejected paths;
-- shared pointer/keyboard intent adapter and self-connect rejection;
-- существующие element-create и direct source regressions.
+- patch validation и source preservation;
+- subtree rename/move root↔parent, collision/cycle и typed-reference remapping;
+- точный dependency report, stale/exact approval и atomic cascade remove;
+- rejection при изменении kind любого descendant во время subtree rewrite;
+- selection reconciliation и focus-preserving remove flow;
+- symmetric byte-exact Undo/Redo и same-revision serialization;
+- browser flow patch → rename → safe remove → Undo → Redo;
+- изоляцию GUI-to-code Playwright suite от стандартного LikeC4 preview.
 
-Проверенные workflow для implementation head `293173d216c696e9af922fda9ff0b50d90571f3b`:
+Проверенные workflow для implementation head `6179676250dad9db9cde9d83da299e1c96e52035`:
 
-- `GUI-to-code` run `30587665149` — success: generate, typecheck, tests, build, startup smoke, agent instructions и `git diff --check`;
-- `CI (PR & push)` run `30587665366` — success: TypeScript/type tests, Linux tests, package build/lint, MCP packed smoke, Windows generation/tests, E2E types, Playwright E2E, docs, playground, GUI-to-code и final quality gate.
+- `CI (PR & push)` run `30612180063` — success: TypeScript/type tests, Linux/Windows tests, package build/lint, packed smoke, E2E types, Playwright E2E, docs, playground, GUI-to-code и quality gate;
+- `push` run `30612180173` — success с той же полной matrix;
+- отдельный `GUI-to-code` workflow остаётся обязательным merge gate для focused language-services, app build/smoke и GUI browser acceptance на финальном PR head.
 
 ### Reviews
 
-Correctness review complete: проверены one gesture → one intent → one operation → one relation → one history entry, direction, identity diff, duplicate suppression, compile-before-commit, compile-before-restore, exact-source Undo и failure atomicity.
+Correctness review complete. Исправлены найденные P1:
 
-Architecture review complete: `EditorWorkspace` остаётся единственным owner sources/revision/history, DSL остаётся persisted semantic SSOT, diagram остаётся gesture layer, `ViewChange` не изменён, second semantic graph не создан и WP-04 scope не начат.
+- patch включён в общий mutual-exclusion `busy` lifecycle;
+- subtree verification усилена exact old→new mapping и kind preservation;
+- Escape локализован внутри dialog и больше не обрабатывается одновременно корневым editor handler;
+- remove confirmation больше не создаёт вложенные busy lifecycles;
+- Playwright использует value assertions для controlled textarea и проверяет обновление relation reference;
+- стандартный E2E config исключает GUI-specific suite, у которой отдельный app server.
 
-## Handoff для WP-04
+Architecture/product review complete:
 
-WP-04 получает:
+- `EditorWorkspace` и DSL ownership не изменены;
+- `@likec4/diagram` остаётся gesture/render layer;
+- `ViewChange` не расширен semantic CRUD;
+- manual layout, persistence schema, grammar, generators и core model не изменены;
+- relation metadata/update/remove и view CRUD не начаты;
+- второго mutable graph или UI-side source edit path нет.
 
-- стабильные element/relation creation operations;
-- source-preserving relation adapter;
-- compiled relation identity verification;
-- revision-safe queued Undo;
-- валидные `past/future` transitions;
-- transient selection/tool state;
-- compile-before-commit и compile-before-restore invariants.
+## Handoff для WP-05
 
-WP-04 не должен заменять workspace или history owner.
+Следующий ready package: `WP-05` — создание/выбор views и standard manual-layout snapshots.
+
+WP-05 получает:
+
+- единый revision-safe `EditorWorkspace`;
+- source-preserving logical element/relation edit layer;
+- patch/move/rename/remove commands;
+- точное reference remapping и dependency inspection;
+- синхронный canvas/tree/inspector selection;
+- atomic Undo/Redo;
+- отдельный GUI browser acceptance workflow.
+
+Обязательные границы WP-05:
+
+- semantic view creation/selection проходит через новый явный `EditorCommand` и document port;
+- manual layout хранится только в стандартном `.likec4/<view>.likec4.snap` через существующий LikeC4 editor API;
+- layout save/reset не меняет semantic DSL и не создаёт собственную XYFlow geometry model;
+- layout drift использует существующие core/diagram механизмы;
+- не начинать deployment semantics, IndexedDB/ZIP persistence или release hardening из WP-06–WP-08.

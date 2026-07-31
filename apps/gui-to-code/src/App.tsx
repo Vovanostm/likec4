@@ -4,13 +4,30 @@ import {
   LikeC4ModelProvider,
   ReactLikeC4,
 } from '@likec4/diagram'
-import type { CanvasIntent, CanvasIntentController } from '@likec4/diagram'
+import type { CanvasIntent, CanvasIntentController, DiagramApi } from '@likec4/diagram'
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { compile } from './compiler'
 import { starterSource } from './document'
 import { completeRelationConnection } from './editor/canvas-relation-intents'
-import type { EditorWorkspaceState } from './editor/contracts'
+import type {
+  CommandResult,
+  EditorCommand,
+  EditorWorkspaceState,
+  RemovalDependencyReport,
+} from './editor/contracts'
+import { moveOperation, patchOperation, renameOperation } from './editor/ui/element-form'
+import type { ElementFormValues } from './editor/ui/element-form'
+import { ElementInspector } from './editor/ui/ElementInspector'
+import { RemoveElementConfirmation } from './editor/ui/RemoveElementConfirmation'
+import {
+  buildStructureTree,
+  parentOptions,
+  reconcileSelection,
+  selectionAfterResult,
+} from './editor/ui/selection'
+import type { EditorSelection } from './editor/ui/selection'
+import { StructureTree } from './editor/ui/StructureTree'
 import { EditorWorkspace } from './editor/workspace'
 import { userError, userMessages } from './user-messages'
 
@@ -45,15 +62,26 @@ function relationFeedback(state: EditorWorkspaceState, relationId: RelationId): 
   return visible ? 'Связь создана.' : 'Связь создана в модели, но текущий вид её не отображает.'
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return target.matches('input, textarea, select, [contenteditable="true"]')
+}
+
 export function App() {
   const workspace = useRef<EditorWorkspace | null>(null)
+  const diagramApi = useRef<DiagramApi | null>(null)
+  const removeInitiator = useRef<HTMLElement | null>(null)
   const [state, setState] = useState<EditorWorkspaceState | null>(null)
+  const [selection, setSelection] = useState<EditorSelection>(null)
   const [activeKind, setActiveKind] = useState<ElementKind | null>(null)
   const [relationActive, setRelationActive] = useState(false)
   const [relationSource, setRelationSource] = useState('')
   const [relationTarget, setRelationTarget] = useState('')
   const [commandError, setCommandError] = useState<string | null>(null)
+  const [inspectorError, setInspectorError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [removalReport, setRemovalReport] = useState<RemovalDependencyReport | null>(null)
   const intentHandler = useRef<(intent: CanvasIntent) => void>(() => undefined)
   const controller = useRef<CanvasIntentController | null>(null)
   if (!controller.current) {
@@ -72,12 +100,13 @@ export function App() {
     }
   }, [])
 
-  const refresh = (): void => {
-    const current = workspace.current?.state
+  const refresh = (): EditorWorkspaceState | null => {
+    const current = workspace.current?.state ?? null
     if (current) {
       setState(current)
       localStorage.setItem(storageKey, current.draftSources[0]?.content ?? '')
     }
+    return current
   }
 
   const resetTools = (): void => {
@@ -91,77 +120,224 @@ export function App() {
     const current = workspace.current
     if (!current) return
     setCommandError(null)
+    setInspectorError(null)
     setFeedback(null)
     const pending = current.updateDraft([{ uri: documentUri, content }])
     refresh()
-    void pending.then(refresh)
+    void pending.then(() => {
+      const next = refresh()
+      if (next) setSelection(previous => reconcileSelection(previous, next))
+    })
+  }
+
+  const finishResult = (result: CommandResult, fallback: string): EditorWorkspaceState | null => {
+    const next = refresh()
+    if (next) setSelection(previous => selectionAfterResult(previous, result, next))
+    if (result.status === 'conflict') {
+      setInspectorError('Проект изменился. Повторите действие на актуальной версии.')
+    } else if (result.status === 'rejected') {
+      setInspectorError(result.issues[0]?.message ?? fallback)
+    } else {
+      setInspectorError(null)
+      setCommandError(null)
+    }
+    return next
+  }
+
+  const dispatchInspectorCommand = async (command: EditorCommand): Promise<CommandResult | null> => {
+    const current = workspace.current
+    if (!current) return null
+    setBusy(true)
+    setInspectorError(null)
+    try {
+      const result = await current.dispatch({
+        id: Date.now(),
+        expectedRevision: current.state.revision,
+        semantic: command,
+      })
+      finishResult(result, 'Не удалось изменить элемент.')
+      return result
+    } finally {
+      setBusy(false)
+    }
   }
 
   const createElement = async (kind: ElementKind): Promise<void> => {
     const current = workspace.current
     if (!current) return
-    const result = await current.dispatch({
-      id: Date.now(),
-      expectedRevision: current.state.revision,
-      semantic: { type: 'element.create', input: { kind, documentUri } },
-    })
-    refresh()
-    resetTools()
-    if (result.status === 'applied' && result.command === 'element.create') {
-      setCommandError(null)
-      setFeedback(`Создан элемент ${result.createdElementId}.`)
-      return
-    }
-    if (result.status === 'conflict') {
-      setCommandError('Проект изменился. Повторите действие на актуальной версии.')
-      return
-    }
-    if (result.status === 'rejected') {
-      setCommandError(result.issues[0]?.message ?? 'Не удалось создать элемент.')
+    setBusy(true)
+    try {
+      const result = await current.dispatch({
+        id: Date.now(),
+        expectedRevision: current.state.revision,
+        semantic: { type: 'element.create', input: { kind, documentUri } },
+      })
+      const next = refresh()
+      resetTools()
+      if (result.status === 'applied' && result.command === 'element.create') {
+        setSelection({ type: 'element', id: result.createdElementId })
+        setCommandError(null)
+        setFeedback(`Создан элемент ${result.createdElementId}.`)
+        return
+      }
+      if (next) setSelection(previous => reconcileSelection(previous, next))
+      if (result.status === 'conflict') {
+        setCommandError('Проект изменился. Повторите действие на актуальной версии.')
+      } else if (result.status === 'rejected') {
+        setCommandError(result.issues[0]?.message ?? 'Не удалось создать элемент.')
+      }
+    } finally {
+      setBusy(false)
     }
   }
 
   const createRelation = async (sourceId: Fqn, targetId: Fqn): Promise<void> => {
     const current = workspace.current
     if (!current) return
-    const result = await current.dispatch({
-      id: Date.now(),
-      expectedRevision: current.state.revision,
-      semantic: { type: 'relation.create', input: { sourceId, targetId, documentUri } },
-    })
-    refresh()
-    resetTools()
-    if (result.status === 'applied' && result.command === 'relation.create') {
-      setCommandError(null)
-      setFeedback(relationFeedback(current.state, result.createdRelationId))
-      return
-    }
-    if (result.status === 'conflict') {
-      setCommandError('Проект изменился. Повторите действие на актуальной версии.')
-      return
-    }
-    if (result.status === 'rejected') {
-      setCommandError(result.issues[0]?.message ?? 'Не удалось создать связь.')
+    setBusy(true)
+    try {
+      const result = await current.dispatch({
+        id: Date.now(),
+        expectedRevision: current.state.revision,
+        semantic: { type: 'relation.create', input: { sourceId, targetId, documentUri } },
+      })
+      refresh()
+      resetTools()
+      if (result.status === 'applied' && result.command === 'relation.create') {
+        setCommandError(null)
+        setFeedback(relationFeedback(current.state, result.createdRelationId))
+        return
+      }
+      if (result.status === 'conflict') {
+        setCommandError('Проект изменился. Повторите действие на актуальной версии.')
+      } else if (result.status === 'rejected') {
+        setCommandError(result.issues[0]?.message ?? 'Не удалось создать связь.')
+      }
+    } finally {
+      setBusy(false)
     }
   }
 
   const undo = async (): Promise<void> => {
     const current = workspace.current
     if (!current) return
-    const result = await current.undo(current.state.revision)
-    refresh()
-    resetTools()
-    if (result.status === 'applied' && result.command === 'history.undo') {
-      setCommandError(null)
-      setFeedback('Изменение отменено.')
-      return
+    setBusy(true)
+    try {
+      const result = await current.undo(current.state.revision)
+      finishResult(result, 'Не удалось отменить изменение.')
+      resetTools()
+      if (result.status === 'applied' && result.command === 'history.undo') {
+        setFeedback('Изменение отменено.')
+      }
+    } finally {
+      setBusy(false)
     }
-    if (result.status === 'conflict') {
-      setCommandError('Проект изменился. Повторите действие на актуальной версии.')
-      return
+  }
+
+  const redo = async (): Promise<void> => {
+    const current = workspace.current
+    if (!current) return
+    setBusy(true)
+    try {
+      const result = await current.redo(current.state.revision)
+      finishResult(result, 'Не удалось повторить изменение.')
+      resetTools()
+      if (result.status === 'applied' && result.command === 'history.redo') {
+        setFeedback('Изменение повторено.')
+      }
+    } finally {
+      setBusy(false)
     }
-    if (result.status === 'rejected') {
-      setCommandError(result.issues[0]?.message ?? 'Не удалось отменить изменение.')
+  }
+
+  const patchElement = async (values: ElementFormValues): Promise<void> => {
+    if (!selection || !state) return
+    setBusy(true)
+    setInspectorError(null)
+    try {
+      const result = await workspace.current?.dispatch(patchOperation(selection.id, state.revision, values))
+      if (!result) return
+      finishResult(result, 'Не удалось сохранить свойства.')
+      if (result.status === 'applied') setFeedback('Свойства элемента сохранены.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const renameElement = async (newId: string): Promise<void> => {
+    if (!selection || !state) return
+    setBusy(true)
+    try {
+      const result = await workspace.current?.dispatch(renameOperation(selection.id, state.revision, newId))
+      if (!result) return
+      finishResult(result, 'Не удалось переименовать элемент.')
+      if (result.status === 'applied' && result.command === 'element.rename') {
+        setFeedback(`Элемент переименован: ${result.updatedElementId}.`)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const moveElement = async (parentId: Fqn | null): Promise<void> => {
+    if (!selection || !state) return
+    setBusy(true)
+    try {
+      const result = await workspace.current?.dispatch(moveOperation(selection.id, state.revision, parentId))
+      if (!result) return
+      finishResult(result, 'Не удалось переместить элемент.')
+      if (result.status === 'applied' && result.command === 'element.move') {
+        setFeedback(`Элемент перемещён: ${result.updatedElementId}.`)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const inspectRemoval = async (): Promise<void> => {
+    const current = workspace.current
+    if (!current || !selection) return
+    removeInitiator.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setBusy(true)
+    setInspectorError(null)
+    try {
+      const result = await current.inspectElementRemoval(selection.id, current.state.revision)
+      refresh()
+      if (result.status === 'ready') {
+        setRemovalReport(result.report)
+      } else if (result.status === 'conflict') {
+        setInspectorError('Проект изменился. Проверьте удаление ещё раз.')
+      } else {
+        setInspectorError(result.issues[0]?.message ?? 'Не удалось проверить зависимости.')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const closeRemoval = (): void => {
+    setRemovalReport(null)
+    queueMicrotask(() => removeInitiator.current?.focus())
+  }
+
+  const confirmRemoval = async (): Promise<void> => {
+    const report = removalReport
+    if (!report) return
+    const result = await dispatchInspectorCommand({
+      type: 'element.remove',
+      input: {
+        id: report.target,
+        dependencyRevision: report.revision,
+        approvedDependencyIds: report.dependencies.map(dependency => dependency.id),
+      },
+    })
+    if (result?.status === 'applied') {
+      setRemovalReport(null)
+      setFeedback('Элемент и подтверждённые зависимости удалены.')
+      queueMicrotask(() => {
+        const target = document.querySelector<HTMLElement>('.structure-item, .diagram-panel')
+        target?.focus()
+      })
     }
   }
 
@@ -211,22 +387,45 @@ export function App() {
       return
     }
     const completed = completeRelationConnection(currentController, sourceId as Fqn, targetId as Fqn)
-    if (!completed && sourceId === targetId) {
-      setCommandError('Нельзя связать элемент с самим собой.')
-    }
+    if (!completed && sourceId === targetId) setCommandError('Нельзя связать элемент с самим собой.')
+  }
+
+  const selectElement = (id: Fqn, focusDiagram = true): void => {
+    setSelection({ type: 'element', id })
+    setInspectorError(null)
+    if (focusDiagram) diagramApi.current?.focusOnElement(id)
   }
 
   const handleEditorKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault()
-      void undo()
+      void (event.shiftKey ? redo() : undo())
       return
     }
     if (event.key === 'Escape') {
-      if (controller.current?.handleKeyDown(event.key)) event.preventDefault()
+      event.preventDefault()
+      if (removalReport) {
+        closeRemoval()
+      } else if (!controller.current?.handleKeyDown(event.key)) {
+        setSelection(null)
+      }
       return
     }
-    if ((event.key === 'Enter' || event.key === ' ') && activeKind) {
+    if ((event.key === 'Delete' || event.key === 'Backspace') && selection && !isEditableTarget(event.target)) {
+      event.preventDefault()
+      void inspectRemoval()
+      return
+    }
+    if (event.key === 'Enter' && selection && event.target instanceof HTMLElement) {
+      const fromSelectedTreeItem = event.target.getAttribute('aria-current') === 'true'
+      const fromCanvas = !!event.target.closest('.diagram-panel')
+      if (fromSelectedTreeItem || fromCanvas) {
+        event.preventDefault()
+        document.getElementById('element-title')?.focus()
+        return
+      }
+    }
+    if ((event.key === 'Enter' || event.key === ' ') && activeKind && !isEditableTarget(event.target)) {
       event.preventDefault()
       controller.current?.requestElementCreation({ x: 0.5, y: 0.5 })
     }
@@ -251,11 +450,7 @@ export function App() {
   }
 
   if (!state) {
-    return (
-      <main className="editor-shell">
-        <p>Загрузка редактора…</p>
-      </main>
-    )
+    return <main className="editor-shell"><p>Загрузка редактора…</p></main>
   }
 
   const source = state.draftSources[0]?.content ?? ''
@@ -263,18 +458,31 @@ export function App() {
   const views = renderModel ? Object.values(renderModel.$data.views) : []
   const selectedView = views.find(candidate => candidate.id === 'index') ?? views[0]
   const availableKinds = new Set(Object.keys(state.lastValidModel?.$data.specification.elements ?? {}))
+  const availableTags = Object.keys(state.lastValidModel?.$data.specification.tags ?? {}).sort()
   const elements = Object.values(state.lastValidModel?.$data.elements ?? {})
     .map(element => ({ id: element.id as Fqn, title: element.title }))
     .sort((left, right) => left.id.localeCompare(right.id))
-  const canvasDisabled = state.compilation.status !== 'valid'
-  const undoDisabled = state.history.past.length === 0 || state.compilation.status !== 'valid'
+  const selectedModelElement = selection ? state.lastValidModel?.$data.elements[selection.id] : undefined
+  const selectedElement = selectedModelElement
+    ? {
+      id: selectedModelElement.id as Fqn,
+      title: selectedModelElement.title,
+      description: typeof selectedModelElement.description === 'string' ? selectedModelElement.description : null,
+      technology: selectedModelElement.technology ?? null,
+      tags: selectedModelElement.tags ?? [],
+    }
+    : null
+  const canvasDisabled = state.compilation.status !== 'valid' || busy
+  const undoDisabled = state.history.past.length === 0 || state.compilation.status !== 'valid' || busy
+  const redoDisabled = state.history.future.length === 0 || state.compilation.status !== 'valid' || busy
+  const structure = buildStructureTree(state)
 
   return (
     <main className="editor-shell" onKeyDown={handleEditorKeyDown}>
       <header className="topbar">
         <div>
           <h1>LikeC4: визуальный редактор</h1>
-          <p>Создавайте элементы и связи на диаграмме; исходный код обновляется автоматически.</p>
+          <p>Выбирайте элементы, меняйте свойства и структуру; исходный код обновляется безопасно.</p>
         </div>
         <div className="actions">
           <label className="button">
@@ -289,28 +497,40 @@ export function App() {
             onClick={() => void undo()}>
             Отменить
           </button>
-          <button type="button" onClick={() => updateDraftSource(starterSource)}>Восстановить пример</button>
+          <button
+            type="button"
+            aria-label="Повторить отменённое изменение"
+            disabled={redoDisabled}
+            onClick={() => void redo()}>
+            Повторить
+          </button>
+          <button type="button" disabled={busy} onClick={() => updateDraftSource(starterSource)}>Восстановить пример</button>
         </div>
       </header>
 
       <section className="workspace" aria-label="Рабочая область редактора LikeC4">
-        <section
-          className="panel diagram-panel"
-          aria-label="Холст диаграммы"
-          tabIndex={0}>
+        <section className="panel structure-panel" aria-label="Структура модели">
+          <h2>Структура</h2>
+          <StructureTree
+            nodes={structure}
+            selectedId={selection?.id ?? null}
+            disabled={canvasDisabled}
+            onSelect={id => selectElement(id)} />
+        </section>
+
+        <section className="panel diagram-panel" aria-label="Холст диаграммы" tabIndex={0}>
           <header>
             <h2>Диаграмма</h2>
             <div className="actions" aria-label="Инструменты диаграммы">
               {createKinds.map(([kind, label]) => {
                 const unavailable = !availableKinds.has(kind)
-                const disabled = canvasDisabled || unavailable
                 return (
                   <button
                     key={kind}
                     type="button"
                     aria-label={`Создать: ${label}`}
                     aria-pressed={activeKind === kind}
-                    disabled={disabled}
+                    disabled={canvasDisabled || unavailable}
                     title={unavailable ? 'Этот тип элемента недоступен в текущей спецификации.' : undefined}
                     onClick={() => activateCreateTool(kind)}>
                     {label}
@@ -327,12 +547,19 @@ export function App() {
               </button>
             </div>
           </header>
-          {renderModel && selectedView ?
-            (
+          {renderModel && selectedView
+            ? (
               <LikeC4ModelProvider likec4model={renderModel}>
                 <ReactLikeC4
                   viewId={selectedView.id}
                   className="diagram"
+                  nodesSelectable
+                  onInitialized={({ diagram }) => {
+                    diagramApi.current = diagram
+                  }}
+                  onNodeClick={node => {
+                    if (node.modelRef) selectElement(node.modelRef as Fqn, false)
+                  }}
                   onConnect={relationActive
                     ? (sourceId, targetId) => completeRelation(sourceId, targetId)
                     : null}
@@ -341,8 +568,8 @@ export function App() {
                     controller.current?.requestElementCreation({ x: event.clientX, y: event.clientY })
                   }} />
               </LikeC4ModelProvider>
-            ) :
-            <p className="empty">В проекте нет подходящего вида для отображения.</p>}
+            )
+            : <p className="empty">В проекте нет подходящего вида для отображения.</p>}
           {activeKind && <p aria-live="polite">Кликните по холсту или нажмите Enter, чтобы создать элемент.</p>}
           {relationActive && (
             <section className="relation-controls" aria-label="Создание связи с клавиатуры">
@@ -383,6 +610,20 @@ export function App() {
           {commandError && <p className="error" role="alert">{commandError}</p>}
         </section>
 
+        <section className="panel inspector-panel">
+          <ElementInspector
+            element={selectedElement}
+            availableTags={availableTags}
+            parents={selection ? parentOptions(state, selection.id) : []}
+            disabled={state.compilation.status !== 'valid'}
+            busy={busy}
+            error={inspectorError}
+            onPatch={patchElement}
+            onRename={renameElement}
+            onMove={moveElement}
+            onRemove={inspectRemoval} />
+        </section>
+
         <section className="panel code-panel" aria-label="Код LikeC4">
           <h2>Код LikeC4</h2>
           <textarea
@@ -406,6 +647,14 @@ export function App() {
           <p>Ревизия проекта: {state.revision}</p>
         </section>
       </section>
+
+      {removalReport && (
+        <RemoveElementConfirmation
+          report={removalReport}
+          busy={busy}
+          onCancel={closeRemoval}
+          onConfirm={confirmRemoval} />
+      )}
     </main>
   )
 }
