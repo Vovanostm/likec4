@@ -1,1 +1,1 @@
-export * from './ElementViewDocumentEditServiceV4'
+export * from './ElementViewDocumentEditServiceV5'
