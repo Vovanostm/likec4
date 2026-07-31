@@ -172,15 +172,20 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
     const current = runtime.workspace.current
     if (!current || !selection) return
     removeInitiator.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    runtime.setBusy(true)
     setInspectorError(null)
-    const result = await current.inspectElementRemoval(selection.id, current.state.revision)
-    runtime.refresh()
-    if (result.status === 'ready') {
-      setRemovalReport(result.report)
-    } else if (result.status === 'conflict') {
-      setInspectorError('Проект изменился. Проверьте удаление ещё раз.')
-    } else {
-      setInspectorError(result.issues[0]?.message ?? 'Не удалось проверить зависимости.')
+    try {
+      const result = await current.inspectElementRemoval(selection.id, current.state.revision)
+      runtime.refresh()
+      if (result.status === 'ready') {
+        setRemovalReport(result.report)
+      } else if (result.status === 'conflict') {
+        setInspectorError('Проект изменился. Проверьте удаление ещё раз.')
+      } else {
+        setInspectorError(result.issues[0]?.message ?? 'Не удалось проверить зависимости.')
+      }
+    } finally {
+      runtime.setBusy(false)
     }
   }
 
