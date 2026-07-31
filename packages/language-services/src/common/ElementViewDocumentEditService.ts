@@ -2,4 +2,4 @@ export {
   type AddElementViewInput,
   createElementViewDocumentEditService,
   ElementViewDocumentEditService,
-} from './ElementViewDocumentEditServiceImpl'
+} from './ElementViewDocumentEditServiceV2'
