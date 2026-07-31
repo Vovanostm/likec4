@@ -20,15 +20,7 @@ export function RemoveElementConfirmation({
 
   useEffect(() => {
     cancelRef.current?.focus()
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onCancel()
-      }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onCancel])
+  }, [])
 
   return (
     <div className="dialog-backdrop">
@@ -36,7 +28,13 @@ export function RemoveElementConfirmation({
         className="remove-dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="remove-dialog-title">
+        aria-labelledby="remove-dialog-title"
+        onKeyDown={event => {
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          event.stopPropagation()
+          if (!busy) onCancel()
+        }}>
         <h2 id="remove-dialog-title">Удалить элемент?</h2>
         <p>Элемент <code>{report.target}</code> и его поддерево будут удалены.</p>
         <h3>Будут также удалены зависимости:</h3>
