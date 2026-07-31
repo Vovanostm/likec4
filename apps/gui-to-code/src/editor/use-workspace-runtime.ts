@@ -338,6 +338,7 @@ export function useWorkspaceRuntime() {
     hasManualLayout: !!(state && selectedId && state.manualLayouts[selectedId]),
     setFeedback,
     setCommandError,
+    setBusy,
     setLayoutMode,
     refresh,
     updateDraftSource,
