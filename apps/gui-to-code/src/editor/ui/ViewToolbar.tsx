@@ -34,19 +34,27 @@ export function ViewToolbar({
   const createButton = useRef<HTMLButtonElement | null>(null)
   const idInput = useRef<HTMLInputElement | null>(null)
   const selector = useRef<HTMLSelectElement | null>(null)
+  const focusAfterClose = useRef<'create' | 'selector' | null>(null)
   const [open, setOpen] = useState(false)
   const [id, setId] = useState('')
   const [title, setTitle] = useState('')
 
   useEffect(() => {
-    if (open) queueMicrotask(() => idInput.current?.focus())
-  }, [open])
+    if (open) {
+      queueMicrotask(() => idInput.current?.focus())
+      return
+    }
+    if (busy || !focusAfterClose.current) return
+    const target = focusAfterClose.current === 'selector' ? selector : createButton
+    focusAfterClose.current = null
+    requestAnimationFrame(() => target.current?.focus())
+  }, [open, busy, selectedViewId])
 
   const close = (): void => {
+    focusAfterClose.current = 'create'
     setOpen(false)
     setId('')
     setTitle('')
-    queueMicrotask(() => createButton.current?.focus())
   }
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -56,10 +64,10 @@ export function ViewToolbar({
       return
     }
     if (await onCreateView(id.trim(), title.trim())) {
+      focusAfterClose.current = 'selector'
       setOpen(false)
       setId('')
       setTitle('')
-      queueMicrotask(() => selector.current?.focus())
     }
   }
 
