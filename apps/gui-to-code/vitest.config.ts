@@ -6,6 +6,14 @@ export default defineConfig({
     conditions: ['sources', 'module', 'import', 'default'],
     alias: [
       {
+        find: /^@likec4\/config$/,
+        replacement: resolve(import.meta.dirname, '../../packages/config/src/index.ts'),
+      },
+      {
+        find: /^@likec4\/config\/node$/,
+        replacement: resolve(import.meta.dirname, '../../packages/config/src/node/index.ts'),
+      },
+      {
         find: /^@likec4\/core$/,
         replacement: resolve(import.meta.dirname, '../../packages/core/src/index.ts'),
       },
