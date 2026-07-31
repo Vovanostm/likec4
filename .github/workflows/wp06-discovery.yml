@@ -1,9 +1,9 @@
 name: WP-06 discovery
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/gui-to-code-wp06-dynamic-deployment
+      - main
   workflow_dispatch:
 
 permissions:
