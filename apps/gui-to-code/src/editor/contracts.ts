@@ -53,6 +53,48 @@ export interface CreateViewEditInput {
   readonly documentUri?: string
 }
 
+export interface CreateDynamicViewEditInput {
+  readonly id: string
+  readonly title?: string
+  readonly documentUri?: string
+}
+
+export interface CreateDynamicStepEditInput {
+  readonly viewId: ViewId
+  readonly sourceId: Fqn
+  readonly targetId: Fqn
+  readonly documentUri?: string
+}
+
+export interface CreateDeploymentViewEditInput {
+  readonly id: string
+  readonly title?: string
+  readonly documentUri?: string
+}
+
+export interface CreateDeploymentNodeEditInput {
+  readonly family: 'node'
+  readonly id: string
+  readonly kind: string
+  readonly title?: string
+  readonly documentUri?: string
+}
+
+export interface CreateDeploymentInstanceEditInput {
+  readonly family: 'instance'
+  readonly id: string
+  readonly target: Fqn
+  readonly documentUri?: string
+}
+
+export type CreateDeploymentElementEditInput = CreateDeploymentNodeEditInput | CreateDeploymentInstanceEditInput
+
+export interface CreateDeploymentRelationEditInput {
+  readonly sourceId: Fqn
+  readonly targetId: Fqn
+  readonly documentUri?: string
+}
+
 export interface ElementPatch {
   readonly title?: string
   readonly description?: string | null
@@ -137,6 +179,12 @@ export interface EditorDocumentPort {
   createElement(sources: readonly SourceFile[], input: CreateElementEditInput): Promise<readonly SourceFile[]>
   createRelation(sources: readonly SourceFile[], input: CreateRelationEditInput): Promise<readonly SourceFile[]>
   createView(sources: readonly SourceFile[], input: CreateViewEditInput): Promise<readonly SourceFile[]>
+  createDynamicView(sources: readonly SourceFile[], input: CreateDynamicViewEditInput): Promise<readonly SourceFile[]>
+  createDynamicStep(sources: readonly SourceFile[], input: CreateDynamicStepEditInput): Promise<readonly SourceFile[]>
+  createDeploymentView(sources: readonly SourceFile[], input: CreateDeploymentViewEditInput): Promise<readonly SourceFile[]>
+  createDeploymentNode(sources: readonly SourceFile[], input: CreateDeploymentNodeEditInput): Promise<readonly SourceFile[]>
+  createDeploymentInstance(sources: readonly SourceFile[], input: CreateDeploymentInstanceEditInput): Promise<readonly SourceFile[]>
+  createDeploymentRelation(sources: readonly SourceFile[], input: CreateDeploymentRelationEditInput): Promise<readonly SourceFile[]>
   patchElement(sources: readonly SourceFile[], input: PatchElementEditInput): Promise<readonly SourceFile[]>
   moveElement(sources: readonly SourceFile[], input: MoveElementEditInput): Promise<readonly SourceFile[]>
   renameElement(sources: readonly SourceFile[], input: RenameElementEditInput): Promise<readonly SourceFile[]>
@@ -236,10 +284,40 @@ export interface RemoveElementCommand {
   readonly input: RemoveElementEditInput
 }
 
+export interface CreateDynamicViewCommand {
+  readonly type: 'dynamicView.create'
+  readonly input: CreateDynamicViewEditInput
+}
+
+export interface CreateDynamicStepCommand {
+  readonly type: 'dynamicStep.create'
+  readonly input: CreateDynamicStepEditInput
+}
+
+export interface CreateDeploymentViewCommand {
+  readonly type: 'deploymentView.create'
+  readonly input: CreateDeploymentViewEditInput
+}
+
+export interface CreateDeploymentElementCommand {
+  readonly type: 'deploymentElement.create'
+  readonly input: CreateDeploymentElementEditInput
+}
+
+export interface CreateDeploymentRelationCommand {
+  readonly type: 'deploymentRelation.create'
+  readonly input: CreateDeploymentRelationEditInput
+}
+
 export type EditorCommand =
   | CreateElementCommand
   | CreateRelationCommand
   | CreateViewCommand
+  | CreateDynamicViewCommand
+  | CreateDynamicStepCommand
+  | CreateDeploymentViewCommand
+  | CreateDeploymentElementCommand
+  | CreateDeploymentRelationCommand
   | PatchElementCommand
   | MoveElementCommand
   | RenameElementCommand
@@ -328,6 +406,20 @@ export type CommandIssueCode =
   | 'layout-view-mismatch'
   | 'layout-type-mismatch'
   | 'layout-not-found'
+  | 'dynamic-view-not-found'
+  | 'dynamic-view-verification-failed'
+  | 'dynamic-step-verification-failed'
+  | 'deployment-kind-unsupported'
+  | 'deployment-id-collision'
+  | 'deployment-view-verification-failed'
+  | 'deployment-element-verification-failed'
+  | 'deployment-relation-verification-failed'
+  | 'semantic-endpoint-not-found'
+  | 'semantic-reference-not-found'
+  | 'semantic-operation-invalid'
+  | 'ambiguous-target-document'
+  | 'stale-source-edit'
+  | 'wp06-source-edit-failed'
   | 'combined-operation-unsupported'
 
 export interface CommandIssue {
@@ -371,6 +463,31 @@ export type AppliedCommandResult =
     readonly command: 'element.remove'
     readonly revision: Revision
     readonly removedElementId: Fqn
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'dynamicView.create' | 'deploymentView.create'
+    readonly revision: Revision
+    readonly createdViewId: ViewId
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'dynamicStep.create'
+    readonly revision: Revision
+    readonly createdStepId: string
+    readonly viewId: ViewId
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'deploymentElement.create'
+    readonly revision: Revision
+    readonly createdDeploymentId: Fqn
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'deploymentRelation.create'
+    readonly revision: Revision
+    readonly createdRelationId: RelationId
   }
   | {
     readonly status: 'applied'

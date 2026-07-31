@@ -2,6 +2,7 @@ import {
   applyDocumentTextEdits,
   createDocumentEditService,
   createElementViewDocumentEditService,
+  createDynamicDeploymentDocumentEditService,
   DocumentEditError,
   fromSources,
 } from '@likec4/language-services/browser'
@@ -70,6 +71,7 @@ async function serviceFor(sources: readonly SourceFile[]) {
   return {
     documents: createDocumentEditService(likec4),
     views: createElementViewDocumentEditService(likec4),
+    semantics: createDynamicDeploymentDocumentEditService(likec4),
   }
 }
 
@@ -108,6 +110,69 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
         id: input.id,
         viewOf: input.viewOf,
         ...(input.title ? { title: input.title } : {}),
+        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+      }))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async createDynamicView(sources, input) {
+    try {
+      const { semantics } = await serviceFor(sources)
+      return applyPlan(sources, await semantics.planAddDynamicView(input))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async createDynamicStep(sources, input) {
+    try {
+      const { semantics } = await serviceFor(sources)
+      return applyPlan(sources, await semantics.planAddDynamicStep({
+        viewId: input.viewId,
+        source: input.sourceId,
+        target: input.targetId,
+        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+      }))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async createDeploymentView(sources, input) {
+    try {
+      const { semantics } = await serviceFor(sources)
+      return applyPlan(sources, await semantics.planAddDeploymentView(input))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async createDeploymentNode(sources, input) {
+    try {
+      const { semantics } = await serviceFor(sources)
+      return applyPlan(sources, await semantics.planAddDeploymentNode(input))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async createDeploymentInstance(sources, input) {
+    try {
+      const { semantics } = await serviceFor(sources)
+      return applyPlan(sources, await semantics.planAddDeploymentInstance(input))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async createDeploymentRelation(sources, input) {
+    try {
+      const { semantics } = await serviceFor(sources)
+      return applyPlan(sources, await semantics.planAddDeploymentRelation({
+        source: input.sourceId,
+        target: input.targetId,
         ...(input.documentUri ? { documentUri: input.documentUri } : {}),
       }))
     } catch (error) {

@@ -22,6 +22,7 @@ import type {
   WorkspaceDocumentSnapshot,
 } from './contracts'
 import { EditorDocumentError } from './contracts'
+import { applyWp06Command } from './wp06-workspace'
 
 const supportedKinds = new Set<ElementKind>(['actor', 'system', 'component'] as ElementKind[])
 type CompiledElements = NonNullable<CompileResult['model']>['$data']['elements']
@@ -42,6 +43,24 @@ const defaultDocumentPort: EditorDocumentPort = {
   },
   async createView(sources, input) {
     return (await defaultPort()).createView(sources, input)
+  },
+  async createDynamicView(sources, input) {
+    return (await defaultPort()).createDynamicView(sources, input)
+  },
+  async createDynamicStep(sources, input) {
+    return (await defaultPort()).createDynamicStep(sources, input)
+  },
+  async createDeploymentView(sources, input) {
+    return (await defaultPort()).createDeploymentView(sources, input)
+  },
+  async createDeploymentNode(sources, input) {
+    return (await defaultPort()).createDeploymentNode(sources, input)
+  },
+  async createDeploymentInstance(sources, input) {
+    return (await defaultPort()).createDeploymentInstance(sources, input)
+  },
+  async createDeploymentRelation(sources, input) {
+    return (await defaultPort()).createDeploymentRelation(sources, input)
   },
   async patchElement(sources, input) {
     return (await defaultPort()).patchElement(sources, input)
@@ -396,7 +415,22 @@ export class EditorWorkspace {
         return this.applyCreateRelation(state, operation.semantic)
       case 'view.create':
         return this.applyCreateView(state, operation.semantic)
-      case 'element.patch':
+      case 'dynamicView.create':
+    case 'dynamicStep.create':
+    case 'deploymentView.create':
+    case 'deploymentElement.create':
+    case 'deploymentRelation.create':
+      return applyWp06Command({
+        state,
+        command: operation.semantic,
+        documents: this.documents,
+        compileCandidate: (revision, sources) => this.compileCandidate(revision, sources),
+        commitCandidate: (revision, sources, model, layouts) =>
+          this.commitCandidate(state, revision, sources, model, layouts),
+        isCurrent: () => this.isCurrent(state),
+        currentRevision: () => this.current.revision,
+      })
+    case 'element.patch':
         return this.applyPatchElement(state, operation.semantic)
       case 'element.move':
         return this.applyMoveElement(state, operation.semantic)
