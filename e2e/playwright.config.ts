@@ -10,9 +10,10 @@ import { isCI } from 'std-env'
 export default defineConfig({
   // Look for test files in the "tests" directory, relative to this configuration file.
   testDir: 'tests',
-  // DrawIO playground test runs only with playwright.playground.config.ts (playground on 5174)
-  // Docs smoke tests require docs site (Astro); main e2e runs likec4 start (diagram preview), not docs.
-  testIgnore: ['**/drawio-playground.spec.ts', '**/docs-smoke.spec.ts'],
+  // DrawIO playground test runs only with playwright.playground.config.ts (playground on 5174).
+  // Docs smoke tests require the docs site (Astro).
+  // GUI-to-code owns a separate app server and playwright.gui-to-code.config.ts.
+  testIgnore: ['**/drawio-playground.spec.ts', '**/docs-smoke.spec.ts', '**/gui-to-code/**'],
   snapshotPathTemplate: '{testDir}/__screenshots__/{projectName}-{platform}/{arg}{ext}',
 
   // Fail the build on CI if you accidentally left test.only in the source code.
