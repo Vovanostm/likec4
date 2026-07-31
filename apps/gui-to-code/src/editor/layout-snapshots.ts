@@ -156,18 +156,14 @@ function isBounds(value: unknown): boolean {
 }
 
 function isSnapshotNode(value: unknown): boolean {
-  if (!isRecord(value)
-    || typeof value['id'] !== 'string'
-    || !isFiniteNumber(value['x'])
-    || !isFiniteNumber(value['y'])
-    || !isFiniteNumber(value['width'])
-    || !isFiniteNumber(value['height'])) {
-    return false
-  }
-
-  const children = value['children']
-  return children === undefined
-    || (Array.isArray(children) && children.every(child => typeof child === 'string'))
+  return isRecord(value)
+    && typeof value['id'] === 'string'
+    && Array.isArray(value['children'])
+    && value['children'].every(child => typeof child === 'string')
+    && isFiniteNumber(value['x'])
+    && isFiniteNumber(value['y'])
+    && isFiniteNumber(value['width'])
+    && isFiniteNumber(value['height'])
 }
 
 function isSnapshotEdge(value: unknown): boolean {
