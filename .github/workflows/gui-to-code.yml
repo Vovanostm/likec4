@@ -92,12 +92,52 @@ jobs:
                   }""",
           )
           spec.write_text(text)
+
+          app = Path('apps/gui-to-code/src/App.tsx')
+          text = app.read_text()
+          text = text.replace(
+              "if (result.status === 'applied') setFeedback(`Элемент переименован: ${result.updatedElementId}.`)",
+              "if (result.status === 'applied' && result.command === 'element.rename') {\n        setFeedback(`Элемент переименован: ${result.updatedElementId}.`)\n      }",
+          )
+          text = text.replace(
+              "if (result.status === 'applied') setFeedback(`Элемент перемещён: ${result.updatedElementId}.`)",
+              "if (result.status === 'applied' && result.command === 'element.move') {\n        setFeedback(`Элемент перемещён: ${result.updatedElementId}.`)\n      }",
+          )
+          app.write_text(text)
+
+          workspace = Path('apps/gui-to-code/src/editor/workspace.ts')
+          text = workspace.read_text()
+          text = text.replace(
+              """    const invalid = this.invalidWorkspaceResult(state)
+              if (invalid) return invalid
+              if (!state.lastValidModel?.$data.elements[id]) {""",
+              """    if (state.compilation.status !== 'valid') {
+              return {
+                status: 'rejected',
+                revision: state.revision,
+                issues: [issue('workspace-invalid', 'Изменение отклонено: исправьте ошибки в коде проекта.')],
+              }
+            }
+            if (!state.lastValidModel?.$data.elements[id]) {""",
+              1,
+          )
+          text = text.replace(
+              "!equalStringArrays(element.tags, [...new Set(patch.tags)])",
+              "!equalStringArrays(element.tags ?? undefined, [...new Set(patch.tags)])",
+          )
+          workspace.write_text(text)
+
+          workspace_spec = Path('apps/gui-to-code/src/editor/workspace.spec.ts')
+          workspace_spec.write_text(workspace_spec.read_text().replace(
+              ".$data.elements.shop",
+              ".$data.elements['shop']",
+          ))
           PY
           if ! git diff --quiet; then
             git config user.name github-actions[bot]
             git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-            git add packages/language-services/src/common/DocumentEditService.ts packages/language-services/src/common/DocumentEditService.spec.ts
-            git commit -m "fix(language-services): correct CST utilities and tag ordering"
+            git add packages/language-services/src/common/DocumentEditService.ts packages/language-services/src/common/DocumentEditService.spec.ts apps/gui-to-code/src/App.tsx apps/gui-to-code/src/editor/workspace.ts apps/gui-to-code/src/editor/workspace.spec.ts
+            git commit -m "fix(gui-to-code): align WP-04 TypeScript contracts"
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
       - uses: pnpm/action-setup@v4
