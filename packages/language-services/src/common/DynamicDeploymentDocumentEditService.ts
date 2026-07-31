@@ -65,12 +65,18 @@ type ParsedModel = {
   readonly $data: {
     readonly elements: Readonly<Record<string, unknown>>
     readonly views: Readonly<Record<string, { readonly _type?: string }>>
-    readonly deployments?: Readonly<Record<string, unknown>>
-    readonly deployment?: Readonly<Record<string, unknown>>
+    readonly deployments: {
+      readonly elements: Readonly<Record<string, unknown>>
+      readonly relations: Readonly<Record<string, unknown>>
+    }
     readonly specification: {
       readonly deployments?: Readonly<Record<string, unknown>>
     }
   }
+}
+
+type ParsedDocument = LangiumDocument & {
+  readonly c4Views?: readonly { readonly id: ViewId }[]
 }
 
 export class DynamicDeploymentDocumentEditService {
@@ -166,29 +172,26 @@ export class DynamicDeploymentDocumentEditService {
     }
   }
 
-  private deployments(parsed: ParsedModel): Readonly<Record<string, unknown>> {
-    return parsed.$data.deployments ?? parsed.$data.deployment ?? {}
-  }
-
   private assertDeploymentAvailable(parsed: ParsedModel, id: string): void {
-    if (this.deployments(parsed)[id]) {
+    if (parsed.$data.deployments.elements[id]) {
       throw new DocumentEditError('collision', `Deployment element "${id}" already exists`)
     }
   }
 
   private assertDeploymentExists(parsed: ParsedModel, id: Fqn): void {
-    if (!this.deployments(parsed)[id]) {
+    if (!parsed.$data.deployments.elements[id]) {
       throw new DocumentEditError('not-found', `Deployment element "${id}" was not found`)
     }
   }
 
   private selectDocument(projectId: ProjectId, requestedUri?: string, viewId?: ViewId): LangiumDocument {
-    if (viewId) {
-      const located = this.langium.likec4.likec4.ModelLocator.getParsedView(viewId, projectId)
-      if (located && !requestedUri) return located.document
-    }
     const documents = [...this.langium.shared.workspace.LangiumDocuments.userDocuments]
       .filter(document => document.likec4ProjectId === projectId)
+    if (!requestedUri && viewId) {
+      const owners = documents.filter(document => (document as ParsedDocument).c4Views?.some(view => view.id === viewId))
+      if (owners.length === 1) return owners[0]!
+      if (owners.length > 1) throw new DocumentEditError('ambiguous-reference', `View "${viewId}" has multiple source owners`)
+    }
     if (!requestedUri) {
       if (documents.length === 1) return documents[0]!
       if (documents.length === 0) throw new DocumentEditError('not-found', 'No LikeC4 document was found')
