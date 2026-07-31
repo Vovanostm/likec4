@@ -5,7 +5,12 @@ import type {
   CanvasIntentController,
   DiagramApi,
 } from '@likec4/diagram'
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import type {
+  Dispatch,
+  KeyboardEvent as ReactKeyboardEvent,
+  MutableRefObject,
+  SetStateAction,
+} from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { completeRelationConnection } from './canvas-relation-intents'
 import type { RemovalDependencyReport } from './contracts'
@@ -17,11 +22,57 @@ import {
   reconcileSelection,
   selectionAfterResult,
 } from './ui/selection'
-import type { EditorSelection } from './ui/selection'
+import type { EditorSelection, StructureNode } from './ui/selection'
 import type { useWorkspaceRuntime } from './use-workspace-runtime'
 import { workspaceDocumentUri } from './use-workspace-runtime'
 
-export function useSemanticEditor(runtime: ReturnType<typeof useWorkspaceRuntime>) {
+type WorkspaceRuntime = ReturnType<typeof useWorkspaceRuntime>
+
+export interface SemanticElementSelection {
+  readonly id: Fqn
+  readonly title: string
+  readonly description: string | null
+  readonly technology: string | null
+  readonly tags: readonly string[]
+}
+
+export interface SemanticEditorRuntime {
+  readonly diagramApi: MutableRefObject<DiagramApi | null>
+  readonly controller: MutableRefObject<CanvasIntentController | null>
+  readonly selection: EditorSelection
+  readonly activeKind: ElementKind | null
+  readonly relationActive: boolean
+  readonly relationSource: string
+  readonly relationTarget: string
+  readonly inspectorError: string | null
+  readonly removalReport: RemovalDependencyReport | null
+  readonly availableKinds: ReadonlySet<string>
+  readonly availableTags: readonly string[]
+  readonly elements: readonly { readonly id: Fqn; readonly title: string }[]
+  readonly selectedElement: SemanticElementSelection | null
+  readonly structure: readonly StructureNode[]
+  readonly parents: readonly { readonly id: Fqn; readonly title: string }[]
+  readonly canvasDisabled: boolean
+  readonly setRelationSource: Dispatch<SetStateAction<string>>
+  readonly setRelationTarget: Dispatch<SetStateAction<string>>
+  readonly createElement: (kind: ElementKind) => Promise<void>
+  readonly patchElement: (values: ElementFormValues) => Promise<void>
+  readonly renameElement: (newId: string) => Promise<void>
+  readonly moveElement: (parentId: Fqn | null) => Promise<void>
+  readonly inspectRemoval: () => Promise<void>
+  readonly closeRemoval: () => void
+  readonly confirmRemoval: () => Promise<void>
+  readonly activateCreateTool: (kind: ElementKind) => void
+  readonly activateRelationTool: () => void
+  readonly completeRelation: (sourceId: string, targetId: string) => void
+  readonly selectElement: (id: Fqn, focusDiagram?: boolean) => void
+  readonly updateDraftSource: (content: string) => void
+  readonly undo: () => Promise<void>
+  readonly redo: () => Promise<void>
+  readonly handleEditorKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void
+}
+
+export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRuntime {
   const diagramApi = useRef<DiagramApi | null>(null)
   const removeInitiator = useRef<HTMLElement | null>(null)
   const [selection, setSelection] = useState<EditorSelection>(null)
@@ -276,13 +327,13 @@ export function useSemanticEditor(runtime: ReturnType<typeof useWorkspaceRuntime
     .map(element => ({ id: element.id as Fqn, title: element.title }))
     .sort((left, right) => left.id.localeCompare(right.id))
   const selectedModelElement = selection ? state?.lastValidModel?.$data.elements[selection.id] : undefined
-  const selectedElement = selectedModelElement
+  const selectedElement: SemanticElementSelection | null = selectedModelElement
     ? {
       id: selectedModelElement.id as Fqn,
       title: selectedModelElement.title,
       description: typeof selectedModelElement.description === 'string' ? selectedModelElement.description : null,
       technology: selectedModelElement.technology ?? null,
-      tags: selectedModelElement.tags ?? [],
+      tags: selectedModelElement.tags ? [...selectedModelElement.tags] : [],
     }
     : null
 
@@ -323,7 +374,7 @@ export function useSemanticEditor(runtime: ReturnType<typeof useWorkspaceRuntime
   }
 }
 
-function relationFeedback(runtime: ReturnType<typeof useWorkspaceRuntime>, relationId: RelationId): string {
+function relationFeedback(runtime: WorkspaceRuntime, relationId: RelationId): string {
   const views = Object.values(runtime.state?.lastValidModel?.$data.views ?? {})
   if (views.length === 0) {
     return 'Связь создана в модели, но в проекте нет подходящего вида для отображения.'
