@@ -85,8 +85,8 @@ describe('manual layout snapshot persistence', () => {
     })
     const result = readStoredManualLayouts(storage)
 
-    expect(result.layouts.index).toEqual(snapshot())
-    expect(result.layouts.broken).toBeUndefined()
+    expect(result.layouts['index' as ViewId]).toEqual(snapshot())
+    expect(result.layouts['broken' as ViewId]).toBeUndefined()
     expect(result.diagnostics).toHaveLength(1)
   })
 
