@@ -21,6 +21,7 @@ function modelFor(source: string): LikeC4Model.Layouted {
       elements,
       relations: {},
       views: {},
+      deployments: { elements: {}, relations: {} },
     },
   } as unknown as LikeC4Model.Layouted
 }
