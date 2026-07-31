@@ -1,5 +1,11 @@
 import type { LikeC4Model } from '@likec4/core/model'
-import type { ElementKind, Fqn, RelationId } from '@likec4/core/types'
+import type {
+  ElementKind,
+  Fqn,
+  RelationId,
+  ViewId,
+  ViewManualLayoutSnapshot,
+} from '@likec4/core/types'
 
 export type Revision = number
 export type OperationId = number
@@ -37,6 +43,13 @@ export interface CreateElementEditInput {
 export interface CreateRelationEditInput {
   readonly sourceId: Fqn
   readonly targetId: Fqn
+  readonly documentUri?: string
+}
+
+export interface CreateViewEditInput {
+  readonly id: string
+  readonly viewOf: Fqn
+  readonly title?: string
   readonly documentUri?: string
 }
 
@@ -123,6 +136,7 @@ export class EditorDocumentError extends Error {
 export interface EditorDocumentPort {
   createElement(sources: readonly SourceFile[], input: CreateElementEditInput): Promise<readonly SourceFile[]>
   createRelation(sources: readonly SourceFile[], input: CreateRelationEditInput): Promise<readonly SourceFile[]>
+  createView(sources: readonly SourceFile[], input: CreateViewEditInput): Promise<readonly SourceFile[]>
   patchElement(sources: readonly SourceFile[], input: PatchElementEditInput): Promise<readonly SourceFile[]>
   moveElement(sources: readonly SourceFile[], input: MoveElementEditInput): Promise<readonly SourceFile[]>
   renameElement(sources: readonly SourceFile[], input: RenameElementEditInput): Promise<readonly SourceFile[]>
@@ -130,9 +144,14 @@ export interface EditorDocumentPort {
   removeElement(sources: readonly SourceFile[], input: RemoveElementEditInput): Promise<readonly SourceFile[]>
 }
 
+export interface WorkspaceDocumentSnapshot {
+  readonly sources: readonly SourceFile[]
+  readonly manualLayouts: Readonly<Record<ViewId, ViewManualLayoutSnapshot>>
+}
+
 export interface EditorHistoryEntry {
   readonly revision: Revision
-  readonly sources: readonly SourceFile[]
+  readonly document: WorkspaceDocumentSnapshot
 }
 
 export interface EditorHistory {
@@ -148,11 +167,12 @@ export interface WorkspaceCompilation {
 }
 
 export interface EditorWorkspaceState {
-  readonly version: 1
+  readonly version: 2
   readonly projectId: string
   readonly revision: Revision
   readonly committedSources: readonly SourceFile[]
   readonly draftSources: readonly SourceFile[]
+  readonly manualLayouts: Readonly<Record<ViewId, ViewManualLayoutSnapshot>>
   readonly compilation: WorkspaceCompilation
   readonly lastValidModel: LikeC4Model.Layouted | null
   readonly history: EditorHistory
@@ -173,6 +193,16 @@ export interface CreateRelationCommand {
   readonly input: {
     readonly sourceId: Fqn
     readonly targetId: Fqn
+    readonly documentUri?: string
+  }
+}
+
+export interface CreateViewCommand {
+  readonly type: 'view.create'
+  readonly input: {
+    readonly id?: string
+    readonly title?: string
+    readonly viewOf: Fqn
     readonly documentUri?: string
   }
 }
@@ -209,16 +239,46 @@ export interface RemoveElementCommand {
 export type EditorCommand =
   | CreateElementCommand
   | CreateRelationCommand
+  | CreateViewCommand
   | PatchElementCommand
   | MoveElementCommand
   | RenameElementCommand
   | RemoveElementCommand
 
-export interface EditorOperation {
-  readonly id: OperationId
-  readonly expectedRevision: Revision
-  readonly semantic: EditorCommand
-}
+export type LayoutCommand =
+  | {
+    readonly type: 'layout.save'
+    readonly input: {
+      readonly viewId: ViewId
+      readonly snapshot: ViewManualLayoutSnapshot
+    }
+  }
+  | {
+    readonly type: 'layout.reset'
+    readonly input: {
+      readonly viewId: ViewId
+    }
+  }
+
+export type EditorOperation =
+  | {
+    readonly id: OperationId
+    readonly expectedRevision: Revision
+    readonly semantic: EditorCommand
+    readonly layout?: never
+  }
+  | {
+    readonly id: OperationId
+    readonly expectedRevision: Revision
+    readonly semantic?: never
+    readonly layout: LayoutCommand
+  }
+  | {
+    readonly id: OperationId
+    readonly expectedRevision: Revision
+    readonly semantic: EditorCommand
+    readonly layout: LayoutCommand
+  }
 
 export type CommandIssueCode =
   | 'stale-revision'
@@ -259,6 +319,16 @@ export type CommandIssueCode =
   | 'remove-verification-failed'
   | 'redo-history-empty'
   | 'redo-compile-rejected'
+  | 'view-scope-not-found'
+  | 'view-id-collision'
+  | 'view-source-edit-failed'
+  | 'created-view-not-found'
+  | 'layout-view-not-found'
+  | 'layout-snapshot-invalid'
+  | 'layout-view-mismatch'
+  | 'layout-type-mismatch'
+  | 'layout-not-found'
+  | 'combined-operation-unsupported'
 
 export interface CommandIssue {
   readonly code: CommandIssueCode
@@ -280,6 +350,12 @@ export type AppliedCommandResult =
   }
   | {
     readonly status: 'applied'
+    readonly command: 'view.create'
+    readonly revision: Revision
+    readonly createdViewId: ViewId
+  }
+  | {
+    readonly status: 'applied'
     readonly command: 'element.patch'
     readonly revision: Revision
     readonly updatedElementId: Fqn
@@ -295,6 +371,12 @@ export type AppliedCommandResult =
     readonly command: 'element.remove'
     readonly revision: Revision
     readonly removedElementId: Fqn
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'layout.save' | 'layout.reset'
+    readonly revision: Revision
+    readonly viewId: ViewId
   }
   | {
     readonly status: 'applied'

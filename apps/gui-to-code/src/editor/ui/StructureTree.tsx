@@ -24,6 +24,7 @@ function Branch({
             data-element-id={node.id}
             aria-current={selectedId === node.id ? 'true' : undefined}
             disabled={disabled}
+            onFocus={() => onSelect(node.id)}
             onClick={() => onSelect(node.id)}>
             <span>{node.title}</span>
             <code>{node.id}</code>

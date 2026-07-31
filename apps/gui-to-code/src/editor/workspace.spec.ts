@@ -3,6 +3,7 @@ import type { ElementKind, Fqn } from '@likec4/core/types'
 import { describe, expect, it } from 'vitest'
 import type {
   CompilerPort,
+  EditorCommand,
   EditorDocumentPort,
   EditorOperation,
   RemovalDependencyReport,
@@ -12,10 +13,10 @@ import { EditorDocumentError } from './contracts'
 import { EditorWorkspace } from './workspace'
 
 const initialSource = `actor customer|title=Customer
+system platform|title=Platform
 system shop|title=Online shop
 component shop.web|title=Web application|desc=Frontend|tech=TypeScript|tags=ui
 component shop.api|title=API
-system platform|title=Platform
 relation customer->shop.web
 `
 const sources = [{ uri: 'model.c4', content: initialSource }]
@@ -76,6 +77,7 @@ function modelFor(source: string): LikeC4Model.Layouted {
       elements,
       relations,
       views: {},
+      deployments: { elements: {}, relations: {} },
     },
   } as unknown as LikeC4Model.Layouted
 }
@@ -126,6 +128,9 @@ const documents: EditorDocumentPort = {
   async createRelation(current, input) {
     return replaceSource(current, source => `${source}relation ${input.sourceId}->${input.targetId}\n`)
   },
+  async createView() {
+    throw new EditorDocumentError('invalid-operation', 'unused in WP-04 compatibility tests')
+  },
   async patchElement(current, input) {
     return replaceSource(current, source => source.split('\n').map(line => {
       const parsed = /^(actor|system|component) ([\w.-]+)(.*)$/.exec(line)
@@ -169,7 +174,7 @@ const documents: EditorDocumentPort = {
   },
 }
 
-function operation(semantic: EditorOperation['semantic'], expectedRevision = 0): EditorOperation {
+function operation(semantic: EditorCommand, expectedRevision = 0): EditorOperation {
   return { id: Date.now(), expectedRevision, semantic }
 }
 

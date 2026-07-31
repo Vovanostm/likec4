@@ -1,6 +1,7 @@
 import {
   applyDocumentTextEdits,
   createDocumentEditService,
+  createElementViewDocumentEditService,
   DocumentEditError,
   fromSources,
 } from '@likec4/language-services/browser'
@@ -66,14 +67,17 @@ function documentError(error: unknown): never {
 
 async function serviceFor(sources: readonly SourceFile[]) {
   const likec4 = await fromSources(Object.fromEntries(sources.map(source => [source.uri, source.content])))
-  return createDocumentEditService(likec4)
+  return {
+    documents: createDocumentEditService(likec4),
+    views: createElementViewDocumentEditService(likec4),
+  }
 }
 
 export const languageServicesDocumentPort: EditorDocumentPort = {
   async createElement(sources, input) {
     try {
-      const service = await serviceFor(sources)
-      return applyPlan(sources, await service.planAddElement({
+      const { documents } = await serviceFor(sources)
+      return applyPlan(sources, await documents.planAddElement({
         id: input.id,
         kind: input.kind,
         ...(input.title ? { title: input.title } : {}),
@@ -86,8 +90,8 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
 
   async createRelation(sources, input) {
     try {
-      const service = await serviceFor(sources)
-      return applyPlan(sources, await service.planAddRelation({
+      const { documents } = await serviceFor(sources)
+      return applyPlan(sources, await documents.planAddRelation({
         source: input.sourceId,
         target: input.targetId,
         ...(input.documentUri ? { documentUri: input.documentUri } : {}),
@@ -97,10 +101,24 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
     }
   },
 
+  async createView(sources, input) {
+    try {
+      const { views } = await serviceFor(sources)
+      return applyPlan(sources, await views.planAddElementView({
+        id: input.id,
+        viewOf: input.viewOf,
+        ...(input.title ? { title: input.title } : {}),
+        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+      }))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
   async patchElement(sources, input) {
     try {
-      const service = await serviceFor(sources)
-      return applyPlan(sources, await service.planPatchElement({ target: input.id, patch: input.patch }))
+      const { documents } = await serviceFor(sources)
+      return applyPlan(sources, await documents.planPatchElement({ target: input.id, patch: input.patch }))
     } catch (error) {
       return documentError(error)
     }
@@ -108,8 +126,8 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
 
   async moveElement(sources, input) {
     try {
-      const service = await serviceFor(sources)
-      return applyPlan(sources, await service.planMoveElement({ target: input.id, parent: input.parentId }))
+      const { documents } = await serviceFor(sources)
+      return applyPlan(sources, await documents.planMoveElement({ target: input.id, parent: input.parentId }))
     } catch (error) {
       return documentError(error)
     }
@@ -117,8 +135,8 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
 
   async renameElement(sources, input) {
     try {
-      const service = await serviceFor(sources)
-      return applyPlan(sources, await service.planRenameElement({ target: input.id, newId: input.newId }))
+      const { documents } = await serviceFor(sources)
+      return applyPlan(sources, await documents.planRenameElement({ target: input.id, newId: input.newId }))
     } catch (error) {
       return documentError(error)
     }
@@ -126,8 +144,8 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
 
   async inspectRemoveElement(sources, id) {
     try {
-      const service = await serviceFor(sources)
-      return removalReport(service.inspectRemoveElement({ target: id }))
+      const { documents } = await serviceFor(sources)
+      return removalReport(documents.inspectRemoveElement({ target: id }))
     } catch (error) {
       return documentError(error)
     }
@@ -135,8 +153,8 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
 
   async removeElement(sources, input) {
     try {
-      const service = await serviceFor(sources)
-      return applyPlan(sources, service.planRemoveElement({
+      const { documents } = await serviceFor(sources)
+      return applyPlan(sources, documents.planRemoveElement({
         target: input.id,
         dependencyRevision: input.dependencyRevision,
         approvedDependencyIds: input.approvedDependencyIds,

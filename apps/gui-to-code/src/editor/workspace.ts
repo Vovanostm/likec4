@@ -1,4 +1,11 @@
-import type { ElementKind, Fqn, RelationId } from '@likec4/core/types'
+import { LikeC4Model } from '@likec4/core/model'
+import type {
+  ElementKind,
+  Fqn,
+  RelationId,
+  ViewId,
+  ViewManualLayoutSnapshot,
+} from '@likec4/core/types'
 import type {
   CommandIssue,
   CommandResult,
@@ -9,13 +16,16 @@ import type {
   EditorHistoryEntry,
   EditorOperation,
   EditorWorkspaceState,
+  LayoutCommand,
   RemovalInspectionResult,
   SourceFile,
+  WorkspaceDocumentSnapshot,
 } from './contracts'
 import { EditorDocumentError } from './contracts'
 
 const supportedKinds = new Set<ElementKind>(['actor', 'system', 'component'] as ElementKind[])
 type CompiledElements = NonNullable<CompileResult['model']>['$data']['elements']
+type ManualLayouts = Readonly<Record<ViewId, ViewManualLayoutSnapshot>>
 
 let loadedDefaultPort: EditorDocumentPort | null = null
 async function defaultPort(): Promise<EditorDocumentPort> {
@@ -29,6 +39,9 @@ const defaultDocumentPort: EditorDocumentPort = {
   },
   async createRelation(sources, input) {
     return (await defaultPort()).createRelation(sources, input)
+  },
+  async createView(sources, input) {
+    return (await defaultPort()).createView(sources, input)
   },
   async patchElement(sources, input) {
     return (await defaultPort()).patchElement(sources, input)
@@ -51,8 +64,27 @@ function cloneSources(sources: readonly SourceFile[]): SourceFile[] {
   return sources.map(source => ({ ...source }))
 }
 
-function historyEntry(revision: number, sources: readonly SourceFile[]): EditorHistoryEntry {
-  return { revision, sources: cloneSources(sources) }
+function cloneLayouts(layouts: ManualLayouts): Record<ViewId, ViewManualLayoutSnapshot> {
+  const result = {} as Record<ViewId, ViewManualLayoutSnapshot>
+  for (const [id, snapshot] of Object.entries(layouts)) {
+    result[id as ViewId] = structuredClone(snapshot)
+  }
+  return result
+}
+
+function documentSnapshot(sources: readonly SourceFile[], manualLayouts: ManualLayouts): WorkspaceDocumentSnapshot {
+  return {
+    sources: cloneSources(sources),
+    manualLayouts: cloneLayouts(manualLayouts),
+  }
+}
+
+function historyEntry(
+  revision: number,
+  sources: readonly SourceFile[],
+  manualLayouts: ManualLayouts,
+): EditorHistoryEntry {
+  return { revision, document: documentSnapshot(sources, manualLayouts) }
 }
 
 function issue(code: CommandIssue['code'], message: string): CommandIssue {
@@ -69,6 +101,15 @@ function allocateId(state: EditorWorkspaceState, kind: ElementKind): string {
   for (let suffix = 2;; suffix += 1) {
     const candidate = `${kind}${suffix}`
     if (!existing.has(candidate)) return candidate
+  }
+}
+
+function allocateViewId(state: EditorWorkspaceState): ViewId {
+  const existing = new Set(Object.keys(state.lastValidModel?.$data.views ?? {}))
+  if (!existing.has('view')) return 'view' as ViewId
+  for (let suffix = 2;; suffix += 1) {
+    const candidate = `view${suffix}`
+    if (!existing.has(candidate)) return candidate as ViewId
   }
 }
 
@@ -107,9 +148,11 @@ function sourceFailure(command: EditorCommand['type'], error: unknown): CommandI
   const code = documentError?.code
   switch (code) {
     case 'not-found':
-      return issue('element-not-found', 'Выбранный элемент больше не существует.')
+      return command === 'view.create'
+        ? issue('view-scope-not-found', 'Область или целевой документ для вида больше не существует.')
+        : issue('element-not-found', 'Выбранный элемент больше не существует.')
     case 'invalid-title':
-      return issue('invalid-title', 'Название элемента не может быть пустым.')
+      return issue('invalid-title', 'Название не может быть пустым.')
     case 'invalid-tag':
       return issue('invalid-tag', 'Выбранный тег отсутствует в спецификации проекта.')
     case 'invalid-parent':
@@ -117,7 +160,7 @@ function sourceFailure(command: EditorCommand['type'], error: unknown): CommandI
     case 'move-cycle':
       return issue('move-cycle', 'Нельзя переместить элемент внутрь его собственного поддерева.')
     case 'invalid-identifier':
-      return issue('invalid-identifier', 'Локальный ID должен быть корректным идентификатором LikeC4.')
+      return issue('invalid-identifier', 'ID должен быть корректным идентификатором LikeC4.')
     case 'unsupported-reference':
     case 'ambiguous-reference':
       return issue('unsupported-reference', 'Некоторые ссылки нельзя обновить безопасно.')
@@ -130,6 +173,8 @@ function sourceFailure(command: EditorCommand['type'], error: unknown): CommandI
           ? 'move-source-edit-failed'
           : command === 'element.rename'
           ? 'rename-source-edit-failed'
+          : command === 'view.create'
+          ? 'view-source-edit-failed'
           : 'source-edit-failed', 'Исходный код изменился. Повторите действие.')
     case 'dependencies-not-approved':
       return issue('removal-approval-mismatch', 'Подтверждение не совпадает с актуальным списком зависимостей.')
@@ -140,6 +185,8 @@ function sourceFailure(command: EditorCommand['type'], error: unknown): CommandI
         ? issue('move-collision', 'Перемещение создаёт конфликт идентификаторов.')
         : command === 'element.rename'
         ? issue('rename-collision', 'Переименование создаёт конфликт идентификаторов.')
+        : command === 'view.create'
+        ? issue('view-id-collision', 'ID вида уже занят.')
         : issue('identifier-collision', 'Идентификатор уже занят.')
     default:
       return issue(
@@ -153,10 +200,32 @@ function sourceFailure(command: EditorCommand['type'], error: unknown): CommandI
           ? 'remove-source-edit-failed'
           : command === 'relation.create'
           ? 'relation-source-edit-failed'
+          : command === 'view.create'
+          ? 'view-source-edit-failed'
           : 'source-edit-failed',
         'Не удалось применить изменение к исходному коду.',
       )
   }
+}
+
+function materializeModel(autoModel: LikeC4Model.Layouted, manualLayouts: ManualLayouts): LikeC4Model.Layouted {
+  return LikeC4Model.create({
+    ...autoModel.$data,
+    manualLayouts: cloneLayouts(manualLayouts),
+  })
+}
+
+function snapshotShapeIsValid(snapshot: ViewManualLayoutSnapshot): boolean {
+  return snapshot._stage === 'layouted'
+    && (snapshot._type === 'element' || snapshot._type === 'dynamic' || snapshot._type === 'deployment')
+    && typeof snapshot.id === 'string'
+    && typeof snapshot.hash === 'string'
+    && Array.isArray(snapshot.nodes)
+    && Array.isArray(snapshot.edges)
+    && typeof snapshot.bounds === 'object'
+    && snapshot.bounds !== null
+    && typeof snapshot.autoLayout === 'object'
+    && snapshot.autoLayout !== null
 }
 
 export class EditorWorkspace {
@@ -177,21 +246,25 @@ export class EditorWorkspace {
     compiler: CompilerPort,
     documents: EditorDocumentPort = defaultDocumentPort,
     projectId = 'default',
+    manualLayouts: ManualLayouts = {} as ManualLayouts,
   ): Promise<EditorWorkspace> {
     const compilation = await compiler({ revision: 0, sources })
+    const layouts = cloneLayouts(manualLayouts)
+    const model = compilation.model ? materializeModel(compilation.model, layouts) : null
     const state: EditorWorkspaceState = {
-      version: 1,
+      version: 2,
       projectId,
       revision: 0,
       committedSources: cloneSources(sources),
       draftSources: cloneSources(sources),
+      manualLayouts: layouts,
       compilation: {
         revision: 0,
-        status: compilation.model ? 'valid' : 'invalid',
+        status: model ? 'valid' : 'invalid',
         diagnostics: compilation.diagnostics,
-        model: compilation.model,
+        model,
       },
-      lastValidModel: compilation.model,
+      lastValidModel: model,
       history: { past: [], future: [] },
     }
     return new EditorWorkspace(state, compiler, documents)
@@ -229,6 +302,7 @@ export class EditorWorkspace {
     }
     const previous = this.current
     const revision = previous.revision + 1
+    const model = materializeModel(result.model, previous.manualLayouts)
     this.current = {
       ...previous,
       revision,
@@ -238,11 +312,14 @@ export class EditorWorkspace {
         revision,
         status: 'valid',
         diagnostics: [],
-        model: result.model,
+        model,
       },
-      lastValidModel: result.model,
+      lastValidModel: model,
       history: {
-        past: [...previous.history.past, historyEntry(previous.revision, previous.committedSources)],
+        past: [
+          ...previous.history.past,
+          historyEntry(previous.revision, previous.committedSources, previous.manualLayouts),
+        ],
         future: [],
       },
     }
@@ -298,11 +375,27 @@ export class EditorWorkspace {
     const invalid = this.invalidWorkspaceResult(state)
     if (invalid) return invalid
 
+    if (operation.semantic && operation.layout) {
+      return this.rejected(
+        state,
+        'combined-operation-unsupported',
+        'Совмещённая semantic/layout операция пока не используется текущим интерфейсом.',
+      )
+    }
+    if (operation.layout) {
+      return this.applyLayout(state, operation.layout)
+    }
+    if (!operation.semantic) {
+      return this.rejected(state, 'combined-operation-unsupported', 'Пустая операция недопустима.')
+    }
+
     switch (operation.semantic.type) {
       case 'element.create':
         return this.applyCreateElement(state, operation.semantic)
       case 'relation.create':
         return this.applyCreateRelation(state, operation.semantic)
+      case 'view.create':
+        return this.applyCreateView(state, operation.semantic)
       case 'element.patch':
         return this.applyPatchElement(state, operation.semantic)
       case 'element.move':
@@ -341,7 +434,7 @@ export class EditorWorkspace {
         return this.rejected(state, 'created-element-not-found', 'Созданный элемент отсутствует в скомпилированной модели.')
       }
       if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
-      this.commitCandidate(state, revision, candidateSources, compilation.model)
+      this.commitCandidate(state, revision, candidateSources, compilation.model, state.manualLayouts)
       return { status: 'applied', command: 'element.create', revision, createdElementId }
     } catch (error) {
       return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
@@ -379,13 +472,50 @@ export class EditorWorkspace {
         return this.rejected(state, 'created-relation-not-found', 'Созданная связь не совпадает с выбранным направлением.')
       }
       if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
-      this.commitCandidate(state, revision, candidateSources, compilation.model)
+      this.commitCandidate(state, revision, candidateSources, compilation.model, state.manualLayouts)
       return {
         status: 'applied',
         command: 'relation.create',
         revision,
         createdRelationId: createdRelationId as RelationId,
       }
+    } catch (error) {
+      return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
+    }
+  }
+
+  private async applyCreateView(
+    state: EditorWorkspaceState,
+    command: Extract<EditorCommand, { type: 'view.create' }>,
+  ): Promise<CommandResult> {
+    if (!state.lastValidModel?.$data.elements[command.input.viewOf]) {
+      return this.rejected(state, 'view-scope-not-found', 'Выбранная область вида больше не существует.')
+    }
+    if (command.input.title !== undefined && !command.input.title.trim()) {
+      return this.rejected(state, 'invalid-title', 'Название вида не может быть пустым.')
+    }
+    const id = (command.input.id ?? allocateViewId(state)) as ViewId
+    if (state.lastValidModel.$data.views[id]) {
+      return this.rejected(state, 'view-id-collision', 'ID вида уже занят.')
+    }
+
+    try {
+      const candidateSources = await this.documents.createView(state.committedSources, {
+        id,
+        viewOf: command.input.viewOf,
+        ...(command.input.title ? { title: command.input.title } : {}),
+        ...(command.input.documentUri ? { documentUri: command.input.documentUri } : {}),
+      })
+      const revision = state.revision + 1
+      const compilation = await this.compileCandidate(revision, candidateSources)
+      if (!compilation.model) return this.compileRejected(state)
+      const created = compilation.model.$data.views[id]
+      if (!created || created._type !== 'element' || created.viewOf !== command.input.viewOf) {
+        return this.rejected(state, 'created-view-not-found', 'Не удалось подтвердить созданный статический вид.')
+      }
+      if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
+      this.commitCandidate(state, revision, candidateSources, compilation.model, state.manualLayouts)
+      return { status: 'applied', command: 'view.create', revision, createdViewId: id }
     } catch (error) {
       return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
     }
@@ -415,7 +545,7 @@ export class EditorWorkspace {
         return this.rejected(state, 'patch-verification-failed', 'Не удалось подтвердить новые свойства элемента.')
       }
       if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
-      this.commitCandidate(state, revision, candidateSources, compilation.model)
+      this.commitCandidate(state, revision, candidateSources, compilation.model, state.manualLayouts)
       return {
         status: 'applied',
         command: 'element.patch',
@@ -465,7 +595,7 @@ export class EditorWorkspace {
         return this.rejected(state, 'move-verification-failed', 'Не удалось подтвердить перемещение полного поддерева.')
       }
       if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
-      this.commitCandidate(state, revision, candidateSources, compilation.model)
+      this.commitCandidate(state, revision, candidateSources, compilation.model, state.manualLayouts)
       return { status: 'applied', command: 'element.move', revision, updatedElementId: newRoot }
     } catch (error) {
       return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
@@ -500,7 +630,7 @@ export class EditorWorkspace {
         return this.rejected(state, 'rename-verification-failed', 'Не удалось подтвердить переименование полного поддерева.')
       }
       if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
-      this.commitCandidate(state, revision, candidateSources, compilation.model)
+      this.commitCandidate(state, revision, candidateSources, compilation.model, state.manualLayouts)
       return { status: 'applied', command: 'element.rename', revision, updatedElementId: newRoot }
     } catch (error) {
       return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
@@ -561,7 +691,7 @@ export class EditorWorkspace {
         return this.rejected(state, 'remove-verification-failed', 'Удалённое поддерево осталось в модели.')
       }
       if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
-      this.commitCandidate(state, revision, candidateSources, compilation.model)
+      this.commitCandidate(state, revision, candidateSources, compilation.model, state.manualLayouts)
       return {
         status: 'applied',
         command: 'element.remove',
@@ -571,6 +701,45 @@ export class EditorWorkspace {
     } catch (error) {
       return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
     }
+  }
+
+  private async applyLayout(state: EditorWorkspaceState, command: LayoutCommand): Promise<CommandResult> {
+    const revision = state.revision + 1
+    const compilation = await this.compileCandidate(revision, state.committedSources)
+    if (!compilation.model) return this.compileRejected(state)
+    const viewId = command.input.viewId
+    const autoView = compilation.model.$data.views[viewId]
+    if (!autoView) {
+      return this.rejected(state, 'layout-view-not-found', 'Выбранный вид больше не существует.')
+    }
+
+    const nextLayouts = cloneLayouts(state.manualLayouts)
+    switch (command.type) {
+      case 'layout.save': {
+        const snapshot = command.input.snapshot
+        if (!snapshotShapeIsValid(snapshot)) {
+          return this.rejected(state, 'layout-snapshot-invalid', 'Раскладка имеет некорректную структуру.')
+        }
+        if (snapshot.id !== viewId) {
+          return this.rejected(state, 'layout-view-mismatch', 'Раскладка принадлежит другому виду.')
+        }
+        if (snapshot._type !== autoView._type) {
+          return this.rejected(state, 'layout-type-mismatch', 'Тип раскладки не совпадает с типом вида.')
+        }
+        nextLayouts[viewId] = structuredClone(snapshot)
+        break
+      }
+      case 'layout.reset':
+        if (!nextLayouts[viewId]) {
+          return this.rejected(state, 'layout-not-found', 'Для выбранного вида нет сохранённой ручной раскладки.')
+        }
+        delete nextLayouts[viewId]
+        break
+    }
+
+    if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
+    this.commitCandidate(state, revision, state.committedSources, compilation.model, nextLayouts)
+    return { status: 'applied', command: command.type, revision, viewId }
   }
 
   private async applyUndo(expectedRevision: number): Promise<CommandResult> {
@@ -583,14 +752,17 @@ export class EditorWorkspace {
 
     const revision = state.revision + 1
     try {
-      const compilation = await this.compileCandidate(revision, previous.sources)
+      const compilation = await this.compileCandidate(revision, previous.document.sources)
       if (!compilation.model) {
         return this.rejected(state, 'undo-compile-rejected', 'Не удалось отменить изменение: предыдущая версия не компилируется.')
       }
       if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
-      this.restoreHistory(state, revision, previous.sources, compilation.model, {
+      this.restoreHistory(state, revision, previous.document, compilation.model, {
         past: state.history.past.slice(0, -1),
-        future: [...state.history.future, historyEntry(state.revision, state.committedSources)],
+        future: [
+          ...state.history.future,
+          historyEntry(state.revision, state.committedSources, state.manualLayouts),
+        ],
       })
       return { status: 'applied', command: 'history.undo', revision }
     } catch (_error) {
@@ -608,13 +780,16 @@ export class EditorWorkspace {
 
     const revision = state.revision + 1
     try {
-      const compilation = await this.compileCandidate(revision, next.sources)
+      const compilation = await this.compileCandidate(revision, next.document.sources)
       if (!compilation.model) {
         return this.rejected(state, 'redo-compile-rejected', 'Не удалось повторить изменение: версия не компилируется.')
       }
       if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
-      this.restoreHistory(state, revision, next.sources, compilation.model, {
-        past: [...state.history.past, historyEntry(state.revision, state.committedSources)],
+      this.restoreHistory(state, revision, next.document, compilation.model, {
+        past: [
+          ...state.history.past,
+          historyEntry(state.revision, state.committedSources, state.manualLayouts),
+        ],
         future: state.history.future.slice(0, -1),
       })
       return { status: 'applied', command: 'history.redo', revision }
@@ -675,16 +850,19 @@ export class EditorWorkspace {
   private restoreHistory(
     state: EditorWorkspaceState,
     revision: number,
-    sources: readonly SourceFile[],
-    model: NonNullable<CompileResult['model']>,
+    document: WorkspaceDocumentSnapshot,
+    autoModel: NonNullable<CompileResult['model']>,
     history: EditorWorkspaceState['history'],
   ): void {
     this.pendingCompileRevision = Math.max(this.pendingCompileRevision, revision)
+    const manualLayouts = cloneLayouts(document.manualLayouts)
+    const model = materializeModel(autoModel, manualLayouts)
     this.current = {
       ...state,
       revision,
-      committedSources: cloneSources(sources),
-      draftSources: cloneSources(sources),
+      committedSources: cloneSources(document.sources),
+      draftSources: cloneSources(document.sources),
+      manualLayouts,
       compilation: { revision, status: 'valid', diagnostics: [], model },
       lastValidModel: model,
       history,
@@ -695,18 +873,25 @@ export class EditorWorkspace {
     state: EditorWorkspaceState,
     revision: number,
     sources: readonly SourceFile[],
-    model: NonNullable<CompileResult['model']>,
+    autoModel: NonNullable<CompileResult['model']>,
+    manualLayouts: ManualLayouts,
   ): void {
     this.pendingCompileRevision = Math.max(this.pendingCompileRevision, revision)
+    const layouts = cloneLayouts(manualLayouts)
+    const model = materializeModel(autoModel, layouts)
     this.current = {
       ...state,
       revision,
       committedSources: cloneSources(sources),
       draftSources: cloneSources(sources),
+      manualLayouts: layouts,
       compilation: { revision, status: 'valid', diagnostics: [], model },
       lastValidModel: model,
       history: {
-        past: [...state.history.past, historyEntry(state.revision, state.committedSources)],
+        past: [
+          ...state.history.past,
+          historyEntry(state.revision, state.committedSources, state.manualLayouts),
+        ],
         future: [],
       },
     }
