@@ -13,10 +13,10 @@ import { EditorDocumentError } from './contracts'
 import { EditorWorkspace } from './workspace'
 
 const initialSource = `actor customer|title=Customer
+system platform|title=Platform
 system shop|title=Online shop
 component shop.web|title=Web application|desc=Frontend|tech=TypeScript|tags=ui
 component shop.api|title=API
-system platform|title=Platform
 relation customer->shop.web
 `
 const sources = [{ uri: 'model.c4', content: initialSource }]
