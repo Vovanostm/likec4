@@ -18,6 +18,10 @@ export default defineConfig({
         replacement: resolve(import.meta.dirname, '../../packages/core/src/types/index.ts'),
       },
       {
+        find: /^@likec4\/core\/utils\/graphology$/,
+        replacement: resolve(import.meta.dirname, '../../packages/core/src/utils/graphology/index.ts'),
+      },
+      {
         find: /^@likec4\/core\/utils$/,
         replacement: resolve(import.meta.dirname, '../../packages/core/src/utils/index.ts'),
       },
