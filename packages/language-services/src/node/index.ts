@@ -43,6 +43,12 @@ export {
   sourceRevision,
 } from '../common/DocumentEditService'
 
+export {
+  type AddElementViewInput,
+  createElementViewDocumentEditService,
+  ElementViewDocumentEditService,
+} from '../common/ElementViewDocumentEditService'
+
 /**
  * Create a LikeC4 instance from a workspace directory
  *
@@ -129,7 +135,6 @@ export async function fromWorkdir(options?: FromWorkspaceOptions): Promise<LikeC
 export async function fromSources(sources: Record<string, string>, options?: InitOptions): Promise<LikeC4> {
   configureLogger(options)
   const logger = rootLogger.getChild('lang')
-
   const langium = createLanguageServices(
     defu(
       options,
@@ -141,7 +146,6 @@ export async function fromSources(sources: Record<string, string>, options?: Ini
       } satisfies CreateLanguageServiceOptions,
     ),
   )
-
   return await createFromSources(langium, logger, sources, options)
 }
 
