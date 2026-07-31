@@ -63,6 +63,30 @@ describe('manual layout snapshot persistence', () => {
     })
   })
 
+  it('round-trips diagram snapshots without redundant children metadata', () => {
+    const original = snapshot()
+    const node = { ...original.nodes[0] } as Record<string, unknown>
+    delete node['children']
+    const diagramSnapshot = {
+      ...original,
+      nodes: [node],
+    } as unknown as ViewManualLayoutSnapshot
+    const storage = memoryStorage()
+
+    expect(parseSnapshot(diagramSnapshot, 'index' as ViewId)).toEqual({
+      ok: true,
+      snapshot: diagramSnapshot,
+    })
+
+    writeStoredManualLayouts(storage, {
+      index: diagramSnapshot,
+    } as Record<ViewId, ViewManualLayoutSnapshot>)
+    expect(readStoredManualLayouts(storage)).toEqual({
+      layouts: { index: diagramSnapshot },
+      diagnostics: [],
+    })
+  })
+
   it('fails closed on malformed or unsupported envelopes', () => {
     expect(readStoredManualLayouts(memoryStorage({
       [manualLayoutsStorageKey]: '{bad json',
