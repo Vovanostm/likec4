@@ -1,4 +1,4 @@
-import type { ViewId, ViewManualLayoutSnapshot } from '@likec4/core/types'
+import type { Fqn, ViewId, ViewManualLayoutSnapshot } from '@likec4/core/types'
 import { describe, expect, it } from 'vitest'
 import { compile } from '../compiler'
 import { starterSource } from '../document'
@@ -36,7 +36,7 @@ describe('EditorWorkspace WP-05 views and manual layouts', () => {
         input: {
           id: 'shop_overview',
           title: 'Shop overview',
-          viewOf: 'shop',
+          viewOf: 'shop' as Fqn,
           documentUri: 'model.c4',
         },
       },
@@ -118,7 +118,7 @@ describe('EditorWorkspace WP-05 views and manual layouts', () => {
       expectedRevision: 1,
       semantic: {
         type: 'view.create',
-        input: { id: 'web', viewOf: 'shop.web', documentUri: 'model.c4' },
+        input: { id: 'web', viewOf: 'shop.web' as Fqn, documentUri: 'model.c4' },
       },
     })
 
