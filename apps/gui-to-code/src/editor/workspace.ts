@@ -15,6 +15,7 @@ import type {
 import { EditorDocumentError } from './contracts'
 
 const supportedKinds = new Set<ElementKind>(['actor', 'system', 'component'] as ElementKind[])
+type CompiledElements = NonNullable<CompileResult['model']>['$data']['elements']
 
 let loadedDefaultPort: EditorDocumentPort | null = null
 async function defaultPort(): Promise<EditorDocumentPort> {
@@ -455,7 +456,12 @@ export class EditorWorkspace {
       const revision = state.revision + 1
       const compilation = await this.compileCandidate(revision, candidateSources)
       if (!compilation.model) return this.compileRejected(state)
-      if (!this.subtreeMutationVerified(compilation.model.$data.elements, oldIds, newIds)) {
+      if (!this.subtreeMutationVerified(
+        state.lastValidModel?.$data.elements ?? {},
+        compilation.model.$data.elements,
+        oldIds,
+        newIds,
+      )) {
         return this.rejected(state, 'move-verification-failed', 'Не удалось подтвердить перемещение полного поддерева.')
       }
       if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
@@ -485,7 +491,12 @@ export class EditorWorkspace {
       const revision = state.revision + 1
       const compilation = await this.compileCandidate(revision, candidateSources)
       if (!compilation.model) return this.compileRejected(state)
-      if (!this.subtreeMutationVerified(compilation.model.$data.elements, oldIds, newIds)) {
+      if (!this.subtreeMutationVerified(
+        state.lastValidModel?.$data.elements ?? {},
+        compilation.model.$data.elements,
+        oldIds,
+        newIds,
+      )) {
         return this.rejected(state, 'rename-verification-failed', 'Не удалось подтвердить переименование полного поддерева.')
       }
       if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
@@ -500,13 +511,13 @@ export class EditorWorkspace {
     const state = this.current
     if (expectedRevision !== state.revision) return { status: 'conflict', revision: state.revision }
     if (state.compilation.status !== 'valid') {
-    return {
-      status: 'rejected',
-      revision: state.revision,
-      issues: [issue('workspace-invalid', 'Изменение отклонено: исправьте ошибки в коде проекта.')],
+      return {
+        status: 'rejected',
+        revision: state.revision,
+        issues: [issue('workspace-invalid', 'Изменение отклонено: исправьте ошибки в коде проекта.')],
+      }
     }
-  }
-  if (!state.lastValidModel?.$data.elements[id]) {
+    if (!state.lastValidModel?.$data.elements[id]) {
       return {
         status: 'rejected',
         revision: state.revision,
@@ -624,14 +635,21 @@ export class EditorWorkspace {
   }
 
   private subtreeMutationVerified(
-    elements: Readonly<Record<string, unknown>>,
+    beforeElements: CompiledElements,
+    afterElements: CompiledElements,
     oldIds: readonly Fqn[],
     newIds: readonly Fqn[],
   ): boolean {
-    const newSet = new Set(newIds)
-    return oldIds.length === newIds.length
-      && oldIds.every(id => newSet.has(id) || !elements[id])
-      && newIds.every(id => !!elements[id])
+    if (oldIds.length !== newIds.length || new Set(newIds).size !== newIds.length) return false
+    return oldIds.every((oldId, index) => {
+      const newId = newIds[index]!
+      const before = beforeElements[oldId]
+      const after = afterElements[newId]
+      return !!before
+        && !!after
+        && before.kind === after.kind
+        && (oldId === newId || !afterElements[oldId])
+    })
   }
 
   private isCurrent(state: EditorWorkspaceState): boolean {
