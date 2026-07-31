@@ -7,6 +7,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('edits, renames and safely removes one selected element with keyboard history', async ({ page }) => {
+  const source = page.getByLabel('Исходный код LikeC4')
   const treeItem = page.getByRole('button', { name: /Web application.*shop\.web/ })
   await treeItem.click()
 
@@ -14,14 +15,15 @@ test('edits, renames and safely removes one selected element with keyboard histo
   await expect(title).toHaveValue('Web application')
   await title.fill('Storefront')
   await page.getByRole('button', { name: 'Сохранить свойства' }).click()
-  await expect(page.getByLabel('Исходный код LikeC4')).toContainText("title 'Storefront'")
+  await expect(source).toHaveValue(/title 'Storefront'/)
 
   const localId = page.getByLabel('Локальный ID')
   await localId.fill('client')
   await page.getByRole('button', { name: 'Переименовать' }).click()
   const renamedTreeItem = page.getByRole('button', { name: /Storefront.*shop\.client/ })
   await expect(renamedTreeItem).toBeVisible()
-  await expect(page.getByLabel('Исходный код LikeC4')).toContainText('component client')
+  await expect(source).toHaveValue(/client = component/)
+  await expect(source).toHaveValue(/shop\.client -> customer/)
 
   await renamedTreeItem.focus()
   await renamedTreeItem.press('Delete')
