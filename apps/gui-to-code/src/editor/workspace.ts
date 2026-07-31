@@ -1,9 +1,7 @@
-import { applyManualLayout } from '@likec4/core'
 import { LikeC4Model } from '@likec4/core/model'
 import type {
   ElementKind,
   Fqn,
-  LayoutedView,
   RelationId,
   ViewId,
   ViewManualLayoutSnapshot,
@@ -211,15 +209,8 @@ function sourceFailure(command: EditorCommand['type'], error: unknown): CommandI
 }
 
 function materializeModel(autoModel: LikeC4Model.Layouted, manualLayouts: ManualLayouts): LikeC4Model.Layouted {
-  const views = { ...autoModel.$data.views } as Record<string, LayoutedView>
-  for (const [id, snapshot] of Object.entries(manualLayouts)) {
-    const view = views[id]
-    if (!view) continue
-    views[id] = applyManualLayout(view, snapshot)
-  }
   return LikeC4Model.create({
     ...autoModel.$data,
-    views,
     manualLayouts: cloneLayouts(manualLayouts),
   })
 }
