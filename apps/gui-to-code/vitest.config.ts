@@ -50,6 +50,14 @@ export default defineConfig({
         replacement: resolve(import.meta.dirname, '../../packages/core/src/utils/index.ts'),
       },
       {
+        find: /^@likec4\/generators$/,
+        replacement: resolve(import.meta.dirname, '../../packages/generators/src/index.ts'),
+      },
+      {
+        find: /^@likec4\/generators\/likec4$/,
+        replacement: resolve(import.meta.dirname, '../../packages/generators/src/likec4/index.ts'),
+      },
+      {
         find: /^@likec4\/layouts$/,
         replacement: resolve(import.meta.dirname, '../../packages/layouts/src/index.ts'),
       },
