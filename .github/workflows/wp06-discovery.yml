@@ -17,21 +17,12 @@ jobs:
       - name: Contract manifest
         shell: bash
         run: |
-          echo 'LANGIUM_OWNERS'
-          grep -RlE 'DynamicView|DeploymentView|DeploymentNode|instanceOf' packages --include='*.langium' | sort
-          echo 'DYNAMIC_OWNERS'
-          grep -RlE 'class DynamicViewParser|interface DynamicView|type DynamicView' packages --include='*.ts' | sort | head -n 30
-          echo 'DEPLOYMENT_OWNERS'
-          grep -RlE 'DeploymentView|DeploymentNode|instanceOf' packages --include='*.ts' | sort | head -n 50
-          echo 'FIXTURES'
-          grep -RlE 'dynamic view|deployment view|instanceOf' packages apps e2e --include='*.c4' --include='*.likec4' --include='*.ts' | sort | head -n 80
-          echo 'GRAMMAR_SIGNATURES'
-          for file in $(grep -RlE 'DynamicView|DeploymentView|DeploymentNode|instanceOf' packages --include='*.langium' | sort); do
+          echo 'MODEL_LOCATOR_FILES'
+          grep -Rl 'class ModelLocator' packages/language-server/src --include='*.ts' | sort
+          echo 'MODEL_LOCATOR_METHODS'
+          for file in $(grep -Rl 'class ModelLocator' packages/language-server/src --include='*.ts' | sort); do
             echo "FILE=$file"
-            grep -nE 'DynamicView|DeploymentView|DeploymentNode|instanceOf|DynamicStep|DeploymentRelation' "$file" | head -n 80
+            grep -nE 'getParsed|Deployment|View' "$file" | head -n 120
           done
-          echo 'MODEL_SIGNATURES'
-          for file in $(grep -RlE 'class DynamicViewParser|DeploymentView|DeploymentNode|instanceOf' packages --include='*.ts' | sort | head -n 20); do
-            echo "FILE=$file"
-            grep -nE 'class DynamicViewParser|interface DynamicView|type DynamicView|DeploymentView|DeploymentNode|instanceOf' "$file" | head -n 40
-          done
+          echo 'PARSED_MODEL_SHAPE'
+          grep -RIn -B 3 -A 12 --include='*.ts' -E 'deploymentElements|deployments:|deployment:' packages/core/src packages/language-server/src/model | head -n 240 || true
