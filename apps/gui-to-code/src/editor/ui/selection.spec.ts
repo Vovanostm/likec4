@@ -11,8 +11,14 @@ import {
 
 function stateWith(ids: readonly string[]): EditorWorkspaceState {
   const elements = Object.fromEntries(ids.map(id => [id, { id, title: id, kind: 'system' }]))
-  const model = ({ $data: { elements, relations: {}, views: {}, specification: { elements: {} } } }
-    as unknown as LikeC4Model.Layouted)
+  const model = {
+    $data: {
+      elements,
+      relations: {},
+      views: {},
+      specification: { elements: {} },
+    },
+  } as unknown as LikeC4Model.Layouted
   return {
     version: 1,
     projectId: 'default',
