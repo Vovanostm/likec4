@@ -59,6 +59,9 @@ export function selectionAfterResult(
       return null
     case 'element.create':
     case 'relation.create':
+    case 'view.create':
+    case 'layout.save':
+    case 'layout.reset':
     case 'history.undo':
     case 'history.redo':
       return reconcileSelection(selection, state)
