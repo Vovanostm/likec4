@@ -1,30 +1,63 @@
-# AI-ready execution plan — WP-06 Dynamic и Deployment semantics
+# AI-ready техническое задание — WP-06 Dynamic и Deployment semantics
 
-Статус: следующий `ready` work package после merge WP-05  
+Статус: `ready`  
+Дата фиксации: 31 июля 2026  
 Репозиторий: `Vovanostm/likec4`  
 Рабочая область: `apps/gui-to-code/**`; owning packages изменяются только при доказанном отсутствии необходимого public contract  
-Целевой PR: один squash-mergeable PR в `main`  
+Минимально проверенный baseline `main`: `44c2729965754bc27c5e772957032ec3c4d117a2` — squash merge PR #6 / WP-05  
+Проверенный implementation head WP-05: `79d1d5616bd1e5fd5be3bc8711ebd07def740768`  
 Предлагаемая ветка: `feat/gui-to-code-wp06-dynamic-deployment`  
-Предлагаемый PR title: `feat(gui-to-code): add dynamic and deployment workflows`
+Целевой PR title: `feat(gui-to-code): add dynamic and deployment workflows`  
+Целевой результат: один green, non-draft, mergeable PR в `main`; не merge без отдельной команды пользователя
 
-## 0. Execution contract
+## 0. Миссия агента
 
-Реализовать только `WP-06` из `ROADMAP.md`: пользователь должен создавать и изменять минимально полноценные dynamic и deployment сущности через canvas/UI, а каждое semantic изменение должно проходить через существующие revision-safe `EditorWorkspace` и source-preserving document services.
+Реализовать только `WP-06` из `ROADMAP.md`.
 
-Финальный DoD:
+Пользователь должен получить два честных canvas-first vertical slice:
 
-- dynamic и deployment vertical flows работают без ручного редактирования DSL для поддержанного минимального набора;
-- source remains canonical persisted semantics;
-- canvas/diagram не владеют semantic graph и не пишут DSL;
-- все semantic writes проходят `EditorOperation(expectedRevision) → document port → candidate compile → command-specific verification → atomic commit`;
-- Undo/Redo атомарно восстанавливает sources и manual-layout snapshots;
-- invalid, stale, ambiguous и unsupported operations fail closed без изменения state identity;
-- весь пользовательский UX и aria-тексты на русском;
+1. создание dynamic view и направленного dynamic step между существующими logical endpoints;
+2. создание deployment view, минимальной deployment entity/reference и deployment relation.
+
+Каждое semantic изменение обязано проходить через существующий revision-safe pipeline:
+
+```text
+Russian UI / canvas intent
+→ typed EditorCommand
+→ queued EditorOperation(expectedRevision)
+→ source-preserving document owner
+→ isolated candidate compile
+→ command-specific semantic verification
+→ atomic sources + manualLayouts commit
+→ one history entry
+→ derived model/tree/canvas render
+```
+
+Агент работает автономно. Не запрашивать подтверждение для обычных engineering decisions, исправления тестов или CI. Остановиться можно только по доказанному stop condition из раздела 13.
+
+## 1. Финальный Definition of Done
+
+WP-06 завершён только одновременно при выполнении всех условий:
+
+- dynamic golden flow работает без ручного редактирования DSL;
+- deployment golden flow работает без ручного редактирования DSL;
+- persisted semantic SSOT остаётся LikeC4 source внутри единственного `EditorWorkspace`;
+- canvas и `@likec4/diagram` не становятся владельцами semantic graph и не пишут DSL;
+- dynamic/deployment families представлены собственными typed commands и command-specific verification;
+- existing-source edits source-preserving и используют принятый AST/CST owner;
+- stale, invalid, ambiguous, duplicate и unsupported operations fail closed без mutation state identity;
+- Undo/Redo восстанавливает sources и manual-layout snapshots атомарно;
+- manual snapshots не переписываются semantic commands;
+- весь пользовательский UX, aria-labels, errors, empty/disabled/success states — на русском;
+- focused unit/integration/browser tests доказали обе families и отрицательные сценарии;
+- `README.md` описывает только реально поддержанный minimum;
 - `ROADMAP.STATUS.md` переводит `WP-06` в `done`, `WP-07` в `ready` только после зелёного final head;
-- PR не draft, mergeable, без unresolved review threads, все required checks зелёные на одном неизменившемся head;
-- PR не мержить без отдельной команды пользователя.
+- PR не draft, mergeable, без unresolved review threads;
+- standalone `GUI-to-code`, root CI и остальные required checks зелёные на одном неизменившемся head;
+- проведены два review pass: correctness и architecture/product;
+- PR не смержен без отдельной команды пользователя.
 
-## 1. Authority order
+## 2. Authority order
 
 Перед изменениями прочитать в указанном порядке:
 
@@ -35,228 +68,347 @@
 5. `apps/gui-to-code/ROADMAP.STATUS.md`;
 6. `apps/gui-to-code/README.md`;
 7. этот execution plan;
-8. текущие contracts/tests/code на фактическом `main`.
+8. contracts, tests и production code на фактическом `main`.
 
-При конфликте более ранний документ имеет приоритет. Код и тесты на актуальном `main` являются фактом реализации; этот план не разрешает переписывать доказанно работающие WP-00…WP-05 contracts без конкретного дефекта.
+При конфликте более ранний документ имеет приоритет. Код и тесты актуального `main` — факт реализации. Это ТЗ не разрешает переписывать доказанно работающие WP-00…WP-05 contracts без конкретного воспроизводимого дефекта.
 
-## 2. Facts, assumptions, decisions
+Если `main` новее baseline `44c2729`, агент обязан сначала сравнить изменения, подтвердить совместимость и записать фактический base SHA в PR body.
 
-### Facts, которые нельзя менять без доказанной ошибки
+## 3. Проверенный baseline WP-05
 
-- `EditorWorkspace` — единственный owner sources, manual layouts, revision, compilation state и history.
-- Persisted semantic representation — LikeC4 DSL; model/tree/canvas derived.
-- `@likec4/diagram` — renderer/layout/gesture owner; semantic CRUD через `ViewChange` запрещён.
-- Manual layout хранится только как `.likec4/<view>.likec4.snap`.
-- Browser compiler и document edits уже revision-bound; stale candidate не коммитится.
-- Static view creation уже source-preserving и fail-closed при неоднозначном target URI.
+Следующие решения считаются frozen, пока не доказана ошибка:
+
+- `EditorWorkspace` — единственный owner committed/draft sources, manual layouts, revision, compilation state, last-valid model и history.
+- DSL/source — canonical persisted semantics; model, tree, inspector и canvas производны.
+- Все semantic writes идут через дискриминированные `EditorCommand` и serialization queue.
+- Source edits принадлежат language/document layer и проверяются candidate compile до commit.
+- `@likec4/diagram` владеет renderer, layout и gestures; semantic CRUD через layout-only `ViewChange` запрещён.
+- Manual layout хранится только как `.likec4/<ViewId>.likec4.snap`.
 - Selection, active view, focus, dialog и active tools — transient UI state.
-- WP-07 владеет IndexedDB, ZIP, migrations и multi-project persistence; WP-08 владеет release hardening.
+- Static view creation source-preserving и fail-closed при неоднозначном target URI.
+- WP-05 browser flow drag → persist → reload → export → reset → import доказан Playwright без retries.
+- WP-07 владеет IndexedDB, ZIP, migrations и multi-project persistence.
+- WP-08 владеет release hardening и финальным MVP gate.
 
-### Assumptions, которые агент обязан проверить исполняемым proof
+Evidence WP-05:
 
-- текущая grammar/AST уже содержит необходимые dynamic/deployment constructs;
-- `@likec4/language-services` предоставляет достаточные linked AST/CST boundaries для минимальных edits;
-- существующий compiler может layout/render dynamic и deployment views в browser;
-- текущий `@likec4/diagram` public API достаточен для отображения и выбора сущностей без нового semantic API.
+- PR #6 merged как `44c2729965754bc27c5e772957032ec3c4d117a2`;
+- final PR head `79d1d5616bd1e5fd5be3bc8711ebd07def740768`;
+- `GUI-to-code` run `30654350594` — success;
+- root `CI (PR & push)` run `30654352163` — success;
+- `push` run `30654352400` — success.
 
-Если любое предположение не подтверждается focused test/prototype, не обходить owner. Зафиксировать точный gap и минимальный interface proposal в `apps/gui-to-code/decisions/`, пометить WP как `blocked` только если vertical slice действительно невозможно завершить без нового public contract.
+## 4. Обязательный discovery gate до production code
 
-### Frozen decisions
+WP-06 нельзя реализовывать на предположениях о grammar или model shape.
 
-- Не использовать regex, brace parser, global string replacement или whole-document regeneration для существующего source.
-- Не добавлять второй mutable graph/document model.
-- Не импортировать `@xyflow/react` в app для хранения geometry.
-- Не расширять grammar ради удобства UI.
-- Не добавлять внешние dependencies без доказанного обязательного gap.
-- Не начинать relation metadata/style CRUD, IndexedDB, ZIP, multi-file project UI, backend collaboration или AI generation, если они не являются минимально необходимой частью dynamic/deployment vertical.
+Агент обязан найти и доказать исполняемыми tests/prototypes:
 
-## 3. Product boundary — minimum complete WP-06
+- syntax и AST dynamic view;
+- syntax и AST dynamic step, direction и endpoints;
+- parsed/model representation dynamic view/steps;
+- layout/render support dynamic view в browser;
+- specification vocabulary deployment entities;
+- syntax/AST deployment element, instance/reference и relation;
+- parsed/model representation deployment family;
+- layout/render support deployment view в browser;
+- доступные AST/CST insertion boundaries и document URI ownership.
 
-### 3.1 Dynamic workflow
+Создать в PR body таблицу:
 
-Поддержать один честный end-to-end сценарий:
+| Construct | Grammar/AST owner | Parsed/model representation | Source document/range | Renderer proof | Required edit owner |
+| --- | --- | --- | --- | --- | --- |
+| Dynamic view | … | … | … | … | … |
+| Dynamic step | … | … | … | … | … |
+| Deployment view | … | … | … | … | … |
+| Deployment entity/reference | … | … | … | … | … |
+| Deployment relation | … | … | … | … | … |
+
+До заполнения таблицы и появления parse → model → render proofs production UI и workspace commands не менять.
+
+Если public contract отсутствует, не обходить owner. Зафиксировать точный gap и минимальный interface proposal в `apps/gui-to-code/decisions/`.
+
+## 5. Product scope
+
+### 5.1 Dynamic minimum
+
+Поддержать один законченный сценарий:
 
 1. пользователь создаёт dynamic view с корректным уникальным `ViewId`;
-2. выбирает существующие logical endpoints из model;
-3. добавляет направленный dynamic step через UI;
-4. DSL получает минимальный source-preserving dynamic declaration/step;
-5. candidate компилируется, view появляется в selector и рендерится как dynamic;
-6. Undo удаляет ровно одно последнее semantic действие; Redo восстанавливает его;
-7. missing endpoint, stale revision, duplicate/invalid ID и unsupported scope отклоняются без mutation.
+2. выбирает существующие logical endpoints из compiled model;
+3. добавляет один направленный dynamic step;
+4. document owner вносит минимальный source-preserving edit;
+5. candidate компилируется;
+6. verification подтверждает exact view type, direction и endpoints;
+7. view появляется в selector и рендерится как dynamic;
+8. Undo удаляет ровно последнее semantic действие;
+9. Redo восстанавливает его;
+10. stale revision, invalid/duplicate ID, missing endpoint и unsupported scope отклоняются без mutation.
 
-Минимальный набор не должен притворяться полным dynamic editor. Parallel/loop/branch/nested groups, step metadata и reorder добавлять только если они обязательны для валидного базового сценария или уже естественно поддерживаются тем же contract без расширения scope.
+Не включать без доказанной необходимости:
 
-### 3.2 Deployment workflow
+- parallel/loop/branch groups;
+- nested dynamic groups;
+- reorder steps;
+- advanced step metadata/styles;
+- generic visual workflow engine.
 
-Поддержать один честный end-to-end сценарий:
+### 5.2 Deployment minimum
+
+Поддержать один законченный сценарий:
 
 1. пользователь создаёт deployment view;
-2. создаёт минимальную deployment entity, разрешённую текущей specification/grammar;
-3. при необходимости создаёт instance/reference существующего logical element через типизированный selector;
+2. создаёт минимальную deployment entity, реально разрешённую текущей grammar/specification;
+3. при необходимости создаёт instance/reference существующего logical element через typed selector;
 4. создаёт одну deployment relation между валидными deployment endpoints;
-5. DSL меняется source-preserving, candidate компилируется и deployment view рендерится;
-6. remove/Undo/Redo не оставляют dangling deployment references;
-7. invalid kind, missing logical target, scope collision, stale revision и unsupported cascade fail closed.
+5. document owner вносит source-preserving edit;
+6. candidate компилируется;
+7. verification подтверждает exact family, kind, scope/reference target и relation endpoints;
+8. deployment view рендерится;
+9. Undo/Redo не оставляет dangling references;
+10. invalid kind, missing logical target, scope collision, stale revision и unsupported cascade fail closed.
 
-Точный минимальный vocabulary определить по grammar, generated AST, parsed model и существующим fixtures. Не маскировать deployment entity под logical `element.create` и не использовать static `view.create` с ложным `_type`.
+Точный vocabulary определяется discovery gate. Не маскировать deployment entity под logical `element.create` и не использовать static `view.create` с ложным `_type`.
 
-## 4. Delivery waves
+## 6. Explicit non-goals
 
-Каждая волна должна заканчиваться focused tests и review diff. Не переходить к UI, пока document/verification contracts не доказаны.
+В WP-06 запрещено начинать:
 
-### Wave 0 — Baseline and executable inventory
+- IndexedDB и workspace migrations;
+- ZIP import/export;
+- multi-project persistence UI;
+- backend collaboration/cloud sync;
+- canonical generator redesign;
+- AI generation;
+- полное rules/styles CRUD;
+- release hardening WP-08;
+- собственную XYFlow geometry model;
+- grammar expansion только ради удобства UI;
+- новый generic command framework вместо расширения существующего pipeline.
 
-- Проверить clean `main`, текущий merge SHA WP-05 и отсутствие незавершённых PR на ту же область.
-- Прогнать baseline verification matrix.
-- Инвентаризировать grammar/AST/model types/fixtures для:
-  - dynamic view declaration;
-  - dynamic step/endpoints;
-  - deployment specification kinds;
-  - deployment elements/instances/relations;
-  - deployment view declaration.
-- Составить таблицу `construct → AST owner → parsed/model representation → source file/range → renderer proof`.
-- Зафиксировать supported minimum и explicit non-goals в PR body до implementation.
+Новая dependency допустима только при документированном обязательном gap и review её ownership/cost.
 
-Acceptance: ни одного production change до появления исполняемого parse/render proof для обеих families.
+## 7. Typed contracts
 
-### Wave 1 — Document-owner proofs
-
-В `@likec4/language-services` или существующем принятом owner:
-
-- добавить минимальные browser/Node-compatible source-edit services;
-- получать target documents/ranges через linked AST/CST и URI;
-- применять exact/unique URI resolution; ambiguous basename отклонять;
-- возвращать revision-bound edit plans;
-- проверять identifier, scope, endpoint existence, collision и construct family до edit;
-- не переписывать соседние comments/whitespace/декларации.
-
-Focused tests:
-
-- add dynamic view и один step;
-- add deployment view/entity/relation;
-- multi-file exact target;
-- ambiguous target fail-closed;
-- stale plan rejection;
-- byte preservation вне edit ranges;
-- duplicate/invalid ID и missing scope/endpoint;
-- retry после уже применённого candidate.
-
-Публичный API owning package требует patch changeset и exports для browser/node. Если public API не нужен, не расширять package surface.
-
-### Wave 2 — Typed workspace contracts
-
-Расширить `apps/gui-to-code/src/editor/contracts.ts` минимальными discriminated commands. Названия выбрать по фактической domain model; рекомендуемая форма:
+После discovery определить минимальные discriminated commands. Имена должны соответствовать фактической domain model. Рекомендуемая форма:
 
 ```ts
 type EditorCommand =
   | ExistingCommands
-  | { type: 'dynamicView.create'; input: ... }
-  | { type: 'dynamicStep.create'; input: ... }
-  | { type: 'deploymentView.create'; input: ... }
-  | { type: 'deploymentElement.create'; input: ... }
-  | { type: 'deploymentRelation.create'; input: ... }
+  | { type: 'dynamicView.create'; input: DynamicViewCreateInput }
+  | { type: 'dynamicStep.create'; input: DynamicStepCreateInput }
+  | { type: 'deploymentView.create'; input: DeploymentViewCreateInput }
+  | { type: 'deploymentElement.create'; input: DeploymentElementCreateInput }
+  | { type: 'deploymentRelation.create'; input: DeploymentRelationCreateInput }
 ```
 
 Требования:
 
-- dynamic/deployment families различимы в типах;
-- every command carries only semantic input, no XY coordinates;
-- document port exposes one method per distinct source-edit responsibility;
-- `CommandResult.applied` returns created IDs/FQNs needed for deterministic selection;
-- issue codes are stable, command-specific and user messages Russian;
-- combined semantic+layout operations не вводить без реального UI action, которое обязано быть атомарным.
+- dynamic и deployment families различимы на уровне типов;
+- command содержит semantic input, но не XY coordinates;
+- document port имеет отдельную ответственность на каждый distinct source edit;
+- `CommandResult.applied` возвращает stable created IDs/FQNs для selection reconciliation;
+- issue codes стабильные и command-specific;
+- user messages русские;
+- workspace switch exhaustiveness проверяется compile-time test;
+- combined semantic+layout operation не вводить без реального атомарного UI action.
 
-Перед реализацией workspace switch добавить compile-time exhaustiveness tests.
+## 8. Source-edit owner contract
 
-### Wave 3 — Workspace execution and verification
+Existing-source edits выполняются только принятым language/document owner.
 
-Для каждого нового command:
+Обязательные свойства:
 
-1. validate current state and revision;
-2. request source-preserving candidate;
-3. compile candidate in isolation;
-4. verify exact semantic delta in compiled model;
-5. reject ambiguous delta or unexpected collateral changes;
-6. commit sources + layouts + one history entry atomically;
-7. return stable created/updated identity.
+- linked AST/CST и source URI используются для target range;
+- exact URI имеет приоритет;
+- unique suffix допустим только при единственном результате;
+- ambiguous basename fail closed;
+- edit plan связан с digest/revision исходных документов;
+- identifier, family, scope, endpoint/reference existence и collisions проверяются до edit;
+- байты вне edit ranges сохраняются;
+- comments, whitespace и соседние declarations не регенерируются;
+- повторное применение stale/already-applied plan не создаёт duplicate construct;
+- browser и Node exports имеют одинаковую семантику.
 
-Mandatory invariants:
+Запрещены regex parser, brace parser, global replacement и whole-document regeneration существующего source.
 
-- dynamic step verification подтверждает direction и exact endpoints;
-- deployment verification подтверждает family/kind/scope/reference target;
-- relation verification находит ровно одну новую relation нужной family;
-- semantic changes preserve existing manual snapshots and expose core drift rather than rewriting snapshots;
-- rejected/conflict result preserves state identity;
-- Undo/Redo compile exact document snapshots before restore;
-- operations use the existing serialization queue.
+Public API owning package требует focused tests, browser/Node exports и patch changeset. Если public API не нужен, package surface не расширять.
 
-### Wave 4 — Russian canvas/UI verticals
+## 9. Workspace execution invariants
 
-Добавить только UI, необходимый для supported minimum:
+Для каждого command:
 
-- создание/выбор dynamic и deployment views;
-- type-aware create controls;
-- endpoint selectors and keyboard alternative;
-- deployment logical-reference selector from compiled model;
-- clear Russian empty/disabled/error/success states;
-- focus restoration after create/cancel;
-- selection reconciliation after created/renamed/removed entities;
-- `busy` disables conflicting semantic/destructive actions.
+1. проверить `expectedRevision` и valid workspace state;
+2. построить source-preserving candidate;
+3. compile candidate изолированно;
+4. проверить ровно ожидаемый semantic delta;
+5. отклонить ambiguous delta или collateral changes;
+6. сохранить sources + existing manualLayouts атомарно;
+7. добавить ровно один history entry;
+8. вернуть stable identity созданной сущности.
 
-UI не парсит DSL, не строит source edits и не хранит duplicate semantic state. Допустимые kinds/endpoints/options derive from specification/compiled model.
+Mandatory verification:
 
-### Wave 5 — Browser acceptance
+- dynamic view имеет exact `_type`/family;
+- dynamic step имеет exact direction и endpoints;
+- deployment entity имеет exact kind, scope и optional logical reference target;
+- deployment relation принадлежит deployment family и имеет exact endpoints;
+- появляется ровно одна ожидаемая сущность/связь;
+- существующие manual snapshots не переписываются;
+- semantic drift остаётся ответственностью core mechanisms;
+- rejected/conflict result сохраняет state identity;
+- invalid candidate не заменяет committed или last-valid state;
+- Undo/Redo компилирует exact document snapshot перед restore;
+- все операции проходят существующую serialization queue.
 
-Добавить isolated Playwright flows:
+## 10. Delivery waves
 
-#### Dynamic golden flow
+### Wave 0 — Baseline
 
-`select scope/endpoints → create dynamic view → add directed step → DSL assertion → render assertion → switch view without revision change → Undo → Redo`
+- fetch latest `main`;
+- записать exact base SHA;
+- проверить отсутствие overlapping open PR;
+- прогнать baseline focused matrix;
+- открыть draft PR и зафиксировать scope/non-goals.
 
-#### Deployment golden flow
+Acceptance: baseline green или каждая pre-existing failure документирована до production changes.
 
-`create deployment view → create deployment entity/reference → create relation → DSL assertion → render assertion → safe remove or Undo/Redo`
+### Wave 1 — Grammar/model/render proofs
 
-#### Negative flow
+- выполнить discovery gate раздела 4;
+- добавить minimal fixtures;
+- доказать parse → model → render для dynamic и deployment;
+- определить exact supported minimum.
+
+Acceptance: обе families доказаны исполняемыми tests/prototypes.
+
+### Wave 2 — Document services
+
+Сначала написать focused tests, затем implementation:
+
+- dynamic view create;
+- dynamic step create;
+- deployment view create;
+- deployment entity/reference create;
+- deployment relation create;
+- exact multi-file target;
+- ambiguous target rejection;
+- stale plan rejection;
+- duplicate/invalid ID;
+- missing scope/endpoint/reference;
+- byte preservation вне edit range;
+- retry/already-applied behavior.
+
+Acceptance: source-edit owner доказан независимо от React/UI.
+
+### Wave 3 — Typed workspace commands
+
+- расширить contracts;
+- добавить issue codes/results;
+- добавить exhaustiveness proof;
+- реализовать candidate compile и command-specific verification;
+- доказать atomic history и state identity on reject.
+
+Acceptance: dynamic и deployment command tests green без UI.
+
+### Wave 4 — Dynamic vertical
+
+- Russian create/select controls;
+- endpoint selectors из compiled model;
+- keyboard alternative;
+- focus restoration;
+- busy/invalid gating;
+- selection reconciliation;
+- dynamic browser acceptance.
+
+Acceptance: полный dynamic golden flow green до начала deployment UI.
+
+### Wave 5 — Deployment vertical
+
+- deployment view create/select;
+- type-aware entity/reference controls;
+- logical target selector;
+- deployment relation controls;
+- safe Undo/Redo/removal behavior;
+- deployment browser acceptance.
+
+Acceptance: полный deployment golden flow green.
+
+### Wave 6 — Negative and regression coverage
 
 - stale action;
 - invalid/duplicate ID;
 - missing endpoint/reference;
+- unsupported kind/scope/cascade;
 - invalid direct DSL keeps last valid diagram;
-- reload preserves existing WP-05 source/layout behavior without claiming WP-07 workspace persistence.
+- WP-04 rename/remove regression;
+- WP-05 create/select/layout/reload/export/reset/import regression.
 
-Selectors use roles/labels/domain IDs, not implementation timing or pixel snapshots. Wait for observable state, not arbitrary sleeps.
+Acceptance: новые flows не ослабляют previous-package guarantees.
 
-### Wave 6 — Reviews, docs and final-head evidence
+### Wave 7 — Reviews, docs and exact-head verification
 
 Correctness review:
 
 - source preservation;
-- exact semantic verification;
+- exact semantic delta;
 - reference integrity;
 - stale/concurrent operations;
 - atomic history;
 - invalid rollback;
-- browser/node export parity.
+- browser/Node parity.
 
 Architecture/product review:
 
 - one SSOT;
-- no `ViewChange` semantic abuse;
+- no semantic `ViewChange` abuse;
 - no app-owned geometry;
-- no WP-07/WP-08 scope leakage;
-- UI vocabulary matches real LikeC4 domain;
-- supported minimum is honestly documented.
+- no WP-07/WP-08 leakage;
+- UI vocabulary совпадает с реальным LikeC4 domain;
+- documented support не шире implementation.
 
-Update only after behavior is proven:
+Исправить все P0/P1 findings, затем обновить docs и выполнить full final matrix на одном неизменившемся head.
 
-- `README.md` current behavior and non-goals;
-- `ROADMAP.STATUS.md` managed state/evidence/handoff;
-- PR body with final head, checks, reviews and residual risks.
+## 11. Browser acceptance
 
-## 5. Test and verification matrix
+### Dynamic golden flow
 
-Run focused checks during development, then the exact final matrix on one unchanged head:
+```text
+select endpoints
+→ create dynamic view
+→ add directed step
+→ assert exact DSL
+→ assert dynamic render
+→ switch view without revision change
+→ Undo
+→ Redo
+```
+
+### Deployment golden flow
+
+```text
+create deployment view
+→ create deployment entity/reference
+→ create deployment relation
+→ assert exact DSL
+→ assert deployment render
+→ Undo/Redo or safe remove
+```
+
+### Negative flow
+
+- stale revision;
+- invalid/duplicate ID;
+- missing endpoint/reference;
+- unsupported deployment kind/scope;
+- invalid direct DSL сохраняет last-valid diagram;
+- rejected action не меняет source, revision, history и state identity.
+
+Selectors используют roles, labels и domain IDs. Запрещены arbitrary sleeps, pixel-only assertions и implementation-timing selectors.
+
+## 12. Verification matrix
+
+Focused checks запускать после каждой wave. На final head выполнить:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -286,88 +438,115 @@ git diff --check
 Required GitHub evidence:
 
 - standalone `GUI-to-code` workflow success;
-- root `CI (PR & push)` success including Linux/Windows, TypeScript, package build, GUI job and downstream quality gate;
-- push workflow success if repository policy triggers it;
+- root `CI (PR & push)` success, включая Linux/Windows, TypeScript, package build, GUI job и downstream quality gate;
+- push workflow success, если запускается repository policy;
 - no pending/failed required checks;
 - no unresolved review threads;
-- PR mergeable and not draft.
+- PR mergeable и не draft;
+- все run IDs относятся к одному final head SHA.
 
-## 6. Review checklist
+## 13. Stop conditions
 
-### P0 blockers
+Остановить implementation и перевести WP в `blocked` можно только при доказанном условии:
 
-- second semantic owner or UI-side source mutation;
-- dynamic/deployment command represented as static logical command with misleading verification;
-- whole-document regeneration for existing source;
-- stale operation can commit;
-- candidate compile skipped;
-- invalid candidate replaces committed state;
-- manual snapshots rewritten by semantic command;
-- browser acceptance absent.
+- grammar/model не может представить required minimum;
+- safe source range отсутствует, а owner/public contract требует отдельного architecture decision;
+- browser compiler или renderer не поддерживает construct;
+- required change неизбежно вводит второй SSOT или app-owned geometry;
+- branch реально изменяется другим executor и возникает риск потери работы;
+- новый base несовместимо изменил frozen contracts, а безопасная адаптация невозможна в WP-06.
 
-### P1 blockers
+Перед stop агент обязан предоставить:
 
-- ambiguous target document edited silently;
-- exact created delta is not verified;
-- focus/selection lost after command;
-- hard-coded kinds diverge from specification;
-- Undo/Redo creates multiple history entries for one action;
-- public package change without tests/changeset;
-- README claims unsupported family coverage.
+- воспроизводимый test/prototype;
+- exact failing contract;
+- минимальный interface/ADR proposal;
+- список выполненных и оставшихся работ.
 
-## 7. Change budget
+Не являются stop condition:
 
-Expected primary scope:
+- failing tests;
+- typecheck/lint/build errors;
+- CI infrastructure retry;
+- missing fixture;
+- необходимость исправить собственную реализацию;
+- необходимость второго review pass.
+
+## 14. P0/P1 review blockers
+
+### P0
+
+- второй semantic owner или UI-side source mutation;
+- dynamic/deployment представлены misleading static/logical commands;
+- whole-document regeneration существующего source;
+- stale operation может commit;
+- candidate compile или exact semantic verification отсутствует;
+- invalid candidate заменяет committed state;
+- semantic command переписывает manual snapshots;
+- browser acceptance отсутствует;
+- final PR green только за счёт retries/flaky suppression.
+
+### P1
+
+- ambiguous target document редактируется молча;
+- exact created delta не проверен;
+- hard-coded kinds расходятся со specification;
+- focus/selection теряются после command;
+- Undo/Redo создаёт несколько history entries на одно действие;
+- public package change без focused tests/changeset;
+- README заявляет неподдержанные сценарии;
+- WP-07/WP-08 scope попал в PR без обязательного gap.
+
+## 15. Expected change budget
+
+Основной scope:
 
 - `apps/gui-to-code/src/editor/contracts.ts`;
-- `apps/gui-to-code/src/editor/workspace.ts` and focused specs;
+- `apps/gui-to-code/src/editor/workspace.ts` и focused specs;
 - `apps/gui-to-code/src/editor/language-services-adapter.ts`;
-- new focused document services/specs in accepted owning package;
-- minimal dynamic/deployment UI components and tests;
+- focused document services/specs в принятом owning package;
+- minimal dynamic/deployment UI components;
 - isolated Playwright specs;
-- changeset only for public package surface;
-- README/roadmap status after proof.
+- changeset только при public package surface change;
+- `README.md` и `ROADMAP.STATUS.md` после доказанного behavior.
 
-Changes outside this scope require written evidence in PR body: missing owner, missing type/export, or existing defect blocking WP-06.
+Любое изменение за пределами scope требует evidence в PR body: missing owner, missing public type/export или existing defect, блокирующий WP-06.
 
-## 8. Stop conditions
+## 16. Первые действия агента
 
-Stop implementation and mark `blocked` only when one of these is proven:
+1. Прочитать authority documents и это ТЗ.
+2. Fetch latest `main`; записать exact base SHA.
+3. Подтвердить merge PR #6 и отсутствие overlapping PR.
+4. Создать `feat/gui-to-code-wp06-dynamic-deployment`.
+5. Прогнать baseline matrix.
+6. Открыть draft PR с scope, non-goals и baseline evidence.
+7. Заполнить construct inventory table.
+8. Добавить parse → model → render proofs.
+9. Зафиксировать exact supported minimum.
+10. Написать document-owner tests до implementation.
+11. Зафиксировать typed commands/results/issues и exhaustiveness.
+12. Завершить dynamic vertical.
+13. Завершить deployment vertical.
+14. Добавить negative/regression acceptance.
+15. Провести correctness review и исправить findings.
+16. Провести architecture/product review и исправить findings.
+17. Обновить docs/roadmap.
+18. Выполнить exact-head full matrix и перевести PR из draft.
 
-- grammar/model cannot represent required minimum;
-- no safe source range exists and a public owner change requires architecture decision;
-- browser compiler/renderer cannot process the construct;
-- required change would introduce a second SSOT or own XYFlow geometry;
-- branch/head is being concurrently modified by another executor;
-- base changed incompatibly and rebase resolution would alter frozen contracts.
+## 17. Completion report
 
-A failing test, type error, CI failure or missing fixture is not a stop condition; diagnose and fix it.
+Финальный ответ агента обязан содержать:
 
-## 9. First 12 actions for the next agent
-
-1. Read authority documents and this plan.
-2. Fetch latest `main`; record exact base SHA.
-3. Confirm PR #6/WP-05 is merged and no overlapping open PR exists.
-4. Create branch `feat/gui-to-code-wp06-dynamic-deployment` from that SHA.
-5. Run baseline matrix; preserve evidence.
-6. Inventory grammar/AST/types/fixtures and produce construct table.
-7. Write parse→model→render proofs for one dynamic and one deployment sample.
-8. Define supported minimum and explicit non-goals in draft PR body.
-9. Implement document-owner focused tests before production adapter code.
-10. Freeze typed commands/results/issue codes with exhaustiveness tests.
-11. Implement dynamic vertical completely before deployment vertical.
-12. Complete deployment vertical, browser acceptance, two review passes, docs and final-head verification.
-
-## 10. Completion report format
-
-Final agent response must state:
-
-- PR URL, base SHA, final head SHA;
-- exact supported dynamic/deployment scenarios;
-- architecture boundaries preserved;
-- focused tests and full workflow run IDs;
-- correctness review findings/fixes;
-- architecture/product review findings/fixes;
-- unresolved risks or `none`;
-- roadmap transition (`WP-06 done`, `WP-07 ready`);
-- explicit statement that PR was not merged unless the user separately ordered merge.
+- PR URL;
+- base SHA;
+- final head SHA;
+- exact поддержанные dynamic/deployment scenarios;
+- сохранённые architecture boundaries;
+- focused tests;
+- exact workflow run IDs;
+- correctness review findings и fixes;
+- architecture/product review findings и fixes;
+- unresolved risks или `none`;
+- roadmap transition: `WP-06 done`, `WP-07 ready`;
+- подтверждение: PR green, mergeable, non-draft, no unresolved threads;
+- явное указание, что PR не merged, если пользователь отдельно не приказал merge.
