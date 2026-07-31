@@ -1,0 +1,37 @@
+name: WP-06 discovery
+
+on:
+  push:
+    branches:
+      - feat/gui-to-code-wp06-dynamic-deployment
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repository paths
+        run: |
+          find packages/language-server packages/language-services apps/gui-to-code e2e/tests/gui-to-code -type f | sort
+      - name: Dynamic and deployment references
+        run: |
+          grep -RIn --exclude-dir=node_modules -E "dynamic view|deployment view|instanceOf|DynamicView|DeploymentView|DeploymentNode|DynamicStep" packages apps e2e | head -n 2000 || true
+      - name: Relevant source files
+        run: |
+          for file in \
+            packages/language-services/src/common/DocumentEditService.ts \
+            packages/language-services/src/common/ElementViewDocumentEditService.ts \
+            packages/language-services/src/common/elementViewSourceEdit.ts \
+            apps/gui-to-code/src/editor/contracts.ts \
+            apps/gui-to-code/src/editor/language-services-adapter.ts \
+            apps/gui-to-code/src/editor/workspace.ts \
+            apps/gui-to-code/src/editor/use-semantic-editor.ts \
+            apps/gui-to-code/src/App.tsx \
+            apps/gui-to-code/src/editor/ui/ViewToolbar.tsx; do
+              echo "===== $file ====="
+              sed -n '1,2600p' "$file"
+          done
