@@ -66,7 +66,18 @@ jobs:
         working-directory: e2e
       - run: pnpm install:chromium
         working-directory: e2e
-      - run: pnpm exec playwright test -c playwright.gui-to-code.config.ts
+      - name: Run GUI-to-code Playwright acceptance
+        run: pnpm exec playwright test -c playwright.gui-to-code.config.ts
         working-directory: e2e
+      - name: Upload GUI-to-code Playwright diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-to-code-playwright-report
+          path: |
+            e2e/playwright-report/gui-to-code
+            e2e/test-results
+          if-no-files-found: ignore
+          retention-days: 7
       - run: pnpm check:agent-instructions
       - run: git diff --check
