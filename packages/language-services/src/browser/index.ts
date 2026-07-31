@@ -38,6 +38,12 @@ export {
   sourceRevision,
 } from '../common/DocumentEditService'
 
+export {
+  type AddElementViewInput,
+  createElementViewDocumentEditService,
+  ElementViewDocumentEditService,
+} from '../common/ElementViewDocumentEditService'
+
 /**
  * Create a LikeC4 instance from a workspace directory
  * @param _workspace - The workspace directory path
