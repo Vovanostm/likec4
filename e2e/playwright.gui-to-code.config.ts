@@ -5,7 +5,7 @@ export default defineConfig({
   testDir: 'tests/gui-to-code',
   timeout: 30 * 1000,
   forbidOnly: isCI,
-  retries: isCI ? 1 : 0,
+  retries: 0,
   reporter: isCI
     ? [['github'], ['list'], ['html', { outputFolder: 'playwright-report/gui-to-code', open: 'never' }]]
     : 'list',
