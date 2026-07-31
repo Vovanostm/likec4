@@ -10,6 +10,14 @@ export default defineConfig({
         replacement: resolve(import.meta.dirname, '../../packages/core/src/index.ts'),
       },
       {
+        find: /^@likec4\/core\/types$/,
+        replacement: resolve(import.meta.dirname, '../../packages/core/src/types/index.ts'),
+      },
+      {
+        find: /^@likec4\/core\/utils$/,
+        replacement: resolve(import.meta.dirname, '../../packages/core/src/utils/index.ts'),
+      },
+      {
         find: '@likec4/language-server/browser',
         replacement: resolve(import.meta.dirname, '../../packages/language-server/src/browser/index.ts'),
       },
