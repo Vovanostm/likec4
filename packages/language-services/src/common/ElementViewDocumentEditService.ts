@@ -1,6 +1,5 @@
 import type { Fqn, ProjectId, ViewId } from '@likec4/core/types'
-import type { AstNode, CstNode, LangiumDocument } from 'langium'
-import { URI } from 'vscode-uri'
+import { URI, type AstNode, type CstNode, type LangiumDocument } from 'langium'
 import type { LikeC4, LikeC4Langium } from './LikeC4'
 import {
   DocumentEditError,
@@ -101,7 +100,7 @@ export class ElementViewDocumentEditService {
 
   private findTargetDocument(projectId: ProjectId, documentUri?: string): LangiumDocument {
     const documents = [...this.langium.shared.workspace.LangiumDocuments.userDocuments]
-      .filter(document => document.likec4ProjectId === projectId)
+      .filter(document => document.likec4ProjectId == null || document.likec4ProjectId === projectId)
     const requestedKey = documentUri ? sourceKey(URI.parse(documentUri).toString()) : null
     const selected = requestedKey
       ? documents.find(document => sourceKey(document.uri.toString()) === requestedKey)
