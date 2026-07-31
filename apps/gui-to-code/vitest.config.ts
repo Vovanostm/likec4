@@ -22,6 +22,10 @@ export default defineConfig({
         replacement: resolve(import.meta.dirname, '../../packages/core/src/utils/index.ts'),
       },
       {
+        find: /^@likec4\/layouts$/,
+        replacement: resolve(import.meta.dirname, '../../packages/layouts/src/index.ts'),
+      },
+      {
         find: /^@likec4\/log$/,
         replacement: resolve(import.meta.dirname, '../../packages/log/src/index.ts'),
       },
