@@ -203,7 +203,7 @@ export function useWorkspaceRuntime() {
           if (!view) throw new Error(`Вид ${viewId} больше не существует.`)
           return view
         }
-        const view = current.state.lastValidModel?.$data.views[viewId]
+        const view = current.state.lastValidModel?.findView(viewId)?.$layouted
         if (!view) throw new Error(`Вид ${viewId} больше не существует.`)
         return view
       },
