@@ -42,20 +42,20 @@ export function parseSnapshot(
   expectedType?: ViewType,
 ): SnapshotParseResult {
   if (!isRecord(value)) return invalid('Файл раскладки должен содержать JSON-объект.')
-  if (value._stage !== 'layouted') return invalid('Раскладка должна иметь stage «layouted».')
-  if (value._type !== 'element' && value._type !== 'dynamic' && value._type !== 'deployment') {
+  if (value['_stage'] !== 'layouted') return invalid('Раскладка должна иметь stage «layouted».')
+  if (value['_type'] !== 'element' && value['_type'] !== 'dynamic' && value['_type'] !== 'deployment') {
     return invalid('Раскладка содержит неизвестный тип вида.')
   }
-  if (typeof value.id !== 'string' || !value.id) return invalid('В раскладке отсутствует ViewId.')
-  if (expectedViewId && value.id !== expectedViewId) return invalid('Раскладка принадлежит другому виду.')
-  if (expectedType && value._type !== expectedType) return invalid('Тип раскладки не совпадает с выбранным видом.')
-  if (typeof value.hash !== 'string') return invalid('В раскладке отсутствует hash исходного layout.')
-  if (!isBounds(value.bounds)) return invalid('Раскладка содержит некорректные bounds.')
-  if (!isRecord(value.autoLayout)) return invalid('Раскладка содержит некорректный autoLayout.')
-  if (!Array.isArray(value.nodes) || !value.nodes.every(isSnapshotNode)) {
+  if (typeof value['id'] !== 'string' || !value['id']) return invalid('В раскладке отсутствует ViewId.')
+  if (expectedViewId && value['id'] !== expectedViewId) return invalid('Раскладка принадлежит другому виду.')
+  if (expectedType && value['_type'] !== expectedType) return invalid('Тип раскладки не совпадает с выбранным видом.')
+  if (typeof value['hash'] !== 'string') return invalid('В раскладке отсутствует hash исходного layout.')
+  if (!isBounds(value['bounds'])) return invalid('Раскладка содержит некорректные bounds.')
+  if (!isRecord(value['autoLayout'])) return invalid('Раскладка содержит некорректный autoLayout.')
+  if (!Array.isArray(value['nodes']) || !value['nodes'].every(isSnapshotNode)) {
     return invalid('Раскладка содержит некорректные узлы.')
   }
-  if (!Array.isArray(value.edges) || !value.edges.every(isSnapshotEdge)) {
+  if (!Array.isArray(value['edges']) || !value['edges'].every(isSnapshotEdge)) {
     return invalid('Раскладка содержит некорректные связи.')
   }
   return { ok: true, snapshot: structuredClone(value) as ViewManualLayoutSnapshot }
@@ -82,13 +82,13 @@ export function readStoredManualLayouts(storage: Pick<Storage, 'getItem'>): Stor
   } catch (_error) {
     return { layouts: {}, diagnostics: ['Сохранённые раскладки повреждены и были проигнорированы.'] }
   }
-  if (!isRecord(envelope) || envelope.version !== 1 || !isRecord(envelope.files)) {
+  if (!isRecord(envelope) || envelope['version'] !== 1 || !isRecord(envelope['files'])) {
     return { layouts: {}, diagnostics: ['Версия сохранённых раскладок не поддерживается.'] }
   }
 
   const layouts = {} as Record<ViewId, ViewManualLayoutSnapshot>
   const diagnostics: string[] = []
-  for (const [path, value] of Object.entries(envelope.files)) {
+  for (const [path, value] of Object.entries(envelope['files'])) {
     const viewId = viewIdFromPath(path)
     if (!viewId) {
       diagnostics.push(`Файл раскладки «${path}» имеет некорректный путь и был проигнорирован.`)
@@ -149,27 +149,27 @@ function isFiniteNumber(value: unknown): value is number {
 
 function isBounds(value: unknown): boolean {
   return isRecord(value)
-    && isFiniteNumber(value.x)
-    && isFiniteNumber(value.y)
-    && isFiniteNumber(value.width)
-    && isFiniteNumber(value.height)
+    && isFiniteNumber(value['x'])
+    && isFiniteNumber(value['y'])
+    && isFiniteNumber(value['width'])
+    && isFiniteNumber(value['height'])
 }
 
 function isSnapshotNode(value: unknown): boolean {
   return isRecord(value)
-    && typeof value.id === 'string'
-    && Array.isArray(value.children)
-    && value.children.every(child => typeof child === 'string')
-    && isFiniteNumber(value.x)
-    && isFiniteNumber(value.y)
-    && isFiniteNumber(value.width)
-    && isFiniteNumber(value.height)
+    && typeof value['id'] === 'string'
+    && Array.isArray(value['children'])
+    && value['children'].every(child => typeof child === 'string')
+    && isFiniteNumber(value['x'])
+    && isFiniteNumber(value['y'])
+    && isFiniteNumber(value['width'])
+    && isFiniteNumber(value['height'])
 }
 
 function isSnapshotEdge(value: unknown): boolean {
   return isRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.source === 'string'
-    && typeof value.target === 'string'
-    && Array.isArray(value.points)
+    && typeof value['id'] === 'string'
+    && typeof value['source'] === 'string'
+    && typeof value['target'] === 'string'
+    && Array.isArray(value['points'])
 }
