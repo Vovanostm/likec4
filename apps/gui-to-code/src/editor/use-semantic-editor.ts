@@ -9,6 +9,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { completeRelationConnection } from './canvas-relation-intents'
 import type { RemovalDependencyReport } from './contracts'
+import { patchFromForm } from './ui/element-form'
 import type { ElementFormValues } from './ui/element-form'
 import {
   buildStructureTree,
@@ -86,15 +87,7 @@ export function useSemanticEditor(runtime: ReturnType<typeof useWorkspaceRuntime
     if (!selection) return
     const result = await runtime.dispatchSemantic({
       type: 'element.patch',
-      input: {
-        id: selection.id,
-        patch: {
-          title: values.title,
-          description: values.description,
-          technology: values.technology,
-          tags: values.tags,
-        },
-      },
+      input: { id: selection.id, patch: patchFromForm(values) },
     }, 'Не удалось сохранить свойства.')
     resultError(result, 'Не удалось сохранить свойства.')
     if (result?.status === 'applied') runtime.setFeedback('Свойства элемента сохранены.')
@@ -104,7 +97,7 @@ export function useSemanticEditor(runtime: ReturnType<typeof useWorkspaceRuntime
     if (!selection) return
     const result = await runtime.dispatchSemantic({
       type: 'element.rename',
-      input: { id: selection.id, newId },
+      input: { id: selection.id, newId: newId.trim() },
     }, 'Не удалось переименовать элемент.')
     resultError(result, 'Не удалось переименовать элемент.')
     if (result?.status === 'applied' && result.command === 'element.rename') {
@@ -229,16 +222,18 @@ export function useSemanticEditor(runtime: ReturnType<typeof useWorkspaceRuntime
   const undo = async (): Promise<void> => {
     const result = await runtime.undo()
     resetTools()
-    if (runtime.state && result) {
-      setSelection(previous => selectionAfterResult(previous, result, runtime.state!))
+    const next = runtime.workspace.current?.state
+    if (next && result) {
+      setSelection(previous => selectionAfterResult(previous, result, next))
     }
   }
 
   const redo = async (): Promise<void> => {
     const result = await runtime.redo()
     resetTools()
-    if (runtime.state && result) {
-      setSelection(previous => selectionAfterResult(previous, result, runtime.state!))
+    const next = runtime.workspace.current?.state
+    if (next && result) {
+      setSelection(previous => selectionAfterResult(previous, result, next))
     }
   }
 
