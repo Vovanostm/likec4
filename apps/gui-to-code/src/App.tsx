@@ -265,7 +265,9 @@ export function App() {
       const result = await workspace.current?.dispatch(renameOperation(selection.id, state.revision, newId))
       if (!result) return
       finishResult(result, 'Не удалось переименовать элемент.')
-      if (result.status === 'applied') setFeedback(`Элемент переименован: ${result.updatedElementId}.`)
+      if (result.status === 'applied' && result.command === 'element.rename') {
+        setFeedback(`Элемент переименован: ${result.updatedElementId}.`)
+      }
     } finally {
       setBusy(false)
     }
@@ -278,7 +280,9 @@ export function App() {
       const result = await workspace.current?.dispatch(moveOperation(selection.id, state.revision, parentId))
       if (!result) return
       finishResult(result, 'Не удалось переместить элемент.')
-      if (result.status === 'applied') setFeedback(`Элемент перемещён: ${result.updatedElementId}.`)
+      if (result.status === 'applied' && result.command === 'element.move') {
+        setFeedback(`Элемент перемещён: ${result.updatedElementId}.`)
+      }
     } finally {
       setBusy(false)
     }

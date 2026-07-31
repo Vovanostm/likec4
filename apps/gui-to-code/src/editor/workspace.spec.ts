@@ -206,7 +206,7 @@ describe('EditorWorkspace WP-04', () => {
 
     expect(result).toEqual({ status: 'applied', command: 'element.move', revision: 1, updatedElementId: 'platform.shop' })
     expect(workspace.state.lastValidModel?.$data.elements['platform.shop.web']).toBeDefined()
-    expect(workspace.state.lastValidModel?.$data.elements.shop).toBeUndefined()
+    expect(workspace.state.lastValidModel?.$data.elements['shop']).toBeUndefined()
   })
 
   it('renames a parent and preserves descendants', async () => {

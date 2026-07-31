@@ -499,9 +499,14 @@ export class EditorWorkspace {
   private async applyRemovalInspection(id: Fqn, expectedRevision: number): Promise<RemovalInspectionResult> {
     const state = this.current
     if (expectedRevision !== state.revision) return { status: 'conflict', revision: state.revision }
-    const invalid = this.invalidWorkspaceResult(state)
-    if (invalid) return invalid
-    if (!state.lastValidModel?.$data.elements[id]) {
+    if (state.compilation.status !== 'valid') {
+    return {
+      status: 'rejected',
+      revision: state.revision,
+      issues: [issue('workspace-invalid', 'Изменение отклонено: исправьте ошибки в коде проекта.')],
+    }
+  }
+  if (!state.lastValidModel?.$data.elements[id]) {
       return {
         status: 'rejected',
         revision: state.revision,
@@ -614,7 +619,7 @@ export class EditorWorkspace {
     if (patch.title !== undefined && element.title !== patch.title.trim()) return false
     if (patch.description !== undefined && (element.description ?? null) !== patch.description) return false
     if (patch.technology !== undefined && (element.technology ?? null) !== patch.technology) return false
-    if (patch.tags !== undefined && !equalStringArrays(element.tags, [...new Set(patch.tags)])) return false
+    if (patch.tags !== undefined && !equalStringArrays(element.tags ?? undefined, [...new Set(patch.tags)])) return false
     return true
   }
 
