@@ -14,24 +14,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Repository paths
+      - name: Locate grammar and parser owners
         run: |
-          find packages/language-server packages/language-services apps/gui-to-code e2e/tests/gui-to-code -type f | sort
-      - name: Dynamic and deployment references
+          echo '=== LANGIUM FILES ==='
+          find packages -type f -name '*.langium' | sort
+          echo '=== OWNER FILES ==='
+          find packages apps e2e -type f | grep -Ei '(dynamic|deployment|workspace|viewtoolbar|semantic-editor)' | sort | head -n 400
+      - name: Grammar rules
         run: |
-          grep -RIn --exclude-dir=node_modules -E "dynamic view|deployment view|instanceOf|DynamicView|DeploymentView|DeploymentNode|DynamicStep" packages apps e2e | head -n 2000 || true
-      - name: Relevant source files
-        run: |
-          for file in \
-            packages/language-services/src/common/DocumentEditService.ts \
-            packages/language-services/src/common/ElementViewDocumentEditService.ts \
-            packages/language-services/src/common/elementViewSourceEdit.ts \
-            apps/gui-to-code/src/editor/contracts.ts \
-            apps/gui-to-code/src/editor/language-services-adapter.ts \
-            apps/gui-to-code/src/editor/workspace.ts \
-            apps/gui-to-code/src/editor/use-semantic-editor.ts \
-            apps/gui-to-code/src/App.tsx \
-            apps/gui-to-code/src/editor/ui/ViewToolbar.tsx; do
+          for file in $(find packages -type f -name '*.langium' | sort); do
+            if grep -qE 'DynamicView|DeploymentView|DeploymentNode|instanceOf' "$file"; then
               echo "===== $file ====="
-              sed -n '1,2600p' "$file"
+              grep -n -B 8 -A 60 -E 'DynamicView|DeploymentView|DeploymentNode|instanceOf' "$file" | head -n 500
+            fi
           done
+      - name: Model and parser shapes
+        run: |
+          grep -RIn -B 5 -A 25 --exclude-dir=node_modules -E 'class DynamicViewParser|type DynamicView|interface DynamicView|deploymentNode|instanceOf|DeploymentView' packages/language-server packages/core packages/layouts | head -n 1200 || true
+      - name: Existing fixtures
+        run: |
+          grep -RIn -B 4 -A 20 --exclude-dir=node_modules -E 'dynamic view|deployment view|instanceOf' packages/*/src packages/*/test packages/*/tests e2e 2>/dev/null | head -n 1200 || true
+      - name: Workspace command sections
+        run: |
+          echo '=== CONTRACT TYPES ==='
+          grep -n -B 5 -A 80 -E 'EditorCommand|EditorDocumentPort|CommandIssueCode|AppliedCommandResult' apps/gui-to-code/src/editor/contracts.ts
+          echo '=== WORKSPACE SWITCH AND VIEW ==='
+          grep -n -B 10 -A 180 -E "switch \(operation.semantic.type\)|applyCreateView|applyCreateRelation" apps/gui-to-code/src/editor/workspace.ts
+          echo '=== ADAPTER ==='
+          sed -n '1,500p' apps/gui-to-code/src/editor/language-services-adapter.ts
+          echo '=== UI ==='
+          sed -n '1,700p' apps/gui-to-code/src/editor/ui/ViewToolbar.tsx
+          sed -n '1,900p' apps/gui-to-code/src/editor/use-semantic-editor.ts
