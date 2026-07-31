@@ -10,6 +10,10 @@ export default defineConfig({
         replacement: resolve(import.meta.dirname, '../../packages/core/src/index.ts'),
       },
       {
+        find: /^@likec4\/core\/model$/,
+        replacement: resolve(import.meta.dirname, '../../packages/core/src/model/index.ts'),
+      },
+      {
         find: /^@likec4\/core\/types$/,
         replacement: resolve(import.meta.dirname, '../../packages/core/src/types/index.ts'),
       },
