@@ -42,6 +42,9 @@ const documents: EditorDocumentPort = {
   async createRelation() {
     return unsupported()
   },
+  async createView() {
+    return unsupported()
+  },
   async patchElement() {
     return unsupported()
   },
