@@ -76,6 +76,22 @@ describe('ElementViewDocumentEditService', () => {
     expect(applyPlan(viewsOnly, plan)).toContain('view web of shop.web')
   })
 
+  it('rejects an ambiguous target basename instead of editing the first document', async () => {
+    const modelOnly = source.slice(0, source.indexOf('\nviews {'))
+    const viewsOnly = `views {\n  view index of shop { include * }\n}\n`
+    const likec4 = await fromSources({
+      'model.c4': modelOnly,
+      'a/views.c4': viewsOnly,
+      'b/views.c4': 'views {}\n',
+    })
+
+    await expect(createElementViewDocumentEditService(likec4).planAddElementView({
+      id: 'web',
+      viewOf: 'shop.web' as Fqn,
+      documentUri: 'views.c4',
+    })).rejects.toMatchObject({ code: 'ambiguous-reference' })
+  })
+
   it('rejects duplicate and invalid view IDs', async () => {
     const likec4 = await fromSources({ 'model.c4': source })
     const service = createElementViewDocumentEditService(likec4)
