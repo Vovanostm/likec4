@@ -1,18 +1,19 @@
 # Состояние исполнения roadmap
 
 Дата актуализации: 31 июля 2026  
-Ветка реализации: `feat/gui-to-code-wp05-views-manual-layout`  
-PR: `https://github.com/Vovanostm/likec4/pull/6`  
-Базовый commit: `c857859f868be363469017e9408caf476a40fc02`  
-Проверенный implementation head: `05ea91346ebb103589fabb77dc309a08c219a1db`
+Текущая ветка: `main`  
+WP-05 PR: `https://github.com/Vovanostm/likec4/pull/6` — merged  
+WP-05 final implementation head: `79d1d5616bd1e5fd5be3bc8711ebd07def740768`  
+WP-05 squash merge commit: `44c2729965754bc27c5e772957032ec3c4d117a2`  
+AI-ready WP-06 specification commit: `ec4acb5c0914d8ca922e98c0b903c7b87c363f1a`
 
-Этот файл — изменяемая часть плана. Стабильные outcomes, acceptance criteria и границы work packages находятся в `ROADMAP.md`. Следующий агент обязан прочитать `AGENTS.md`, `SPEC.md`, `ROADMAP.md`, этот файл и `AI-READY.WP-06.md` до изменений.
+Этот файл — изменяемое состояние исполнения. Стабильные outcomes, acceptance criteria и границы work packages находятся в `ROADMAP.md`. Следующий агент обязан прочитать корневой и scoped `AGENTS.md`, `SPEC.md`, `ROADMAP.md`, этот файл и `AI-READY.WP-06.md` до изменений.
 
 ## Managed state
 
 ```yaml
 # managed-state:v2
-revision: 8
+revision: 9
 contract_review: complete
 active: []
 done:
@@ -30,37 +31,23 @@ planned:
 blocked: []
 ```
 
-## WP-05 — done
+## WP-05 — done and merged
 
 ### Наблюдаемый результат
 
 Пользователь может:
 
 - создать source-backed static element view для выбранного logical element;
-- выбрать любой доступный view без semantic mutation и без нового history entry;
-- переместить узлы в canvas edit mode и сохранить одну стандартную ручную раскладку;
+- выбрать доступный view без semantic mutation и нового history entry;
+- переместить узлы в canvas edit mode и сохранить стандартную ручную раскладку;
 - экспортировать snapshot как `<view>.likec4.snap`;
 - сбросить только manual layout без изменения semantic DSL;
-- импортировать snapshot обратно с проверкой `ViewId`, view type и структуры;
-- перезагрузить страницу и восстановить source, active compatible view и сохранённые snapshots;
-- отменить и повторить semantic и layout changes через общую атомарную историю;
-- увидеть core drift после semantic change, не переписывая snapshot.
+- импортировать snapshot с проверкой `ViewId`, view type и структуры;
+- перезагрузить страницу и восстановить source и сохранённые snapshots;
+- отменить и повторить semantic/layout changes через общую атомарную историю;
+- увидеть core layout drift после semantic change без перезаписи snapshot.
 
-### Source-edit owner
-
-`@likec4/language-services` предоставляет browser/Node-compatible `ElementViewDocumentEditService`.
-
-Инварианты:
-
-- edit plan строится по linked Langium AST/CST;
-- target document разрешается exact URI match или единственным suffix match;
-- неоднозначный basename отклоняется до edit;
-- plan связан с digest исходных документов;
-- invalid identifier, duplicate `ViewId`, missing scope, stale plan и повторное применение fail closed;
-- байты вне единственного insertion range сохраняются;
-- static view semantics не записываются через layout-only `ViewChange`.
-
-### Workspace, layout и история
+### Architecture state
 
 `EditorWorkspace` остаётся единственным owner:
 
@@ -73,108 +60,84 @@ blocked: []
 Production path:
 
 ```text
-View/create or diagram/layout intent
+UI/canvas intent
 → revision-guarded queued EditorOperation
-→ source edit or standard ViewChange snapshot
+→ source-preserving document edit или standard ViewChange snapshot
 → isolated candidate compile
-→ command-specific semantic/layout verification
+→ command-specific verification
 → atomic sources + manualLayouts commit
 → one history entry
 ```
 
-Manual model materialization передаёт auto-layouted views и `manualLayouts` отдельно в core model. Snapshot не применяется дважды. Drift вычисляется существующими core mechanisms. App не хранит XYFlow geometry и не импортирует `@xyflow/react` как document owner.
+Source-edit owner для static views — browser/Node-compatible `ElementViewDocumentEditService` в `@likec4/language-services`.
 
-### Persistence boundary
+Manual layout хранится в versioned envelope `likec4.gui-to-code.manual-layouts.v1` с canonical virtual paths `.likec4/<view>.likec4.snap`. App не владеет XYFlow geometry и не использует semantic `ViewChange`.
 
-WP-05 хранит:
+### Final evidence
 
-- source в существующем versioned `localStorage` key;
-- manual layouts в versioned envelope `likec4.gui-to-code.manual-layouts.v1`;
-- canonical virtual file names `.likec4/<view>.likec4.snap`.
+Exact PR head: `79d1d5616bd1e5fd5be3bc8711ebd07def740768`.
 
-Malformed/unsupported envelope диагностируется отдельно. Valid snapshots сохраняются, даже если соседний virtual file повреждён. IndexedDB, migrations, ZIP и multi-project workspace остаются WP-07.
+- standalone `GUI-to-code` workflow `30654350594` — success;
+- root `CI (PR & push)` workflow `30654352163` — success;
+- `push` workflow `30654352400` — success;
+- Playwright WP-05 acceptance — success без retries;
+- agent-instructions и `git diff --check` — success;
+- unresolved review threads — none;
+- PR mergeable и non-draft до merge;
+- squash merge commit — `44c2729965754bc27c5e772957032ec3c4d117a2`.
 
-### UX и accessibility
+### Review outcome
 
-- view selector, create form, layout selector и import/export/reset controls русифицированы;
-- create view доступен только при выбранном logical scope;
-- после успешного create focus возвращается в selector после React commit;
-- cancel возвращает focus на initiator;
-- keyboard focus элемента дерева синхронизирует semantic selection;
-- canvas приложения сразу переводит LikeC4 diagram в edit mode;
-- layout mode передаётся в renderer явно;
-- busy/invalid state блокирует конфликтующие commands;
-- selection reconciles after create/remove/Undo/Redo и при исчезновении view.
+Correctness review complete:
 
-### Verification coverage
-
-Focused tests покрывают:
-
-- source-preserving static view creation;
-- multi-file target selection и ambiguous basename rejection;
-- stale revision и retry collision;
-- exact semantic verification после compile;
-- view selection reconciliation;
-- layout save/reset/import validation;
-- atomic source + layout Undo/Redo;
-- malformed, wrong-view и wrong-type snapshots;
-- semantic drift при сохранённом snapshot;
-- browser flow create/select/Undo/Redo;
-- browser flow node drag → persist → reload → export → reset → import;
-- regression WP-04 rename/remove keyboard flow.
-
-Обязательные final-head gates:
-
-- standalone `GUI-to-code` workflow: language-services tests/typecheck, app typecheck/unit/build/smoke, isolated Playwright acceptance, agent-instruction check и `git diff --check`;
-- root `CI (PR & push)`: Linux/Windows tests, TypeScript/type tests, package build/lint/smoke, GUI job, docs, playground, E2E и quality gate;
-- push workflow, если он запускается политикой репозитория;
-- mergeable PR без unresolved review threads.
-
-Точные final-head workflow IDs и merge SHA являются evidence в PR #6 и в следующем GitHub issue; implementation code head указан в заголовке этого файла.
-
-### Reviews
-
-Correctness review complete. Исправлены найденные блокеры:
-
-- test runner использует полный source-resolution graph монорепозитория;
-- legacy mock fixtures materialize parent-before-child;
-- manual layout больше не применяется дважды;
-- target URI ambiguity fail closed;
-- static view source owner сведён к одной implementation;
+- source preservation и target URI ambiguity fail closed;
+- candidate compile и exact semantic verification;
+- atomic source/layout history;
+- manual snapshot persistence/reload/import/export/reset;
+- stale selection, dialog focus и toolbar focus исправлены;
 - canvas edit mode включается до drag acceptance;
-- tree focus восстанавливает актуальную selection после rename;
-- toolbar focus переносится после React commit, а не до unmount form.
+- E2E storage isolation не очищает snapshot при проверяемом reload.
 
 Architecture/product review complete:
 
-- один `App.tsx`, без временного WP-specific production entrypoint;
 - один `EditorWorkspace` и один DSL owner;
+- один production `App.tsx`;
 - no semantic `ViewChange` extension;
 - no app-owned geometry;
 - no grammar change;
-- no IndexedDB/ZIP/deployment/dynamic scope leakage;
-- public package additions имеют focused tests и patch changeset.
+- no WP-07/WP-08 scope leakage;
+- public package additions покрыты focused tests и patch changeset.
 
-## Handoff для WP-06
+## WP-06 — ready
 
-Следующий ready package: `WP-06` — dynamic и deployment semantics без обхода document layer.
+Следующий пакет: dynamic и deployment semantics без обхода document layer.
 
-Исполняемый task packet: [`AI-READY.WP-06.md`](./AI-READY.WP-06.md).
+Исполняемое AI-ready ТЗ:
+
+[`AI-READY.WP-06.md`](./AI-READY.WP-06.md)
+
+Baseline для старта:
+
+- минимально проверенный merged code baseline: `44c2729965754bc27c5e772957032ec3c4d117a2`;
+- документация ТЗ зафиксирована commit `ec4acb5c0914d8ca922e98c0b903c7b87c363f1a`;
+- агент должен брать фактический latest `main`, сравнить его с baseline и записать exact base SHA в PR body.
 
 WP-06 получает:
 
-- revision-safe `EditorWorkspace` с atomic source/layout history;
+- revision-safe `EditorWorkspace`;
+- atomic source/manual-layout history;
 - source-preserving logical CRUD и static view creation;
-- standard manual-layout persistence и drift;
+- standard manual-layout persistence и core drift;
 - synchronized canvas/tree/inspector selection;
-- отдельный GUI browser acceptance workflow.
+- отдельный GUI browser acceptance workflow с failure artifacts.
 
-Обязательные границы WP-06:
+Обязательные границы:
 
 - dynamic и deployment families имеют собственные typed commands и verification;
-- grammar/AST/model/renderer capability сначала доказываются parse→model→render tests;
-- existing-source edits используют linked AST/CST owner, не regex или whole-document regeneration;
+- grammar/AST/model/renderer capability сначала доказывается parse → model → render tests;
+- existing-source edits используют linked AST/CST owner;
 - deployment/dynamic semantics не маскируются под logical/static commands;
-- manual snapshots не переписываются semantic commands;
-- не начинать IndexedDB, ZIP, multi-project persistence и release hardening из WP-07/WP-08;
-- один green mergeable PR; не merge без отдельной команды пользователя.
+- semantic commands не переписывают manual snapshots;
+- не начинать IndexedDB, ZIP, multi-project persistence и release hardening;
+- final DoD — один green, non-draft, mergeable PR без unresolved review threads;
+- не merge без отдельной команды пользователя.
