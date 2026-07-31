@@ -4,10 +4,20 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   resolve: {
     conditions: ['sources', 'module', 'import', 'default'],
-    alias: {
-      '@likec4/language-server/browser': resolve(import.meta.dirname, '../../packages/language-server/src/browser/index.ts'),
-      '@likec4/language-services/browser': resolve(import.meta.dirname, '../../packages/language-services/src/browser/index.ts'),
-    },
+    alias: [
+      {
+        find: /^@likec4\/core$/,
+        replacement: resolve(import.meta.dirname, '../../packages/core/src/index.ts'),
+      },
+      {
+        find: '@likec4/language-server/browser',
+        replacement: resolve(import.meta.dirname, '../../packages/language-server/src/browser/index.ts'),
+      },
+      {
+        find: '@likec4/language-services/browser',
+        replacement: resolve(import.meta.dirname, '../../packages/language-services/src/browser/index.ts'),
+      },
+    ],
   },
   test: {
     environment: 'node',
