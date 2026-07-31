@@ -16,8 +16,8 @@ import type {
   EditorWorkspaceState,
   RemovalDependencyReport,
 } from './editor/contracts'
-import { patchOperation, moveOperation, renameOperation } from './editor/ui/element-form'
-import type { ElementFormValues, } from './editor/ui/element-form'
+import { moveOperation, patchOperation, renameOperation } from './editor/ui/element-form'
+import type { ElementFormValues } from './editor/ui/element-form'
 import { ElementInspector } from './editor/ui/ElementInspector'
 import { RemoveElementConfirmation } from './editor/ui/RemoveElementConfirmation'
 import {
@@ -252,10 +252,16 @@ export function App() {
 
   const patchElement = async (values: ElementFormValues): Promise<void> => {
     if (!selection || !state) return
-    const result = await workspace.current?.dispatch(patchOperation(selection.id, state.revision, values))
-    if (!result) return
-    finishResult(result, 'Не удалось сохранить свойства.')
-    if (result.status === 'applied') setFeedback('Свойства элемента сохранены.')
+    setBusy(true)
+    setInspectorError(null)
+    try {
+      const result = await workspace.current?.dispatch(patchOperation(selection.id, state.revision, values))
+      if (!result) return
+      finishResult(result, 'Не удалось сохранить свойства.')
+      if (result.status === 'applied') setFeedback('Свойства элемента сохранены.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const renameElement = async (newId: string): Promise<void> => {
@@ -317,26 +323,21 @@ export function App() {
   const confirmRemoval = async (): Promise<void> => {
     const report = removalReport
     if (!report) return
-    setBusy(true)
-    try {
-      const result = await dispatchInspectorCommand({
-        type: 'element.remove',
-        input: {
-          id: report.target,
-          dependencyRevision: report.revision,
-          approvedDependencyIds: report.dependencies.map(dependency => dependency.id),
-        },
+    const result = await dispatchInspectorCommand({
+      type: 'element.remove',
+      input: {
+        id: report.target,
+        dependencyRevision: report.revision,
+        approvedDependencyIds: report.dependencies.map(dependency => dependency.id),
+      },
+    })
+    if (result?.status === 'applied') {
+      setRemovalReport(null)
+      setFeedback('Элемент и подтверждённые зависимости удалены.')
+      queueMicrotask(() => {
+        const target = document.querySelector<HTMLElement>('.structure-item, .diagram-panel')
+        target?.focus()
       })
-      if (result?.status === 'applied') {
-        setRemovalReport(null)
-        setFeedback('Элемент и подтверждённые зависимости удалены.')
-        queueMicrotask(() => {
-          const target = document.querySelector<HTMLElement>('.structure-item, .diagram-panel')
-          target?.focus()
-        })
-      }
-    } finally {
-      setBusy(false)
     }
   }
 
