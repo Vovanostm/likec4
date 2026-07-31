@@ -53,16 +53,32 @@ export class ElementViewDocumentEditService {
   }
 
   private findParsedDocument(requestedUri: string): LangiumDocument | undefined {
-    const requestedPath = requestedUri
-      .replace(/^virtual:\/\/workspace\//, '')
-      .replace(/^virtual:\/workspace\//, '')
-      .replace(/^\/+/, '')
-    return [...this.langium.shared.workspace.LangiumDocuments.userDocuments]
-      .find(document => {
-        const path = document.uri.path.replace(/^\/+/, '')
-        return path === requestedPath || path.endsWith(`/${requestedPath}`)
-      })
+    const requestedPath = normalizedDocumentPath(requestedUri)
+    const documents = [...this.langium.shared.workspace.LangiumDocuments.userDocuments]
+    const exact = documents.filter(document => normalizedDocumentPath(document.uri.path) === requestedPath)
+    if (exact.length === 1) return exact[0]
+    if (exact.length > 1) {
+      throw new DocumentEditError('ambiguous-reference', `Document URI "${requestedUri}" is ambiguous`)
+    }
+
+    const suffix = documents.filter(document => {
+      const path = normalizedDocumentPath(document.uri.path)
+      return path.endsWith(`/${requestedPath}`)
+    })
+    if (suffix.length === 1) return suffix[0]
+    if (suffix.length > 1) {
+      throw new DocumentEditError('ambiguous-reference', `Document URI "${requestedUri}" is ambiguous`)
+    }
+    return undefined
   }
+}
+
+function normalizedDocumentPath(uri: string): string {
+  return uri
+    .replace(/^virtual:\/\/workspace\//, '')
+    .replace(/^virtual:\/workspace\//, '')
+    .replace(/^\/+/, '')
+    .replace(/^workspace\//, '')
 }
 
 export function createElementViewDocumentEditService(likec4: LikeC4): ElementViewDocumentEditService {
