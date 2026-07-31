@@ -164,11 +164,13 @@ export function App() {
                   <ReactLikeC4
                     key={`${runtime.selectedView.id}-${runtime.layoutMode}`}
                     viewId={runtime.selectedView.id}
+                    layoutType={runtime.layoutMode}
                     className="diagram"
                     nodesSelectable
                     enableCompareWithLatest
                     onLayoutTypeChange={runtime.setLayoutMode}
                     onInitialized={({ diagram }) => {
+                      diagram.toggleFeature('ReadOnly', false)
                       semantic.diagramApi.current = diagram
                     }}
                     onNodeClick={node => {
