@@ -20,6 +20,8 @@ type Wp06Command = Extract<EditorCommand, {
 }>
 
 type ManualLayouts = Readonly<Record<ViewId, ViewManualLayoutSnapshot>>
+type SemanticEdge = { readonly source: unknown; readonly target: unknown; readonly id?: string }
+type DeploymentRelation = { readonly source: unknown; readonly target: unknown }
 
 export interface Wp06WorkspaceHost {
   readonly state: EditorWorkspaceState
@@ -57,10 +59,14 @@ function sourceIssue(command: Wp06Command, error: unknown): CommandIssue {
   if (code === 'invalid-identifier') return issue('invalid-identifier', 'ID должен быть корректным идентификатором LikeC4.')
   if (code === 'ambiguous-reference') return issue('ambiguous-target-document', 'Целевой документ нельзя определить однозначно.')
   if (code === 'stale-document') return issue('stale-source-edit', 'Исходный код изменился. Повторите действие.')
+  if (code === 'invalid-parent') return issue('deployment-parent-unsupported', 'Выбранная deployment-сущность не может быть родительским узлом.')
+  if (code === 'unsupported-reference') return issue('semantic-operation-invalid', 'Этот тип deployment-ссылки не поддерживается в WP-06.')
   if (code === 'not-found') {
     return issue(
       command.type === 'dynamicStep.create' || command.type === 'deploymentRelation.create'
         ? 'semantic-endpoint-not-found'
+        : command.type === 'deploymentElement.create' && command.input.family === 'instance'
+        ? 'deployment-parent-not-found'
         : 'semantic-reference-not-found',
       'Выбранная сущность или ссылка больше не существует.',
     )
@@ -79,18 +85,42 @@ function viewIds(model: NonNullable<CompileResult['model']>): Set<string> {
 }
 
 function deploymentElements(model: NonNullable<CompileResult['model']>): Readonly<Record<string, unknown>> {
-  return model.$data.deployments.elements
+  return model.$data.deployments.elements as Readonly<Record<string, unknown>>
 }
 
-function deploymentRelations(model: NonNullable<CompileResult['model']>): Readonly<Record<string, {
-  readonly source: { readonly model: string; readonly project?: string }
-  readonly target: { readonly model: string; readonly project?: string }
-}>> {
-  return model.$data.deployments.relations
+function deploymentRelations(model: NonNullable<CompileResult['model']>): Readonly<Record<string, DeploymentRelation>> {
+  return model.$data.deployments.relations as unknown as Readonly<Record<string, DeploymentRelation>>
 }
 
-function endpoint(reference: { readonly model: string; readonly project?: string }): string {
-  return reference.project ? `@${reference.project}.${reference.model}` : reference.model
+function dynamicEdges(view: unknown): readonly SemanticEdge[] {
+  if (!view || typeof view !== 'object') return []
+  const record = view as Record<string, unknown>
+  const candidates = Array.isArray(record['steps']) ? record['steps'] : Array.isArray(record['edges']) ? record['edges'] : []
+  return candidates.filter((candidate): candidate is SemanticEdge => {
+    return !!candidate && typeof candidate === 'object' && 'source' in candidate && 'target' in candidate
+  })
+}
+
+function logicalEndpoint(reference: unknown): string | null {
+  if (typeof reference === 'string') return reference
+  if (!reference || typeof reference !== 'object') return null
+  const record = reference as Record<string, unknown>
+  if (typeof record['model'] !== 'string') return null
+  return typeof record['project'] === 'string' ? `@${record['project']}.${record['model']}` : record['model']
+}
+
+function deploymentEndpoint(reference: unknown): string | null {
+  if (typeof reference === 'string') return reference
+  if (!reference || typeof reference !== 'object') return null
+  const record = reference as Record<string, unknown>
+  if (typeof record['element'] === 'string') return null
+  return typeof record['deployment'] === 'string' ? record['deployment'] : null
+}
+
+function instanceTarget(element: unknown): string | null {
+  if (!element || typeof element !== 'object') return null
+  const target = (element as Record<string, unknown>)['element']
+  return logicalEndpoint(target)
 }
 
 async function compile(host: Wp06WorkspaceHost, sources: readonly SourceFile[]): Promise<{
@@ -141,16 +171,17 @@ export async function applyWp06Command(host: Wp06WorkspaceHost): Promise<Command
         return rejected(state, 'semantic-endpoint-not-found', 'Выбранный logical endpoint не существует.')
       }
       if (sourceId === targetId) return rejected(state, 'same-endpoint', 'Начало и конец шага должны различаться.')
-      const beforeSteps = before.steps.length
+      const beforeEdges = dynamicEdges(before)
       const sources = await host.documents.createDynamicStep(state.committedSources, command.input)
       const compiled = await compile(host, sources)
       if ('status' in compiled) return compiled
       const after = compiled.model.$data.views[viewId]
-      if (!after || after._type !== 'dynamic' || after.steps.length !== beforeSteps + 1) {
+      const afterEdges = dynamicEdges(after)
+      if (!after || after._type !== 'dynamic' || afterEdges.length !== beforeEdges.length + 1) {
         return rejected(state, 'dynamic-step-verification-failed', 'Не удалось подтвердить создание ровно одного dynamic step.')
       }
-      const step = after.steps[after.steps.length - 1]!
-      if (endpoint(step.source) !== sourceId || endpoint(step.target) !== targetId) {
+      const step = afterEdges[afterEdges.length - 1]!
+      if (logicalEndpoint(step.source) !== sourceId || logicalEndpoint(step.target) !== targetId) {
         return rejected(state, 'dynamic-step-verification-failed', 'Созданный dynamic step не совпадает с выбранным направлением.')
       }
       const conflict = commit(host, compiled, sources)
@@ -158,7 +189,7 @@ export async function applyWp06Command(host: Wp06WorkspaceHost): Promise<Command
         status: 'applied',
         command: command.type,
         revision: compiled.revision,
-        createdStepId: `${viewId}:${beforeSteps}`,
+        createdStepId: step.id ?? `${viewId}:${beforeEdges.length}`,
         viewId,
       }
     }
@@ -181,21 +212,26 @@ export async function applyWp06Command(host: Wp06WorkspaceHost): Promise<Command
 
     if (command.type === 'deploymentElement.create') {
       const before = new Set(Object.keys(deploymentElements(model)))
+      const expectedId = command.input.family === 'node'
+        ? command.input.id
+        : `${command.input.parentId}.${command.input.id}`
       const sources = command.input.family === 'node'
         ? await host.documents.createDeploymentNode(state.committedSources, command.input)
         : await host.documents.createDeploymentInstance(state.committedSources, command.input)
       const compiled = await compile(host, sources)
       if ('status' in compiled) return compiled
       const added = Object.keys(deploymentElements(compiled.model)).filter(id => !before.has(id))
-      if (added.length !== 1) {
-        return rejected(state, 'deployment-element-verification-failed', 'Не удалось подтвердить создание ровно одного deployment element.')
+      if (added.length !== 1 || added[0] !== expectedId) {
+        return rejected(state, 'deployment-element-verification-failed', 'Не удалось подтвердить создание ровно одной deployment-сущности с ожидаемым ID.')
       }
       const createdId = added[0]! as Fqn
-      const created = deploymentElements(compiled.model)[createdId] as { readonly kind?: string; readonly element?: string }
-      if (command.input.family === 'node' && created.kind !== command.input.kind) {
-        return rejected(state, 'deployment-element-verification-failed', 'Созданный deployment node имеет другой kind.')
-      }
-      if (command.input.family === 'instance' && created.element !== command.input.target) {
+      const created = deploymentElements(compiled.model)[createdId]
+      if (command.input.family === 'node') {
+        const kind = created && typeof created === 'object' ? (created as Record<string, unknown>)['kind'] : undefined
+        if (kind !== command.input.kind) {
+          return rejected(state, 'deployment-element-verification-failed', 'Созданный deployment node имеет другой kind.')
+        }
+      } else if (instanceTarget(created) !== command.input.target) {
         return rejected(state, 'deployment-element-verification-failed', 'Созданный instanceOf ссылается на другой logical element.')
       }
       const conflict = commit(host, compiled, sources)
@@ -211,7 +247,12 @@ export async function applyWp06Command(host: Wp06WorkspaceHost): Promise<Command
       return rejected(state, 'deployment-relation-verification-failed', 'Не удалось подтвердить создание ровно одной deployment relation.')
     }
     const [id, relation] = added[0]!
-    if (endpoint(relation.source) !== command.input.sourceId || endpoint(relation.target) !== command.input.targetId) {
+    const source = deploymentEndpoint(relation.source)
+    const target = deploymentEndpoint(relation.target)
+    if (!source || !target) {
+      return rejected(state, 'deployment-relation-verification-failed', 'Связи с вложенными logical references не поддерживаются в WP-06.')
+    }
+    if (source !== command.input.sourceId || target !== command.input.targetId) {
       return rejected(state, 'deployment-relation-verification-failed', 'Созданная deployment relation не совпадает с выбранным направлением.')
     }
     const conflict = commit(host, compiled, sources)
