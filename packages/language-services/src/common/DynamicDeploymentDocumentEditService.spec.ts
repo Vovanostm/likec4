@@ -51,7 +51,7 @@ describe('DynamicDeploymentDocumentEditService', () => {
     const candidate = apply(withView, stepPlan)
     expect(candidate.match(/user -> app/g)).toHaveLength(1)
     const parsed = await (await fromSources({ 'model.c4': candidate })).parsedModel()
-    expect(parsed.$data.views.flow?._type).toBe('dynamic')
+    expect(parsed.$data.views['flow']?._type).toBe('dynamic')
   })
 
   it('creates deployment node, named instance, relation and view', async () => {
@@ -100,7 +100,7 @@ describe('DynamicDeploymentDocumentEditService', () => {
     expect(candidate).toContain('prod.appInstance -> edge')
     expect(candidate).toContain('deployment view deployment')
     const parsed = await (await fromSources({ 'model.c4': candidate })).parsedModel()
-    expect(parsed.$data.views.deployment?._type).toBe('deployment')
+    expect(parsed.$data.views['deployment']?._type).toBe('deployment')
     expect(parsed.$data.deployments.elements['prod.appInstance']).toBeDefined()
   })
 
