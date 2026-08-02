@@ -40,16 +40,18 @@ export function createDeploymentNodeEdit(
   kind: string,
   title?: string,
 ): DocumentTextEdit {
-  const declaration = `${kind} ${id}${title?.trim() ? ` '${escapeTitle(title.trim())}'` : ''}`
-  return insertDeploymentStatement(document, declaration)
+  const header = `${kind} ${id}${title?.trim() ? ` '${escapeTitle(title.trim())}'` : ''}`
+  return insertDeploymentStatement(document, `${header} {\n  }`)
 }
 
 export function createDeploymentInstanceEdit(
   document: LangiumDocument,
+  parentId: Fqn,
   id: string,
   target: Fqn,
 ): DocumentTextEdit {
-  return insertDeploymentStatement(document, `${id} = instanceOf ${target}`)
+  const parent = findDeploymentNode(document, parentId)
+  return insertStatement(document, parent, `${id} = instanceOf ${target}`)
 }
 
 export function createDeploymentRelationEdit(
@@ -87,10 +89,11 @@ function insertDeploymentStatement(document: LangiumDocument, statement: string)
 function insertStatement(document: LangiumDocument, node: AstNode, statement: string): DocumentTextEdit {
   const segment = node.$cstNode
   if (!segment) {
-    throw new DocumentEditError('not-found', 'LikeC4 source range was not found')
+    throw new DocumentEditError('not-found', 'Диапазон исходного кода LikeC4 не найден')
   }
   const indent = `${lineIndent(document.textDocument.getText(), segment.offset)}  `
-  return insertBeforeClosing(document, segment, `${indent}${statement}`)
+  const indented = statement.split('\n').map((line, index) => index === 0 ? `${indent}${line}` : `${indent}${line}`).join('\n')
+  return insertBeforeClosing(document, segment, indented)
 }
 
 function insertBeforeClosing(
@@ -110,7 +113,7 @@ function insertBeforeClosing(
 function appendRootBlock(document: LangiumDocument, root: AstNode, block: string): DocumentTextEdit {
   const segment = root.$cstNode
   if (!segment) {
-    throw new DocumentEditError('not-found', 'LikeC4 document source range was not found')
+    throw new DocumentEditError('not-found', 'Диапазон исходного кода документа LikeC4 не найден')
   }
   const source = document.textDocument.getText()
   const position = document.textDocument.positionAt(segment.end)
@@ -141,9 +144,23 @@ function findNamedNode(document: LangiumDocument, type: string, name: string): A
   const match = [...AstUtils.streamAllContents(document.parseResult.value)]
     .find(node => node.$type === type && (node as AstNode & { readonly name?: string }).name === name)
   if (!match) {
-    throw new DocumentEditError('not-found', `${type} "${name}" was not found`)
+    throw new DocumentEditError('not-found', `${type} «${name}» не найден`)
   }
   return match
+}
+
+function findDeploymentNode(document: LangiumDocument, id: Fqn): AstNode {
+  const matches = [...AstUtils.streamAllContents(document.parseResult.value)]
+    .filter(node => {
+      const candidate = node as AstNode & { readonly name?: string; readonly id?: string }
+      const name = candidate.name ?? candidate.id
+      return name === id && node.$type.includes('Deployment') && !node.$type.includes('Instance')
+    })
+  if (matches.length === 1) return matches[0]!
+  if (matches.length > 1) {
+    throw new DocumentEditError('ambiguous-reference', `Родительский deployment-узел «${id}» имеет несколько владельцев исходного кода`)
+  }
+  throw new DocumentEditError('not-found', `Родительский deployment-узел «${id}» не найден`)
 }
 
 function findFirstNode(document: LangiumDocument, type: string): AstNode | undefined {
