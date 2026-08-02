@@ -1,7 +1,7 @@
 import type { Fqn, ViewId } from '@likec4/core/types'
 import { describe, expect, it } from 'vitest'
 import { fromSources } from '../node'
-import { applyDocumentTextEdits } from './DocumentEditService'
+import { applyDocumentTextEdits, type DocumentTextEdit, type SourceEditPlan } from './DocumentEditService'
 import { createDynamicDeploymentDocumentEditService } from './DynamicDeploymentDocumentEditService'
 
 const source = `specification {
@@ -23,9 +23,13 @@ views {
 }
 `
 
-function apply(current: string, plan: { readonly affectedDocuments: readonly string[]; readonly edits: readonly any[]; readonly baseRevisions: Readonly<Record<string, string>> }): string {
+function apply(current: string, plan: SourceEditPlan): string {
   const uri = plan.affectedDocuments[0]!
-  return applyDocumentTextEdits(current, plan.edits.filter(edit => edit.uri === uri), plan.baseRevisions[uri]!)
+  return applyDocumentTextEdits(
+    current,
+    plan.edits.filter((edit): edit is DocumentTextEdit => edit.uri === uri),
+    plan.baseRevisions[uri]!,
+  )
 }
 
 describe('DynamicDeploymentDocumentEditService', () => {
@@ -46,7 +50,8 @@ describe('DynamicDeploymentDocumentEditService', () => {
     })
     const candidate = apply(withView, stepPlan)
     expect(candidate.match(/user -> app/g)).toHaveLength(1)
-    expect((await fromSources({ 'model.c4': candidate })).computedViews()).resolves.toBeDefined()
+    const parsed = await (await fromSources({ 'model.c4': candidate })).parsedModel()
+    expect(parsed.$data.views.flow?._type).toBe('dynamic')
   })
 
   it('creates deployment node, named instance, relation and view', async () => {
@@ -61,6 +66,7 @@ describe('DynamicDeploymentDocumentEditService', () => {
     const instanceModel = await fromSources({ 'model.c4': withNode })
     const instancePlan = await createDynamicDeploymentDocumentEditService(instanceModel).planAddDeploymentInstance({
       id: 'appInstance',
+      parentId: 'prod' as Fqn,
       target: 'app' as Fqn,
       documentUri: 'model.c4',
     })
@@ -76,7 +82,7 @@ describe('DynamicDeploymentDocumentEditService', () => {
 
     const relationModel = await fromSources({ 'model.c4': withSecondNode })
     const relationPlan = await createDynamicDeploymentDocumentEditService(relationModel).planAddDeploymentRelation({
-      source: 'prod' as Fqn,
+      source: 'prod.appInstance' as Fqn,
       target: 'edge' as Fqn,
       documentUri: 'model.c4',
     })
@@ -89,11 +95,13 @@ describe('DynamicDeploymentDocumentEditService', () => {
     })
     const candidate = apply(withRelation, viewPlan)
 
-    expect(candidate).toContain('environment prod')
+    expect(candidate).toContain('environment prod {')
     expect(candidate).toContain('appInstance = instanceOf app')
-    expect(candidate).toContain('prod -> edge')
+    expect(candidate).toContain('prod.appInstance -> edge')
     expect(candidate).toContain('deployment view deployment')
-    expect((await fromSources({ 'model.c4': candidate })).computedViews()).resolves.toBeDefined()
+    const parsed = await (await fromSources({ 'model.c4': candidate })).parsedModel()
+    expect(parsed.$data.views.deployment?._type).toBe('deployment')
+    expect(parsed.$data.deployments.elements['prod.appInstance']).toBeDefined()
   })
 
   it('rejects invalid IDs, missing endpoints, collisions and stale plans', async () => {
