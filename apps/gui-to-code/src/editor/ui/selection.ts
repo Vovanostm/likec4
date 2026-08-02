@@ -60,6 +60,11 @@ export function selectionAfterResult(
     case 'element.create':
     case 'relation.create':
     case 'view.create':
+    case 'dynamicView.create':
+    case 'dynamicStep.create':
+    case 'deploymentView.create':
+    case 'deploymentElement.create':
+    case 'deploymentRelation.create':
     case 'layout.save':
     case 'layout.reset':
     case 'history.undo':
