@@ -121,6 +121,10 @@ function reportFor(id: Fqn): RemovalDependencyReport {
   }
 }
 
+function wp06Unused(): never {
+  throw new EditorDocumentError('invalid-operation', 'unused in WP-04 compatibility tests')
+}
+
 const documents: EditorDocumentPort = {
   async createElement(current, input) {
     return replaceSource(current, source => `${source}${input.kind} ${input.id}|title=${input.title ?? input.id}\n`)
@@ -129,7 +133,25 @@ const documents: EditorDocumentPort = {
     return replaceSource(current, source => `${source}relation ${input.sourceId}->${input.targetId}\n`)
   },
   async createView() {
-    throw new EditorDocumentError('invalid-operation', 'unused in WP-04 compatibility tests')
+    return wp06Unused()
+  },
+  async createDynamicView() {
+    return wp06Unused()
+  },
+  async createDynamicStep() {
+    return wp06Unused()
+  },
+  async createDeploymentView() {
+    return wp06Unused()
+  },
+  async createDeploymentNode() {
+    return wp06Unused()
+  },
+  async createDeploymentInstance() {
+    return wp06Unused()
+  },
+  async createDeploymentRelation() {
+    return wp06Unused()
   },
   async patchElement(current, input) {
     return replaceSource(current, source => source.split('\n').map(line => {
