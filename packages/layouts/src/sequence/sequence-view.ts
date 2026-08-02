@@ -51,7 +51,7 @@ export function calcSequenceLayout(view: LayoutedDynamicView): LayoutedDynamicVi
 
   // Keep initial order of actors
   const actors = view.nodes.filter(n => actorNodes.has(n))
-  if (actors.length === 0) {
+  if (!hasAtLeast(actors, 1)) {
     return {
       actors: [],
       compounds: [],
