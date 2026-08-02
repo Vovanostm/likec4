@@ -46,6 +46,24 @@ const documents: EditorDocumentPort = {
   async createView() {
     return unsupported()
   },
+  async createDynamicView() {
+    return unsupported()
+  },
+  async createDynamicStep() {
+    return unsupported()
+  },
+  async createDeploymentView() {
+    return unsupported()
+  },
+  async createDeploymentNode() {
+    return unsupported()
+  },
+  async createDeploymentInstance() {
+    return unsupported()
+  },
+  async createDeploymentRelation() {
+    return unsupported()
+  },
   async patchElement() {
     return unsupported()
   },

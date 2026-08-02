@@ -49,6 +49,17 @@ export {
   ElementViewDocumentEditService,
 } from '../common/ElementViewDocumentEditService'
 
+export {
+  type AddDeploymentInstanceInput,
+  type AddDeploymentNodeInput,
+  type AddDeploymentRelationInput,
+  type AddDeploymentViewInput,
+  type AddDynamicStepInput,
+  type AddDynamicViewInput,
+  createDynamicDeploymentDocumentEditService,
+  DynamicDeploymentDocumentEditService,
+} from '../common/DynamicDeploymentDocumentEditService'
+
 /**
  * Create a LikeC4 instance from a workspace directory
  *
@@ -58,7 +69,6 @@ export {
  */
 export async function fromWorkspace(path: string, options?: FromWorkspaceOptions): Promise<LikeC4> {
   const workspacePath = resolve(path)
-  // Normalize folder URI with trailing slash so LSP/workspace consumers resolve paths consistently (CI vs local)
   const folderUri = URI.file(workspacePath).toString()
   const workspaceUri = withTrailingSlash(folderUri)
 
@@ -179,13 +189,6 @@ export interface WriteDSLOptions {
  * @param targetDir - Directory to write the output file into. Must already exist.
  * @param options - {@link WriteDSLOptions}
  * @returns The full path of the written file.
- *
- * @example
- * ```ts
- * const likec4 = await LikeC4.fromWorkspace('/path/to/workspace')
- * const out = await writeDSL(likec4, '/tmp/generated')
- * console.log(`Wrote DSL to ${out}`)
- * ```
  */
 export async function writeDSL(
   likec4: LikeC4,
@@ -193,10 +196,6 @@ export async function writeDSL(
   options?: WriteDSLOptions,
 ): Promise<string> {
   const dsl = await likec4.toDSL(options?.project)
-  // Don't path.resolve() the targetDir — on Windows that prepends the current
-  // drive letter to POSIX-style paths (e.g. `/tmp/x` → `D:\tmp\x`), which both
-  // surprises callers and breaks platform-portable tests. writeFile resolves
-  // relative paths against cwd anyway.
   const fullPath = join(targetDir, options?.fileName ?? 'model.c4')
   await writeFile(fullPath, dsl, 'utf-8')
   return fullPath

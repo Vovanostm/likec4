@@ -44,6 +44,17 @@ export {
   ElementViewDocumentEditService,
 } from '../common/ElementViewDocumentEditService'
 
+export {
+  type AddDeploymentInstanceInput,
+  type AddDeploymentNodeInput,
+  type AddDeploymentRelationInput,
+  type AddDeploymentViewInput,
+  type AddDynamicStepInput,
+  type AddDynamicViewInput,
+  createDynamicDeploymentDocumentEditService,
+  DynamicDeploymentDocumentEditService,
+} from '../common/DynamicDeploymentDocumentEditService'
+
 /**
  * Create a LikeC4 instance from a workspace directory
  * @param _workspace - The workspace directory path

@@ -6,7 +6,7 @@ import type {
   StepPath,
 } from '@likec4/core/types'
 import { dynamicViewFlow, parentFlow } from '@likec4/core/types'
-import { DefaultMap, invariant, nonNullable } from '@likec4/core/utils'
+import { DefaultMap, nonNullable } from '@likec4/core/utils'
 import { flat, groupByProp, hasAtLeast, map, mapValues, pipe, values } from 'remeda'
 import type { SequenceActor, SequenceActorStepPort, Step } from './_types'
 import {
@@ -51,7 +51,21 @@ export function calcSequenceLayout(view: LayoutedDynamicView): LayoutedDynamicVi
 
   // Keep initial order of actors
   const actors = view.nodes.filter(n => actorNodes.has(n))
-  invariant(hasAtLeast(actors, 1), 'actors array must not be empty')
+  if (!hasAtLeast(actors, 1)) {
+    return {
+      actors: [],
+      compounds: [],
+      steps: [],
+      parallelAreas: [],
+      subflows: [],
+      bounds: {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+      },
+    }
+  }
 
   const actorPorts = new DefaultMap<DiagramNode, Port[]>(() => [])
 
