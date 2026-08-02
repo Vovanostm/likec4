@@ -60,7 +60,7 @@ export interface AddDeploymentRelationInput {
 const ID_PATTERN = /^([a-zA-Z]|_+[a-zA-Z0-9])[-\w]*$/
 
 type ParsedDeploymentElement = {
-  readonly id?: Fqn
+  readonly id?: string
   readonly _type?: string
   readonly kind?: string
   readonly element?: unknown
@@ -135,7 +135,7 @@ export class DynamicDeploymentDocumentEditService {
     const { projectId, parsed } = await this.model(input.project)
     this.assertLogicalElement(parsed, input.target)
     this.assertDeploymentParent(parsed, input.parentId)
-    const fullId = `${input.parentId}.${input.id}` as Fqn
+    const fullId = `${input.parentId}.${input.id}`
     this.assertDeploymentAvailable(parsed, fullId)
     const document = this.selectDeploymentOwner(projectId, input.parentId, input.documentUri)
     return this.plan(document, createDeploymentInstanceEdit(document, input.parentId, input.id, input.target))
@@ -154,7 +154,7 @@ export class DynamicDeploymentDocumentEditService {
 
   private async model(project?: string): Promise<{ projectId: ProjectId; parsed: ParsedModel }> {
     const projectId = this.langium.shared.workspace.ProjectsManager.ensureProjectId(project as ProjectId | undefined)
-    const parsed = await this.langium.likec4.likec4.ModelBuilder.parseModel(projectId) as ParsedModel | undefined
+    const parsed = await this.langium.likec4.likec4.ModelBuilder.parseModel(projectId) as unknown as ParsedModel | undefined
     if (!parsed) {
       throw new DocumentEditError('not-found', 'Скомпилированная модель LikeC4 не найдена')
     }
