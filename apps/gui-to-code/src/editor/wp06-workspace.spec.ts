@@ -1,4 +1,4 @@
-import type { Fqn } from '@likec4/core/types'
+import type { Fqn, ViewId } from '@likec4/core/types'
 import { describe, expect, it } from 'vitest'
 import { compile } from '../compiler'
 import type { EditorCommand, EditorOperation } from './contracts'
@@ -43,7 +43,7 @@ describe('EditorWorkspace WP-06 integration', () => {
     expect(await workspace.dispatch(operation({
       type: 'dynamicStep.create',
       input: {
-        viewId: 'flow',
+        viewId: 'flow' as ViewId,
         sourceId: 'user' as Fqn,
         targetId: 'app' as Fqn,
         documentUri: 'model.c4',
@@ -111,7 +111,7 @@ describe('EditorWorkspace WP-06 integration', () => {
     const result = await workspace.dispatch(operation({
       type: 'dynamicStep.create',
       input: {
-        viewId: 'flow',
+        viewId: 'flow' as ViewId,
         sourceId: 'app' as Fqn,
         targetId: 'app' as Fqn,
         documentUri: 'model.c4',
