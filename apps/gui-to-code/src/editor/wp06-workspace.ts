@@ -59,14 +59,12 @@ function sourceIssue(command: Wp06Command, error: unknown): CommandIssue {
   if (code === 'invalid-identifier') return issue('invalid-identifier', 'ID должен быть корректным идентификатором LikeC4.')
   if (code === 'ambiguous-reference') return issue('ambiguous-target-document', 'Целевой документ нельзя определить однозначно.')
   if (code === 'stale-document') return issue('stale-source-edit', 'Исходный код изменился. Повторите действие.')
-  if (code === 'invalid-parent') return issue('deployment-parent-unsupported', 'Выбранная deployment-сущность не может быть родительским узлом.')
+  if (code === 'invalid-parent') return issue('invalid-parent', 'Выбранная deployment-сущность не может быть родительским узлом.')
   if (code === 'unsupported-reference') return issue('semantic-operation-invalid', 'Этот тип deployment-ссылки не поддерживается в WP-06.')
   if (code === 'not-found') {
     return issue(
       command.type === 'dynamicStep.create' || command.type === 'deploymentRelation.create'
         ? 'semantic-endpoint-not-found'
-        : command.type === 'deploymentElement.create' && command.input.family === 'instance'
-        ? 'deployment-parent-not-found'
         : 'semantic-reference-not-found',
       'Выбранная сущность или ссылка больше не существует.',
     )
