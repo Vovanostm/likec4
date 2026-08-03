@@ -67,8 +67,8 @@ export function App() {
           onExportLayout={runtime.exportLayout}
           onResetLayout={() => void runtime.resetLayout()} />
         <div className="actions">
-          <label className="button">Открыть .c4<input type="file" accept=".c4,text/plain" disabled={runtime.busy} onChange={event => void durable.importSource(event)} /></label>
-          <label className="button">Импортировать workspace ZIP<input type="file" accept=".zip,application/zip" disabled={runtime.busy} onChange={event => void durable.importBundle(event)} /></label>
+          <label className="button">Открыть .c4<input type="file" accept=".c4,text/plain" onChange={event => void durable.importSource(event)} /></label>
+          <label className="button">Импортировать workspace ZIP<input type="file" accept=".zip,application/zip" onChange={event => void durable.importBundle(event)} /></label>
           <button type="button" onClick={() => downloadSource(runtime.source)}>Экспортировать model.c4</button>
           <button type="button" disabled={runtime.busy || state.compilation.status !== 'valid'} onClick={durable.exportBundle}>Экспортировать workspace ZIP</button>
           <button type="button" aria-label="Отменить последнее изменение" disabled={undoDisabled} onClick={() => void semantic.undo()}>Отменить</button>
