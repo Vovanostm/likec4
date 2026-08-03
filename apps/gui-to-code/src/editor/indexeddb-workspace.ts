@@ -17,6 +17,7 @@ export interface WorkspacePersistencePort {
     readonly expectedPreviousRevision: number | null
     readonly workspace: PersistedWorkspaceEnvelope
   }): Promise<PersistenceSaveResult>
+  replace(workspace: PersistedWorkspaceEnvelope): Promise<void>
   clear(): Promise<void>
 }
 
@@ -81,6 +82,17 @@ export class IndexedDbWorkspacePersistence implements WorkspacePersistencePort {
       store.put(structuredClone(input.workspace), durableKey)
       await transactionDone(transaction)
       return { status: 'saved', revision: input.workspace.revision }
+    } finally {
+      database.close()
+    }
+  }
+
+  async replace(workspace: PersistedWorkspaceEnvelope): Promise<void> {
+    const database = await openDatabase()
+    try {
+      const transaction = database.transaction(storeName, 'readwrite')
+      transaction.objectStore(storeName).put(structuredClone(workspace), durableKey)
+      await transactionDone(transaction)
     } finally {
       database.close()
     }
