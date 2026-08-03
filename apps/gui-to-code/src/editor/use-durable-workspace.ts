@@ -45,23 +45,21 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
   const [status, setStatus] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading')
 
   const persistFreshWorkspace = async (state: EditorWorkspaceState): Promise<void> => {
-    await persistence.current.clear()
-    durableRevision.current = null
-    const result = await persistence.current.save({
-      expectedPreviousRevision: null,
-      workspace: envelopeFromState(state),
-    })
-    if (result.status !== 'saved') throw new Error('Не удалось зафиксировать новый durable workspace.')
-    durableRevision.current = result.revision
+    const envelope = envelopeFromState(state)
+    await persistence.current.replace(envelope)
+    durableRevision.current = envelope.revision
   }
 
   useEffect(() => {
-    if (!runtime.state || hydrationStarted.current) return
+    const initialState = runtime.state
+    if (!initialState || hydrationStarted.current) return
     hydrationStarted.current = true
     let cancelled = false
     void persistence.current.load().then(async envelope => {
       if (cancelled) return
       if (!envelope) {
+        await persistFreshWorkspace(initialState)
+        if (cancelled) return
         hydrationComplete.current = true
         setStatus('saved')
         return
@@ -76,6 +74,7 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
       if (cancelled) return
       if (candidate.state.compilation.status !== 'valid') {
         runtime.setCommandError('Сохранённый workspace повреждён и не был восстановлен. Открыт безопасный текущий проект.')
+        await persistFreshWorkspace(initialState)
         hydrationComplete.current = true
         setStatus('error')
         return
@@ -108,16 +107,15 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
         expectedPreviousRevision: durableRevision.current,
         workspace: envelope,
       })
-      if (result.status === 'saved') {
-        durableRevision.current = result.revision
-        setStatus('saved')
-        return
+      if (result.status !== 'saved') {
+        throw new Error(
+          result.status === 'stale'
+            ? `Обнаружена более новая durable revision ${result.durableRevision}.`
+            : `Durable workspace изменён в другой вкладке (revision ${result.durableRevision}).`,
+        )
       }
-      if (result.status === 'stale') {
-        durableRevision.current = result.durableRevision
-        return
-      }
-      throw new Error('Durable workspace был изменён в другой вкладке.')
+      durableRevision.current = result.revision
+      setStatus('saved')
     }).catch(error => {
       runtime.setCommandError(`Не удалось сохранить workspace: ${error instanceof Error ? error.message : String(error)}`)
       setStatus('error')
@@ -141,6 +139,8 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
         runtime.setCommandError('Импорт отклонён: исправьте ошибки LikeC4 в импортируемом workspace.')
         return false
       }
+      await saveQueue.current
+      if (generation !== replacementGeneration.current) return false
       await persistFreshWorkspace(candidate.state)
       if (generation !== replacementGeneration.current) return false
       runtime.workspace.current = candidate
@@ -212,8 +212,12 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
       runtime.setCommandError('Нельзя экспортировать workspace с ошибками.')
       return
     }
-    downloadBlob(exportWorkspaceBundle(envelopeFromState(state)), workspaceBundleFilename())
-    runtime.setFeedback('Workspace ZIP экспортирован.')
+    try {
+      downloadBlob(exportWorkspaceBundle(envelopeFromState(state)), workspaceBundleFilename())
+      runtime.setFeedback('Workspace ZIP экспортирован.')
+    } catch (error) {
+      runtime.setCommandError(`Не удалось экспортировать workspace: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   return { status, importSource, importBundle, exportBundle }
