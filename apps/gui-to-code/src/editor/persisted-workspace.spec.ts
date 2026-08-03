@@ -1,6 +1,7 @@
 import type { ViewManualLayoutSnapshot } from '@likec4/core/types'
 import { describe, expect, it } from 'vitest'
 import {
+  maxWorkspaceBytes,
   validateWorkspaceEnvelope,
   workspaceSchema,
   workspaceVersion,
@@ -37,7 +38,7 @@ describe('workspace envelope', () => {
     expect(validateWorkspaceEnvelope(envelope).ok).toBe(true)
   })
 
-  it('rejects future versions and unsafe paths', () => {
+  it('rejects future versions and unsafe source paths', () => {
     expect(validateWorkspaceEnvelope({ ...envelope, version: 2 }).ok).toBe(false)
     expect(validateWorkspaceEnvelope({
       ...envelope,
@@ -53,6 +54,24 @@ describe('workspace envelope', () => {
         { uri: 'model.c4', content: 'model {}' },
         { uri: 'MODEL.c4', content: 'model {}' },
       ],
+    }).ok).toBe(false)
+  })
+
+  it('rejects unsafe snapshot identifiers', () => {
+    expect(validateWorkspaceEnvelope({
+      ...envelope,
+      manualLayouts: {
+        '../flow': { ...snapshot, id: '../flow' },
+      },
+    }).ok).toBe(false)
+  })
+
+  it('counts the UTF-8 byte size instead of JavaScript code units', () => {
+    const multibyte = 'я'.repeat(Math.floor(maxWorkspaceBytes / 2) + 1)
+    expect(validateWorkspaceEnvelope({
+      ...envelope,
+      sources: [{ uri: 'model.c4', content: multibyte }],
+      manualLayouts: {},
     }).ok).toBe(false)
   })
 })
