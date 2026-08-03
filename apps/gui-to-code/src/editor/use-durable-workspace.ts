@@ -7,6 +7,8 @@ import {
   envelopeFromState,
   layoutsFromEnvelope,
   type PersistedWorkspaceEnvelope,
+  workspaceSchema,
+  workspaceVersion,
 } from './persisted-workspace'
 import { EditorWorkspace } from './workspace'
 import {
@@ -41,6 +43,17 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
   const replacementGeneration = useRef(0)
   const [status, setStatus] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading')
 
+  const persistFreshWorkspace = async (state: EditorWorkspaceState): Promise<void> => {
+    await persistence.current.clear()
+    durableRevision.current = null
+    const result = await persistence.current.save({
+      expectedPreviousRevision: null,
+      workspace: envelopeFromState(state),
+    })
+    if (result.status !== 'saved') throw new Error('Не удалось зафиксировать новый durable workspace.')
+    durableRevision.current = result.revision
+  }
+
   useEffect(() => {
     if (!runtime.state || hydrated.current) return
     hydrated.current = true
@@ -64,9 +77,8 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
         return
       }
       runtime.workspace.current = candidate
-      await persistence.current.clear()
-      durableRevision.current = null
       runtime.refresh()
+      await persistFreshWorkspace(candidate.state)
       runtime.setFeedback('Workspace восстановлен из IndexedDB.')
       setStatus('saved')
     }).catch(error => {
@@ -122,11 +134,11 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
         runtime.setCommandError('Импорт отклонён: исправьте ошибки LikeC4 в импортируемом workspace.')
         return false
       }
-      await persistence.current.clear()
-      durableRevision.current = null
+      await persistFreshWorkspace(candidate.state)
       runtime.workspace.current = candidate
       runtime.refresh()
       runtime.setFeedback(success)
+      setStatus('saved')
       return true
     } catch (error) {
       if (generation === replacementGeneration.current) {
@@ -138,17 +150,22 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
     }
   }
 
+  const confirmReplacement = (): boolean => window.confirm(
+    'Импорт полностью заменит текущий workspace и сбросит историю Undo/Redo. Продолжить?',
+  )
+
   const importSource = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const input = event.currentTarget
     const file = input.files?.[0]
     if (!file) return
     try {
+      if (!confirmReplacement()) return
       if (file.size > 16 * 1024 * 1024) throw new Error('Файл превышает допустимый размер.')
       const content = await file.text()
       if (!content.length) throw new Error('Файл пуст.')
       await replaceEnvelope({
-        schema: 'likec4.gui-to-code.workspace',
-        version: 1,
+        schema: workspaceSchema,
+        version: workspaceVersion,
         workspaceId: 'default',
         revision: 0,
         savedAt: new Date().toISOString(),
@@ -156,6 +173,8 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
         manualLayouts: {},
         metadata: { entryDocumentUri: 'model.c4' },
       }, 'Файл .c4 импортирован. История изменений начата заново.')
+    } catch (error) {
+      runtime.setCommandError(`Импорт .c4 отклонён: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       input.value = ''
     }
@@ -166,6 +185,7 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
     const file = input.files?.[0]
     if (!file) return
     try {
+      if (!confirmReplacement()) return
       if (file.size > 16 * 1024 * 1024) throw new Error('ZIP превышает допустимый размер.')
       const envelope = importWorkspaceBundle(new Uint8Array(await file.arrayBuffer()))
       await replaceEnvelope(envelope, 'Workspace ZIP импортирован. История изменений начата заново.')
