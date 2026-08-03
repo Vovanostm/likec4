@@ -36,7 +36,9 @@ export function exportWorkspaceBundle(envelope: PersistedWorkspaceEnvelope): Blo
     files: files.sort((left, right) => left.path.localeCompare(right.path)),
   }
   entries.push({ path: 'workspace.json', content: encoder.encode(JSON.stringify(manifest, null, 2)) })
-  return new Blob([encodeZip(entries)], { type: 'application/zip' })
+  const zip = encodeZip(entries)
+  const buffer = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer
+  return new Blob([buffer], { type: 'application/zip' })
 }
 
 export function importWorkspaceBundle(bytes: Uint8Array, workspaceId = 'default'): PersistedWorkspaceEnvelope {
