@@ -37,7 +37,8 @@ function downloadBlob(blob: Blob, filename: string): void {
 
 export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
   const persistence = useRef(new IndexedDbWorkspacePersistence())
-  const hydrated = useRef(false)
+  const hydrationStarted = useRef(false)
+  const hydrationComplete = useRef(false)
   const durableRevision = useRef<number | null>(null)
   const saveQueue = useRef(Promise.resolve())
   const replacementGeneration = useRef(0)
@@ -55,11 +56,13 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
   }
 
   useEffect(() => {
-    if (!runtime.state || hydrated.current) return
-    hydrated.current = true
+    if (!runtime.state || hydrationStarted.current) return
+    hydrationStarted.current = true
     let cancelled = false
     void persistence.current.load().then(async envelope => {
-      if (!envelope || cancelled) {
+      if (cancelled) return
+      if (!envelope) {
+        hydrationComplete.current = true
         setStatus('saved')
         return
       }
@@ -73,16 +76,20 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
       if (cancelled) return
       if (candidate.state.compilation.status !== 'valid') {
         runtime.setCommandError('Сохранённый workspace повреждён и не был восстановлен. Открыт безопасный текущий проект.')
+        hydrationComplete.current = true
         setStatus('error')
         return
       }
+      await persistFreshWorkspace(candidate.state)
+      if (cancelled) return
       runtime.workspace.current = candidate
       runtime.refresh()
-      await persistFreshWorkspace(candidate.state)
+      hydrationComplete.current = true
       runtime.setFeedback('Workspace восстановлен из IndexedDB.')
       setStatus('saved')
     }).catch(error => {
       if (cancelled) return
+      hydrationComplete.current = true
       runtime.setCommandError(`Не удалось восстановить workspace: ${error instanceof Error ? error.message : String(error)}`)
       setStatus('error')
     })
@@ -93,7 +100,7 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
 
   useEffect(() => {
     const state = runtime.state
-    if (!hydrated.current || !state || state.compilation.status !== 'valid') return
+    if (!hydrationComplete.current || !state || state.compilation.status !== 'valid') return
     const envelope = envelopeFromState(state)
     setStatus('saving')
     saveQueue.current = saveQueue.current.then(async () => {
@@ -135,6 +142,7 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
         return false
       }
       await persistFreshWorkspace(candidate.state)
+      if (generation !== replacementGeneration.current) return false
       runtime.workspace.current = candidate
       runtime.refresh()
       runtime.setFeedback(success)
@@ -150,9 +158,11 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
     }
   }
 
-  const confirmReplacement = (): boolean => window.confirm(
-    'Импорт полностью заменит текущий workspace и сбросит историю Undo/Redo. Продолжить?',
-  )
+  const confirmReplacement = (): boolean => {
+    const state = runtime.workspace.current?.state
+    if (!state || state.revision === 0) return true
+    return window.confirm('Импорт полностью заменит текущий workspace и сбросит историю Undo/Redo. Продолжить?')
+  }
 
   const importSource = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const input = event.currentTarget
