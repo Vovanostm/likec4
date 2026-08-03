@@ -6,6 +6,8 @@ export const workspaceVersion = 1 as const
 export const maxWorkspaceBytes = 16 * 1024 * 1024
 export const maxWorkspaceFiles = 256
 
+const encoder = new TextEncoder()
+
 export interface PersistedWorkspaceEnvelopeV1 {
   readonly schema: typeof workspaceSchema
   readonly version: typeof workspaceVersion
@@ -29,6 +31,14 @@ function safePath(path: string): boolean {
   if (!path || path.includes('\\') || path.startsWith('/') || /^[a-zA-Z]:/.test(path)) return false
   const parts = path.split('/')
   return parts.every(part => part !== '' && part !== '.' && part !== '..')
+}
+
+function safeLayoutId(id: string): boolean {
+  return !!id && id !== '.' && id !== '..' && !id.includes('/') && !id.includes('\\') && !id.includes('\0')
+}
+
+function byteLength(value: string): number {
+  return encoder.encode(value).byteLength
 }
 
 function isLayout(value: unknown): value is ViewManualLayoutSnapshot {
@@ -86,19 +96,20 @@ export function validateWorkspaceEnvelope(input: unknown): WorkspaceEnvelopeResu
     const key = source.uri.toLocaleLowerCase()
     if (seen.has(key)) return { ok: false, message: `Путь ${source.uri} встречается несколько раз.` }
     seen.add(key)
-    size += source.content.length
+    size += byteLength(source.content)
   }
   const entry = value.metadata?.entryDocumentUri
   if (typeof entry !== 'string' || !value.sources.some(source => source.uri === entry)) {
     return { ok: false, message: 'Основной документ workspace отсутствует.' }
   }
-  if (!value.manualLayouts || typeof value.manualLayouts !== 'object') return { ok: false, message: 'Некорректные snapshots workspace.' }
+  if (!value.manualLayouts || typeof value.manualLayouts !== 'object' || Array.isArray(value.manualLayouts)) {
+    return { ok: false, message: 'Некорректные snapshots workspace.' }
+  }
   for (const [id, snapshot] of Object.entries(value.manualLayouts)) {
-    const path = `.likec4/${id}.likec4.snap`
-    if (!safePath(path) || !isLayout(snapshot) || snapshot.id !== id) {
+    if (!safeLayoutId(id) || !isLayout(snapshot) || snapshot.id !== id) {
       return { ok: false, message: `Snapshot ${id} имеет неверный формат.` }
     }
-    size += JSON.stringify(snapshot).length
+    size += byteLength(JSON.stringify(snapshot))
   }
   if (size > maxWorkspaceBytes) return { ok: false, message: 'Workspace превышает допустимый размер.' }
   return { ok: true, envelope: value as PersistedWorkspaceEnvelopeV1 }
