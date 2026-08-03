@@ -28,7 +28,9 @@ export function App() {
   const wp06 = useWp06Runtime(runtime)
   const state = runtime.state
 
-  if (!state) return <main className="editor-shell"><p>Загрузка редактора…</p></main>
+  if (!state || durable.status === 'loading') {
+    return <main className="editor-shell" aria-busy="true"><p role="status">Восстановление workspace…</p></main>
+  }
 
   const undoDisabled = state.history.past.length === 0 || state.compilation.status !== 'valid' || runtime.busy
   const redoDisabled = state.history.future.length === 0 || state.compilation.status !== 'valid' || runtime.busy
@@ -76,9 +78,7 @@ export function App() {
           <button type="button" disabled={runtime.busy} onClick={() => semantic.updateDraftSource(starterSource)}>Восстановить пример</button>
         </div>
         <p role="status" aria-live="polite">
-          {durable.status === 'loading'
-            ? 'Восстановление workspace…'
-            : durable.status === 'saving'
+          {durable.status === 'saving'
             ? 'Сохранение workspace…'
             : durable.status === 'error'
             ? 'Ошибка сохранения workspace.'
