@@ -18,6 +18,12 @@ async function resetWorkspace(page: Page) {
   await expect(page.getByRole('heading', { name: 'LikeC4: визуальный редактор' })).toBeVisible()
 }
 
+async function selectFirstLogicalElement(page: Page) {
+  const firstElement = page.locator('.structure-item').first()
+  await expect(firstElement).toBeVisible()
+  await firstElement.click()
+}
+
 test.describe('WP-08 responsive release smoke', () => {
   for (const viewport of [
     { name: 'narrow', width: 390, height: 844 },
@@ -27,11 +33,13 @@ test.describe('WP-08 responsive release smoke', () => {
     test(`${viewport.name} viewport keeps critical controls reachable`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
       await resetWorkspace(page)
+      await selectFirstLogicalElement(page)
 
       await expect(page.getByLabel('Текущий вид')).toBeVisible()
       await expect(page.getByRole('button', { name: 'Создать вид' })).toBeVisible()
-      await expect(page.getByRole('button', { name: 'Экспортировать модель' })).toBeVisible()
-      await expect(page.getByLabel('Импортировать модель')).toBeAttached()
+      await expect(page.getByRole('button', { name: 'Экспортировать model.c4' })).toBeVisible()
+      await expect(page.getByLabel('Открыть файл .c4')).toBeAttached()
+      await expect(page.getByLabel('Импортировать архив рабочего пространства')).toBeAttached()
 
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
       expect(overflow).toBeLessThanOrEqual(1)
@@ -47,6 +55,7 @@ test.describe('WP-08 responsive release smoke', () => {
 
 test('dialog supports keyboard open, initial focus, Escape and focus restoration', async ({ page }) => {
   await resetWorkspace(page)
+  await selectFirstLogicalElement(page)
 
   const opener = page.getByRole('button', { name: 'Создать вид' })
   await opener.focus()
@@ -66,14 +75,16 @@ test('critical controls expose accessible names and Russian status surfaces', as
 
   await expect(page.getByLabel('Исходный код LikeC4')).toBeAttached()
   await expect(page.getByLabel('Текущий вид')).toBeAttached()
-  await expect(page.getByRole('button', { name: 'Отменить' })).toBeAttached()
-  await expect(page.getByRole('button', { name: 'Повторить' })).toBeAttached()
-  await expect(page.getByRole('button', { name: 'Создать вид' })).toBeAttached()
-  await expect(page.getByRole('button', { name: 'Экспортировать модель' })).toBeAttached()
-  await expect(page.getByLabel('Импортировать модель')).toBeAttached()
+  await expect(page.getByRole('button', { name: 'Отменить последнее изменение' })).toBeAttached()
+  await expect(page.getByRole('button', { name: 'Повторить отменённое изменение' })).toBeAttached()
+  await expect(page.getByRole('button', { name: 'Экспортировать model.c4' })).toBeAttached()
+  await expect(page.getByLabel('Открыть файл .c4')).toBeAttached()
+  await expect(page.getByLabel('Импортировать архив рабочего пространства')).toBeAttached()
+  await expect(page.getByRole('status').filter({ hasText: 'Рабочее пространство сохранено.' })).toBeVisible()
 
   const bodyText = await page.locator('body').innerText()
   expect(bodyText).not.toContain('Error:')
   expect(bodyText).not.toContain('Loading workspace')
   expect(bodyText).not.toContain('Save failed')
+  expect(bodyText).not.toContain('Workspace сохранён')
 })
