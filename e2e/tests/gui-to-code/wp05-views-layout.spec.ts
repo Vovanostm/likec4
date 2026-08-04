@@ -1,14 +1,22 @@
 import { expect, test } from '@playwright/test'
 
 const storageResetMarker = 'likec4.gui-to-code.e2e.storage-reset'
+const workspaceDatabaseName = 'likec4-gui-to-code'
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(marker => {
+  await page.goto('/')
+  await page.evaluate(async ({ marker, databaseName }) => {
     if (sessionStorage.getItem(marker)) return
     localStorage.clear()
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(databaseName)
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error ?? new Error('Failed to reset IndexedDB'))
+      request.onblocked = () => reject(new Error('IndexedDB reset was blocked'))
+    })
     sessionStorage.setItem(marker, 'done')
-  }, storageResetMarker)
-  await page.goto('/')
+  }, { marker: storageResetMarker, databaseName: workspaceDatabaseName })
+  await page.reload()
   await expect(page.getByRole('heading', { name: 'LikeC4: визуальный редактор' })).toBeVisible()
 })
 
