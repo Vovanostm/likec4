@@ -64,7 +64,7 @@ test('restores a standard manual-layout snapshot after reload and file round tri
     const current = await node.boundingBox()
     return current ? Math.abs(current.x - before.x) + Math.abs(current.y - before.y) : 0
   }).toBeGreaterThan(20)
-  await expect(page.getByRole('status')).toContainText('Ручная раскладка сохранена.')
+  await expect(page.getByText('Ручная раскладка сохранена.', { exact: true })).toBeVisible()
   await expect(source).toHaveValue(sourceBeforeLayout)
   await expect(page.getByLabel('Режим раскладки')).toHaveValue('manual')
 
@@ -92,12 +92,12 @@ test('restores a standard manual-layout snapshot after reload and file round tri
   await download.saveAs(snapshotPath)
 
   await page.getByRole('button', { name: 'Сбросить раскладку' }).click()
-  await expect(page.getByRole('status')).toContainText('Ручная раскладка сброшена.')
+  await expect(page.getByText('Ручная раскладка сброшена.', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Режим раскладки')).toHaveValue('auto')
   await expect(source).toHaveValue(sourceBeforeLayout)
 
   await page.getByLabel('Импортировать раскладку').setInputFiles(snapshotPath)
-  await expect(page.getByRole('status')).toContainText('Ручная раскладка импортирована.')
+  await expect(page.getByText('Ручная раскладка импортирована.', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Режим раскладки')).toHaveValue('manual')
   await expect(source).toHaveValue(sourceBeforeLayout)
 })
