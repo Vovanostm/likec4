@@ -36,9 +36,26 @@ function concat(parts: readonly Uint8Array[]): Uint8Array {
   return output
 }
 
+function safePath(path: string): boolean {
+  return !!path && !path.includes('\\') && !path.startsWith('/') && !/^[a-zA-Z]:/.test(path)
+    && path.split('/').every(part => part !== '' && part !== '.' && part !== '..')
+}
+
 export function encodeZip(entries: readonly ZipEntry[]): Uint8Array {
   const ordered = [...entries].sort((left, right) => left.path.localeCompare(right.path))
   if (ordered.length === 0 || ordered.length > maxEntries) throw new Error('Недопустимое число файлов в ZIP.')
+  const seen = new Set<string>()
+  let total = 0
+  for (const entry of ordered) {
+    const normalized = entry.path.toLocaleLowerCase()
+    if (!safePath(entry.path) || seen.has(normalized)) {
+      throw new Error('ZIP содержит небезопасный или повторяющийся путь.')
+    }
+    seen.add(normalized)
+    total += entry.content.byteLength
+    if (total > maxUncompressedBytes) throw new Error('ZIP превышает допустимый размер.')
+  }
+
   const localParts: Uint8Array[] = []
   const centralParts: Uint8Array[] = []
   let localOffset = 0
@@ -86,11 +103,6 @@ export function encodeZip(entries: readonly ZipEntry[]): Uint8Array {
   return concat([...localParts, central, end])
 }
 
-function safePath(path: string): boolean {
-  return !!path && !path.includes('\\') && !path.startsWith('/') && !/^[a-zA-Z]:/.test(path)
-    && path.split('/').every(part => part !== '' && part !== '.' && part !== '..')
-}
-
 export function decodeZip(bytes: Uint8Array): readonly ZipEntry[] {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   let offset = 0
@@ -99,6 +111,7 @@ export function decodeZip(bytes: Uint8Array): readonly ZipEntry[] {
   const seen = new Set<string>()
   while (offset + 4 <= bytes.length && view.getUint32(offset, true) === 0x04034b50) {
     if (entries.length >= maxEntries) throw new Error('ZIP содержит слишком много файлов.')
+    if (offset + 30 > bytes.length) throw new Error('ZIP повреждён.')
     const flags = view.getUint16(offset + 6, true)
     const method = view.getUint16(offset + 8, true)
     const checksum = view.getUint32(offset + 14, true)
@@ -106,8 +119,8 @@ export function decodeZip(bytes: Uint8Array): readonly ZipEntry[] {
     const uncompressedSize = view.getUint32(offset + 22, true)
     const nameLength = view.getUint16(offset + 26, true)
     const extraLength = view.getUint16(offset + 28, true)
-    if ((flags & 0x0008) !== 0 || method !== 0 || compressedSize !== uncompressedSize) {
-      throw new Error('ZIP использует неподдерживаемое сжатие.')
+    if ((flags & 0x0009) !== 0 || method !== 0 || compressedSize !== uncompressedSize) {
+      throw new Error('ZIP использует неподдерживаемое сжатие или шифрование.')
     }
     const nameStart = offset + 30
     const contentStart = nameStart + nameLength + extraLength
