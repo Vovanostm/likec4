@@ -1,8 +1,9 @@
 # Состояние исполнения roadmap
 
-Дата актуализации: 4 августа 2026  
-Текущая ветка: `feat/gui-to-code-wp08-mvp-release-gate`  
-WP-08 PR: #10 — open; merge запрещён без отдельной команды пользователя.
+Дата актуализации: 5 августа 2026  
+Текущая ветка: `main`  
+WP-08 PR: #10 — merged.  
+WP-08 merge commit: `4e41b09b4a750b20ba3343796599b8a05bd2f8d9`
 
 Этот файл — изменяемое состояние исполнения. Стабильные outcomes и acceptance criteria находятся в `ROADMAP.md`.
 
@@ -10,7 +11,7 @@ WP-08 PR: #10 — open; merge запрещён без отдельной ком�
 
 ```yaml
 # managed-state:v2
-revision: 12
+revision: 13
 contract_review: complete
 active: []
 done:
@@ -40,12 +41,14 @@ blocked: []
 
 `EditorWorkspace` остаётся единственным владельцем committed semantic state. LikeC4 DSL и стандартные manual-layout snapshots остаются persisted canonical data. Persistence schema, public package API, DSL grammar и package boundaries не изменены. Новая dependency и changeset не требуются.
 
-Первый полный release cycle на implementation head `ff3cf7907a485e4805ebdbf976adc113fe826280`:
+Заключительный exact head PR #10: `7688f315f5253bed25c8db1d2c773472d4dd6546`.
 
-- `GUI-to-code` run `30931657058` — success;
-- `CI (PR & push)` run `30931658768` — success;
-- `push` run `30931657379` — success.
+Exact-head GitHub CI:
 
-Заключительный exact head и terminal workflow run IDs фиксируются в PR #10, поскольку commit не может содержать собственный SHA.
+- `GUI-to-code` run `30933010189` — success;
+- `CI (PR & push)` run `30933010265` — success;
+- `push` run `30933010284` — success.
 
-Выполнены два отдельных review-прохода: correctness/reliability и product/accessibility/release. Residual limitations перечислены в README и PR body.
+PR #10 merged через squash в `main` коммитом `4e41b09b4a750b20ba3343796599b8a05bd2f8d9`.
+
+Выполнены два отдельных review-прохода: correctness/reliability и product/accessibility/release. Unresolved review threads: `0`. Residual limitations перечислены в README и PR body.
