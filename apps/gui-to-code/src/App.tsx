@@ -29,7 +29,7 @@ export function App() {
   const state = runtime.state
 
   if (!state || durable.status === 'loading') {
-    return <main className="editor-shell" aria-busy="true"><p role="status">Восстановление workspace…</p></main>
+    return <main className="editor-shell" aria-busy="true"><p role="status">Восстановление рабочего пространства…</p></main>
   }
 
   const undoDisabled = state.history.past.length === 0 || state.compilation.status !== 'valid' || runtime.busy
@@ -68,21 +68,21 @@ export function App() {
           onImportLayout={event => void runtime.importLayout(event)}
           onExportLayout={runtime.exportLayout}
           onResetLayout={() => void runtime.resetLayout()} />
-        <div className="actions">
-          <label className="button">Открыть .c4<input type="file" accept=".c4,text/plain" onChange={event => void durable.importSource(event)} /></label>
-          <label className="button">Импортировать workspace ZIP<input type="file" accept=".zip,application/zip" onChange={event => void durable.importBundle(event)} /></label>
+        <div className="actions" aria-label="Действия с рабочим пространством">
+          <label className="button">Открыть .c4<input aria-label="Открыть файл .c4" type="file" accept=".c4,text/plain" onChange={event => void durable.importSource(event)} /></label>
+          <label className="button">Импортировать ZIP<input aria-label="Импортировать архив рабочего пространства" type="file" accept=".zip,application/zip" onChange={event => void durable.importBundle(event)} /></label>
           <button type="button" onClick={() => downloadSource(runtime.source)}>Экспортировать model.c4</button>
-          <button type="button" disabled={runtime.busy || state.compilation.status !== 'valid'} onClick={durable.exportBundle}>Экспортировать workspace ZIP</button>
+          <button type="button" disabled={runtime.busy || state.compilation.status !== 'valid'} onClick={durable.exportBundle}>Экспортировать ZIP</button>
           <button type="button" aria-label="Отменить последнее изменение" disabled={undoDisabled} onClick={() => void semantic.undo()}>Отменить</button>
           <button type="button" aria-label="Повторить отменённое изменение" disabled={redoDisabled} onClick={() => void semantic.redo()}>Повторить</button>
           <button type="button" disabled={runtime.busy} onClick={() => semantic.updateDraftSource(starterSource)}>Восстановить пример</button>
         </div>
         <p role="status" aria-live="polite">
           {durable.status === 'saving'
-            ? 'Сохранение workspace…'
+            ? 'Сохранение рабочего пространства…'
             : durable.status === 'error'
-            ? 'Ошибка сохранения workspace.'
-            : 'Workspace сохранён.'}
+            ? 'Не удалось сохранить рабочее пространство.'
+            : 'Рабочее пространство сохранено.'}
         </p>
       </header>
 
@@ -101,8 +101,8 @@ export function App() {
                 return <button key={kind} type="button" aria-label={`Создать: ${label}`} aria-pressed={semantic.activeKind === kind} disabled={semantic.canvasDisabled || unavailable} title={unavailable ? 'Этот тип элемента недоступен в текущей спецификации.' : undefined} onClick={() => semantic.activateCreateTool(kind)}>{label}</button>
               })}
               <button type="button" aria-label="Связать элементы" aria-pressed={semantic.relationActive} disabled={semantic.canvasDisabled || semantic.elements.length < 2} onClick={semantic.activateRelationTool}>Связать</button>
-              <button type="button" aria-label="Добавить шаг" aria-pressed={wp06.connectionMode === 'dynamic-step'} disabled={runtime.busy || wp06.selectedViewType !== 'dynamic' || wp06.logicalElements.length < 2} onClick={wp06.activateDynamicStep}>Добавить шаг</button>
-              <button type="button" aria-label="Создать deployment-связь" aria-pressed={wp06.connectionMode === 'deployment-relation'} disabled={runtime.busy || wp06.selectedViewType !== 'deployment' || wp06.deploymentElements.length < 2} onClick={wp06.activateDeploymentRelation}>Deployment-связь</button>
+              <button type="button" aria-label="Добавить направленный шаг" aria-pressed={wp06.connectionMode === 'dynamic-step'} disabled={runtime.busy || wp06.selectedViewType !== 'dynamic' || wp06.logicalElements.length < 2} onClick={wp06.activateDynamicStep}>Добавить шаг</button>
+              <button type="button" aria-label="Создать связь развёртывания" aria-pressed={wp06.connectionMode === 'deployment-relation'} disabled={runtime.busy || wp06.selectedViewType !== 'deployment' || wp06.deploymentElements.length < 2} onClick={wp06.activateDeploymentRelation}>Связь развёртывания</button>
             </div>
           </header>
 
@@ -131,16 +131,16 @@ export function App() {
               </LikeC4EditorProvider>
             : <p className="empty">В проекте нет подходящего вида для отображения.</p>}
 
-          {semantic.activeKind && <p aria-live="polite">Кликните по холсту или нажмите Enter, чтобы создать элемент.</p>}
+          {semantic.activeKind && <p aria-live="polite">Щёлкните по холсту или нажмите Enter, чтобы создать элемент.</p>}
           {wp06.connectionMode === 'dynamic-step' && <p aria-live="polite">Соедините два логических элемента, чтобы создать направленный шаг.</p>}
-          {wp06.connectionMode === 'deployment-relation' && <p aria-live="polite">Соедините две deployment-сущности, чтобы создать deployment-связь.</p>}
+          {wp06.connectionMode === 'deployment-relation' && <p aria-live="polite">Соедините две сущности развёртывания, чтобы создать связь.</p>}
 
           {semantic.relationActive && (
             <section className="relation-controls" aria-label="Создание связи с клавиатуры">
               <p aria-live="polite">Перетащите маркер исходного элемента на целевой или выберите элементы ниже.</p>
               <label>Исходный элемент<select aria-label="Исходный элемент связи" value={semantic.relationSource} onChange={event => { semantic.setRelationSource(event.target.value); runtime.setFeedback('Выберите целевой элемент.') }}><option value="">Выберите исходный элемент</option>{semantic.elements.map(element => <option key={element.id} value={element.id}>{element.title} ({element.id})</option>)}</select></label>
               <label>Целевой элемент<select aria-label="Целевой элемент связи" value={semantic.relationTarget} onChange={event => semantic.setRelationTarget(event.target.value)}><option value="">Выберите целевой элемент</option>{semantic.elements.map(element => <option key={element.id} value={element.id}>{element.title} ({element.id})</option>)}</select></label>
-              <button type="button" onClick={() => semantic.completeRelation(semantic.relationSource, semantic.relationTarget)}>Создать связь</button>
+              <button type="button" disabled={runtime.busy || !semantic.relationSource || !semantic.relationTarget || semantic.relationSource === semantic.relationTarget} onClick={() => semantic.completeRelation(semantic.relationSource, semantic.relationTarget)}>Создать связь</button>
             </section>
           )}
           {runtime.feedback && <p role="status" aria-live="polite">{runtime.feedback}</p>}
@@ -148,7 +148,7 @@ export function App() {
           {runtime.commandError && <p className="error" role="alert">{runtime.commandError}</p>}
         </section>
 
-        <section className="panel inspector-panel">
+        <section className="panel inspector-panel" aria-label="Инспектор">
           <Wp06Controls wp06={wp06} busy={runtime.busy} />
           <ElementInspector element={semantic.selectedElement} availableTags={semantic.availableTags} parents={semantic.parents} disabled={state.compilation.status !== 'valid'} busy={runtime.busy} error={semantic.inspectorError} onPatch={semantic.patchElement} onRename={semantic.renameElement} onMove={semantic.moveElement} onRemove={semantic.inspectRemoval} />
         </section>

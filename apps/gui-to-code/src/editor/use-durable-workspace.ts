@@ -35,6 +35,10 @@ function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url)
 }
 
+function errorDetails(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
   const persistence = useRef(new IndexedDbWorkspacePersistence())
   const hydrationStarted = useRef(false)
@@ -73,7 +77,7 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
       )
       if (cancelled) return
       if (candidate.state.compilation.status !== 'valid') {
-        runtime.setCommandError('Сохранённый workspace повреждён и не был восстановлен. Открыт безопасный текущий проект.')
+        runtime.setCommandError('Сохранённое рабочее пространство повреждено и не восстановлено. Открыт безопасный текущий проект.')
         await persistFreshWorkspace(initialState)
         hydrationComplete.current = true
         setStatus('error')
@@ -84,12 +88,12 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
       runtime.workspace.current = candidate
       runtime.refresh()
       hydrationComplete.current = true
-      runtime.setFeedback('Workspace восстановлен из IndexedDB.')
+      runtime.setFeedback('Рабочее пространство восстановлено из IndexedDB.')
       setStatus('saved')
     }).catch(error => {
       if (cancelled) return
       hydrationComplete.current = true
-      runtime.setCommandError(`Не удалось восстановить workspace: ${error instanceof Error ? error.message : String(error)}`)
+      runtime.setCommandError(`Не удалось восстановить рабочее пространство: ${errorDetails(error)}`)
       setStatus('error')
     })
     return () => {
@@ -110,14 +114,14 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
       if (result.status !== 'saved') {
         throw new Error(
           result.status === 'stale'
-            ? `Обнаружена более новая durable revision ${result.durableRevision}.`
-            : `Durable workspace изменён в другой вкладке (revision ${result.durableRevision}).`,
+            ? `Обнаружена более новая сохранённая ревизия ${result.durableRevision}.`
+            : `Рабочее пространство изменено в другой вкладке (ревизия ${result.durableRevision}).`,
         )
       }
       durableRevision.current = result.revision
       setStatus('saved')
     }).catch(error => {
-      runtime.setCommandError(`Не удалось сохранить workspace: ${error instanceof Error ? error.message : String(error)}`)
+      runtime.setCommandError(`Не удалось сохранить рабочее пространство: ${errorDetails(error)}`)
       setStatus('error')
     })
   }, [runtime.state?.revision, runtime.state?.compilation.status])
@@ -136,7 +140,7 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
       )
       if (generation !== replacementGeneration.current) return false
       if (candidate.state.compilation.status !== 'valid') {
-        runtime.setCommandError('Импорт отклонён: исправьте ошибки LikeC4 в импортируемом workspace.')
+        runtime.setCommandError('Импорт отклонён: исправьте ошибки LikeC4 в импортируемом рабочем пространстве.')
         return false
       }
       await saveQueue.current
@@ -150,7 +154,7 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
       return true
     } catch (error) {
       if (generation === replacementGeneration.current) {
-        runtime.setCommandError(`Импорт отклонён: ${error instanceof Error ? error.message : String(error)}`)
+        runtime.setCommandError(`Импорт отклонён: ${errorDetails(error)}`)
       }
       return false
     } finally {
@@ -161,7 +165,7 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
   const confirmReplacement = (): boolean => {
     const state = runtime.workspace.current?.state
     if (!state || state.revision === 0) return true
-    return window.confirm('Импорт полностью заменит текущий workspace и сбросит историю Undo/Redo. Продолжить?')
+    return window.confirm('Импорт полностью заменит текущее рабочее пространство и сбросит историю отмены и повтора. Продолжить?')
   }
 
   const importSource = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
@@ -184,7 +188,7 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
         metadata: { entryDocumentUri: 'model.c4' },
       }, 'Файл .c4 импортирован. История изменений начата заново.')
     } catch (error) {
-      runtime.setCommandError(`Импорт .c4 отклонён: ${error instanceof Error ? error.message : String(error)}`)
+      runtime.setCommandError(`Импорт .c4 отклонён: ${errorDetails(error)}`)
     } finally {
       input.value = ''
     }
@@ -198,9 +202,9 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
       if (!confirmReplacement()) return
       if (file.size > 16 * 1024 * 1024) throw new Error('ZIP превышает допустимый размер.')
       const envelope = importWorkspaceBundle(new Uint8Array(await file.arrayBuffer()))
-      await replaceEnvelope(envelope, 'Workspace ZIP импортирован. История изменений начата заново.')
+      await replaceEnvelope(envelope, 'Архив рабочего пространства импортирован. История изменений начата заново.')
     } catch (error) {
-      runtime.setCommandError(`Импорт ZIP отклонён: ${error instanceof Error ? error.message : String(error)}`)
+      runtime.setCommandError(`Импорт ZIP отклонён: ${errorDetails(error)}`)
     } finally {
       input.value = ''
     }
@@ -209,14 +213,14 @@ export function useDurableWorkspace(runtime: WorkspaceRuntimeBridge) {
   const exportBundle = (): void => {
     const state = runtime.workspace.current?.state
     if (!state || state.compilation.status !== 'valid') {
-      runtime.setCommandError('Нельзя экспортировать workspace с ошибками.')
+      runtime.setCommandError('Нельзя экспортировать рабочее пространство с ошибками.')
       return
     }
     try {
       downloadBlob(exportWorkspaceBundle(envelopeFromState(state)), workspaceBundleFilename())
-      runtime.setFeedback('Workspace ZIP экспортирован.')
+      runtime.setFeedback('Архив рабочего пространства экспортирован.')
     } catch (error) {
-      runtime.setCommandError(`Не удалось экспортировать workspace: ${error instanceof Error ? error.message : String(error)}`)
+      runtime.setCommandError(`Не удалось экспортировать рабочее пространство: ${errorDetails(error)}`)
     }
   }
 
