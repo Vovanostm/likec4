@@ -1,8 +1,8 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 const workspaceDatabaseName = 'likec4-gui-to-code'
 
-async function resetWorkspace(page: Parameters<Parameters<typeof test.beforeEach>[0]>[0]['page']) {
+async function resetWorkspace(page: Page) {
   await page.goto('/')
   await page.evaluate(async databaseName => {
     localStorage.clear()
