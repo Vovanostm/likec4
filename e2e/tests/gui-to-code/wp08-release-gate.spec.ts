@@ -1,25 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
 
-const workspaceDatabaseName = 'likec4-gui-to-code'
-
-async function resetWorkspace(page: Page) {
+async function openIsolatedWorkspace(page: Page) {
   await page.goto('/')
-  await page.evaluate(async databaseName => {
-    localStorage.clear()
-    sessionStorage.clear()
-    await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.deleteDatabase(databaseName)
-      request.onsuccess = () => resolve()
-      request.onerror = () => reject(request.error ?? new Error('Failed to reset IndexedDB'))
-      request.onblocked = () => reject(new Error('IndexedDB reset was blocked'))
-    })
-  }, workspaceDatabaseName)
-  await page.reload()
   await expect(page.getByRole('heading', { name: 'LikeC4: визуальный редактор' })).toBeVisible()
 }
 
 async function selectFirstLogicalElement(page: Page) {
-  const firstElement = page.locator('.structure-item').first()
+  const firstElement = page.getByRole('treeitem').first().getByRole('button')
   await expect(firstElement).toBeVisible()
   await firstElement.click()
 }
@@ -32,7 +19,7 @@ test.describe('WP-08 responsive release smoke', () => {
   ]) {
     test(`${viewport.name} viewport keeps critical controls reachable`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
-      await resetWorkspace(page)
+      await openIsolatedWorkspace(page)
       await selectFirstLogicalElement(page)
 
       await expect(page.getByLabel('Текущий вид')).toBeVisible()
@@ -54,7 +41,7 @@ test.describe('WP-08 responsive release smoke', () => {
 })
 
 test('dialog supports keyboard open, initial focus, Escape and focus restoration', async ({ page }) => {
-  await resetWorkspace(page)
+  await openIsolatedWorkspace(page)
   await selectFirstLogicalElement(page)
 
   const opener = page.getByRole('button', { name: 'Создать вид' })
@@ -71,7 +58,7 @@ test('dialog supports keyboard open, initial focus, Escape and focus restoration
 })
 
 test('critical controls expose accessible names and Russian status surfaces', async ({ page }) => {
-  await resetWorkspace(page)
+  await openIsolatedWorkspace(page)
 
   await expect(page.getByLabel('Исходный код LikeC4')).toBeAttached()
   await expect(page.getByLabel('Текущий вид')).toBeAttached()
