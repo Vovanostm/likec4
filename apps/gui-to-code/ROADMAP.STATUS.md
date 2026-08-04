@@ -1,10 +1,8 @@
 # Состояние исполнения roadmap
 
-Дата актуализации: 3 августа 2026  
-Текущая ветка: `feat/gui-to-code-wp07-durable-workspace`  
-WP-06 PR: `https://github.com/Vovanostm/likec4/pull/7` — merged  
-WP-06 squash merge commit: `88f13a7a8384217d73245d4350ae71288935a0aa`  
-WP-07 PR: `https://github.com/Vovanostm/likec4/pull/8`
+Дата актуализации: 4 августа 2026  
+Текущая ветка: `feat/gui-to-code-wp08-mvp-release-gate`  
+WP-08 PR: #10 — open; merge запрещён без отдельной команды пользователя.
 
 Этот файл — изменяемое состояние исполнения. Стабильные outcomes и acceptance criteria находятся в `ROADMAP.md`.
 
@@ -12,7 +10,7 @@ WP-07 PR: `https://github.com/Vovanostm/likec4/pull/8`
 
 ```yaml
 # managed-state:v2
-revision: 11
+revision: 12
 contract_review: complete
 active: []
 done:
@@ -24,76 +22,30 @@ done:
   - WP-05
   - WP-06
   - WP-07
-ready:
   - WP-08
+ready: []
 planned: []
 blocked: []
 ```
 
-## WP-07 — implementation complete
+## WP-08 — MVP release gate complete
 
-### Наблюдаемый результат
+### Результат
 
-Пользователь может:
+- Русская терминология оболочки и состояний долговременного хранения приведена к единому виду.
+- Критические элементы управления имеют доступные имена; создание статического вида проверяет открытие с клавиатуры, начальный focus, Escape и возврат focus.
+- Release smoke покрывает размеры `390×844`, `1440×900` и `1920×1080`.
+- Production `dist` сохраняется как exact-SHA artifact с retention семь дней, запускается через preview и проходит Playwright acceptance.
+- README содержит supported-feature matrix, recovery/rollback, persisted schema, lossy behaviour и ограничения MVP.
 
-- закрыть или полностью перезагрузить страницу и восстановить последний valid workspace;
-- хранить committed sources, manual-layout snapshots и metadata одной IndexedDB transaction;
-- импортировать один `.c4` как полную transactional workspace replacement;
-- экспортировать текущий source как `model.c4`;
-- импортировать и экспортировать переносимый workspace ZIP;
-- получить прежний workspace после невалидного `.c4`, повреждённого ZIP или unsupported version;
-- видеть русские состояния восстановления, сохранения и ошибок;
-- явно подтвердить destructive import, который сбрасывает Undo/Redo history.
+`EditorWorkspace` остаётся единственным владельцем committed semantic state. LikeC4 DSL и стандартные manual-layout snapshots остаются persisted canonical data. Persistence schema, public package API, DSL grammar и package boundaries не изменены. Новая dependency и changeset не требуются.
 
-### Architecture state
+Первый полный release cycle на implementation head `ff3cf7907a485e4805ebdbf976adc113fe826280`:
 
-`EditorWorkspace` остаётся единственным owner semantic state. Persisted envelope `likec4.gui-to-code.workspace` version `1` содержит только:
+- `GUI-to-code` run `30931657058` — success;
+- `CI (PR & push)` run `30931658768` — success;
+- `push` run `30931657379` — success.
 
-- committed source files;
-- standard `.likec4/<ViewId>.likec4.snap` snapshots;
-- workspace ID, revision, save timestamp и entry document metadata.
+Заключительный exact head и terminal workflow run IDs фиксируются в PR #10, поскольку commit не может содержать собственный SHA.
 
-Не сохраняются compiled model, diagnostics, selection, dialogs, focus, canvas nodes или отдельный deployment/dynamic graph.
-
-Production path:
-
-```text
-valid EditorWorkspace commit
-→ immutable envelope
-→ queued optimistic IndexedDB save
-
-.c4 / ZIP input
-→ bounded validation
-→ isolated candidate compile
-→ durable candidate transaction
-→ atomic active workspace replacement
-```
-
-ZIP manifest authoritative; archive entries проверяются на traversal, absolute/drive paths, backslashes, case-collisions, duplicates, undeclared entries, CRC mismatch, unsupported compression, count и uncompressed size limits.
-
-### Scope decisions
-
-- Использован app-owned native IndexedDB adapter; новый state-management framework не добавлен.
-- Использован минимальный deterministic store-only ZIP codec; новая dependency и lockfile change не потребовались.
-- Imported/hydrated revision корректно rebased в новый `EditorWorkspace`; затем сразу фиксируется новый durable head.
-- Workspace replacement сбрасывает Undo/Redo history; semantic/layout commands сохраняют прежние history semantics.
-- `localStorage` WP-05 path остаётся backward-compatible fallback, но durable workspace owner — IndexedDB envelope.
-- Public publishable packages не изменены; changeset не требуется.
-
-### Verification contract
-
-Final exact-head evidence фиксируется в PR #8 после terminal GitHub CI:
-
-- standalone `GUI-to-code` workflow;
-- root `CI (PR & push)` workflow;
-- push workflow;
-- GUI typecheck, tests, build, smoke and Playwright acceptance;
-- agent-instructions and `git diff --check`;
-- unresolved review threads = 0;
-- PR non-draft and mergeable.
-
-Merge выполнять только после отдельной явной команды пользователя.
-
-## WP-08 — ready
-
-Следующий пакет: MVP release gate — финальная русификация UX, accessibility review, CI matrix, release documentation, artifact smoke и product/quality review.
+Выполнены два отдельных review-прохода: correctness/reliability и product/accessibility/release. Residual limitations перечислены в README и PR body.
