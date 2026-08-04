@@ -51,6 +51,7 @@ test('restores a standard manual-layout snapshot after reload and file round tri
   const sourceBeforeLayout = await source.inputValue()
   const node = page.locator('.react-flow__node[data-id="customer"]')
   await expect(node).toBeVisible()
+  await node.scrollIntoViewIfNeeded()
 
   const before = await node.boundingBox()
   if (!before) throw new Error('Expected a visible diagram node')
