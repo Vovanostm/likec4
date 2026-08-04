@@ -17,7 +17,16 @@ interface WorkspaceManifestV1 {
   }[]
 }
 
+function isManifestFile(value: unknown): value is WorkspaceManifestV1['files'][number] {
+  if (!value || typeof value !== 'object') return false
+  const file = value as { path?: unknown; role?: unknown }
+  return typeof file.path === 'string' && (file.role === 'source' || file.role === 'manual-layout')
+}
+
 export function exportWorkspaceBundle(envelope: PersistedWorkspaceEnvelope): Blob {
+  const validated = validateWorkspaceEnvelope(envelope)
+  if (!validated.ok) throw new Error(validated.message)
+
   const files: WorkspaceManifestV1['files'][number][] = []
   const entries = envelope.sources.map(source => {
     files.push({ path: source.uri, role: 'source' })
@@ -46,17 +55,29 @@ export function importWorkspaceBundle(bytes: Uint8Array, workspaceId = 'default'
   const byPath = new Map(entries.map(entry => [entry.path, entry.content]))
   const manifestBytes = byPath.get('workspace.json')
   if (!manifestBytes) throw new Error('В ZIP отсутствует workspace.json.')
-  let manifest: WorkspaceManifestV1
+  let parsed: unknown
   try {
-    manifest = JSON.parse(decoder.decode(manifestBytes)) as WorkspaceManifestV1
+    parsed = JSON.parse(decoder.decode(manifestBytes))
   } catch {
     throw new Error('Manifest workspace.json повреждён.')
   }
-  if (manifest.schema !== workspaceSchema || manifest.version !== workspaceVersion || !Array.isArray(manifest.files)) {
-    throw new Error('Версия workspace ZIP не поддерживается.')
+  if (!parsed || typeof parsed !== 'object') throw new Error('Manifest workspace.json повреждён.')
+  const manifest = parsed as Partial<WorkspaceManifestV1>
+  if (
+    manifest.schema !== workspaceSchema
+    || manifest.version !== workspaceVersion
+    || typeof manifest.entryDocumentUri !== 'string'
+    || typeof manifest.exportedAt !== 'string'
+    || !Array.isArray(manifest.files)
+    || !manifest.files.every(isManifestFile)
+  ) {
+    throw new Error('Версия или структура workspace ZIP не поддерживается.')
   }
-  const declared = new Set(['workspace.json', ...manifest.files.map(file => file.path)])
-  if (declared.size !== manifest.files.length + 1 || entries.some(entry => !declared.has(entry.path))) {
+  const declared = new Set(['workspace.json', ...manifest.files.map(file => file.path.toLocaleLowerCase())])
+  if (
+    declared.size !== manifest.files.length + 1
+    || entries.some(entry => !declared.has(entry.path.toLocaleLowerCase()))
+  ) {
     throw new Error('ZIP содержит файлы вне manifest или повторяющиеся пути.')
   }
   const sources: { uri: string; content: string }[] = []
