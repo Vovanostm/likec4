@@ -1,30 +1,77 @@
 # LikeC4 GUI-to-code
 
-`@likec4/gui-to-code` is a private browser semantic editor for LikeC4. It edits committed LikeC4 sources through `EditorWorkspace`, renders derived models in real time and exposes Russian user-facing UX and accessibility labels.
+`@likec4/gui-to-code` — приватный браузерный семантический редактор LikeC4. Пользователь работает преимущественно через canvas, а все подтверждённые изменения проходят через `EditorWorkspace` и сохраняются как LikeC4 DSL и стандартные snapshots ручной раскладки.
 
-## Current behavior
+## Возможности MVP
 
-The WP-07 editor supports:
+Редактор поддерживает:
 
-- source-preserving logical element, relation and static-view workflows;
-- source-preserving dynamic views and directed dynamic steps;
-- deployment views, nodes, named `instanceOf` references and deployment relations;
-- standard `.likec4/<view>.likec4.snap` manual layouts with shared Undo/Redo history;
-- automatic recovery of the last valid workspace after a full browser reload;
-- atomic IndexedDB persistence of committed sources, manual layouts and versioned workspace metadata;
-- transactional import of one `.c4` file without replacing the active workspace when compilation fails;
-- deterministic export of the current source as `model.c4`;
-- transactional import and export of a portable workspace ZIP containing `workspace.json`, source files and manual-layout snapshots;
-- path traversal, duplicate path, unsupported version, checksum, entry count and uncompressed-size protection for ZIP imports;
-- explicit confirmation before destructive workspace replacement;
-- revision-aware save conflict handling and stale-completion rejection;
-- safe recovery when durable data is corrupt or unsupported.
+- создание и изменение logical elements;
+- создание направленных logical relations;
+- безопасные patch, rename, move и remove операции с общей историей Undo/Redo;
+- создание и выбор static views;
+- ручную раскладку через `.likec4/<view>.likec4.snap`;
+- dynamic views и направленные dynamic steps;
+- deployment views, узлы развёртывания, именованные `instanceOf` и deployment relations;
+- автоматическое восстановление последнего подтверждённого рабочего пространства после reload;
+- атомарное сохранение sources, manual-layout snapshots и versioned metadata в IndexedDB;
+- транзакционный импорт одного `.c4` файла;
+- экспорт текущего source как `model.c4`;
+- транзакционный импорт и экспорт переносимого workspace ZIP;
+- защиту ZIP import от path traversal, абсолютных путей, backslash paths, duplicate/case-collision entries, undeclared entries, CRC mismatch, неподдерживаемого compression, превышения числа записей и размера;
+- явное подтверждение destructive workspace replacement;
+- revision-aware save conflicts и отклонение stale completion;
+- сохранение последнего valid rendered model при невалидном ручном DSL.
 
-Selection, open dialogs, focus, connection mode, diagnostics, compiled models and rendered diagram nodes are derived or transient and are not persisted.
+Selection, открытые dialogs, focus, connection mode, diagnostics, compiled model и rendered diagram nodes не сохраняются как domain data.
 
-## Durable workspace format
+## Поддерживаемая матрица
 
-The IndexedDB record uses schema `likec4.gui-to-code.workspace`, version `1`:
+| Семейство | Создание | Изменение | Rename | Remove | Import | Export | Canvas |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Logical elements | Да | Да | Да | Да | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Logical relations | Да | Да | Через обновление ссылок | Да | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Static views | Да | Ограниченно | Нет отдельного flow | Через поддержанный remove flow | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Dynamic views/steps | Да | Ограниченно | Нет отдельного flow | Через поддержанный remove flow | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Deployment nodes | Да | Ограниченно | Нет отдельного flow | Через поддержанный remove flow | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Deployment instances | Да, именованные | Ограниченно | Нет отдельного flow | Через поддержанный remove flow | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Deployment relations | Да | Ограниченно | Через обновление ссылок | Да | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Manual layout snapshots | Да, через drag | Drag/reset | Не применимо | Reset | Snapshot, ZIP | Snapshot, ZIP | Да |
+| Config/libraries/styles | Нет отдельного authoring UI | Нет | Нет | Нет | Сохраняются только в пределах фактически принятого source | Через source/ZIP | Нет |
+
+«Ограниченно» означает только уже реализованные поля и операции. Редактор не заявляет полную поддержку всего LikeC4 DSL.
+
+## Надёжность и восстановление
+
+`EditorWorkspace` — единственный владелец committed semantic state. Production path:
+
+```text
+пользовательское действие
+→ typed EditorCommand
+→ isolated candidate
+→ compile и semantic verification
+→ atomic workspace commit
+→ revision-guarded IndexedDB save
+```
+
+Импорт выполняется как replacement transaction:
+
+```text
+file или ZIP
+→ bounded validation
+→ isolated candidate workspace
+→ candidate compile
+→ durable transaction
+→ atomic active workspace replacement
+```
+
+Невалидный `.c4`, повреждённый ZIP, неподдерживаемая schema version или rejected candidate не заменяют active workspace, не увеличивают revision и не добавляют history entry. Успешный destructive import намеренно начинает новую Undo/Redo history.
+
+При конфликте сохранения редактор не должен молча перезаписывать более новую revision. При невалидном ручном DSL source и diagnostics остаются доступны, а canvas продолжает показывать последний valid compiled model.
+
+## Формат durable workspace
+
+IndexedDB record использует schema `likec4.gui-to-code.workspace`, version `1`:
 
 ```text
 workspace envelope
@@ -35,53 +82,52 @@ workspace envelope
 └── entry document metadata
 ```
 
-The portable ZIP uses the same semantic payload through an authoritative `workspace.json` manifest. Sources and snapshots are preserved exactly. The archive codec emits deterministic store-only ZIP entries; unsupported compression is rejected instead of silently misreading data.
+Неизвестная или повреждённая версия не гидратируется поверх valid active workspace. Для восстановления пользователь может импортировать ранее экспортированный ZIP/`.c4` либо очистить browser storage для приложения и начать со starter workspace.
 
-Import is a replacement transaction:
+Portable ZIP использует authoritative `workspace.json`. Sources и snapshots сохраняются как байты архива. Codec формирует deterministic store-only entries; неподдерживаемое compression отклоняется.
 
-```text
-read input
-→ validate size, version and paths
-→ construct isolated candidate workspace
-→ compile and verify candidate
-→ persist candidate atomically
-→ replace active EditorWorkspace
-```
+## Lossy behaviour и ограничения
 
-A failed `.c4` or ZIP import leaves the active and durable workspace unchanged. Successful replacement intentionally starts a new Undo/Redo history.
+Workspace ZIP сохраняет committed source files, исходное разбиение этих файлов, standard manual-layout snapshots и versioned metadata. Комментарии и formatting сохраняются только потому, что экспортируются существующие source bytes; отдельная canonical regeneration может быть lossy и не является обещанием этого MVP.
 
-## Architecture
+Source locations, diagnostics, compiled models, selection, focus, открытые dialogs и canvas runtime state не переносятся как persisted domain data.
 
-- `EditorWorkspace` remains the sole semantic owner of sources, layouts, revision, compilation state and history.
-- `src/editor/persisted-workspace.ts` owns the versioned serializable envelope and validation boundary.
-- `src/editor/indexeddb-workspace.ts` owns the atomic IndexedDB port and optimistic revision checks.
-- `src/editor/workspace-bundle.ts` owns manifest mapping; it does not compile or become a semantic model.
-- `src/editor/zip-store.ts` owns bounded deterministic ZIP encoding/decoding.
-- `src/editor/use-durable-workspace.ts` coordinates hydration, queued durable saves and isolated transactional replacement.
-- React components never persist an independent semantic graph or compiled model.
-- LikeC4 DSL remains the persisted semantic source of truth. Canonical DSL generation remains a separate, potentially lossy operation.
+Не поддерживаются:
 
-The target contract is in [SPEC.md](./SPEC.md). Stable work packages and managed state are in [ROADMAP.md](./ROADMAP.md) and [ROADMAP.STATUS.md](./ROADMAP.STATUS.md).
+- совместное редактирование;
+- backend или cloud sync;
+- прямая интеграция с desktop filesystem;
+- произвольное multi-project authoring сверх фактически импортируемого workspace;
+- полное authoring-покрытие config, libraries и styles;
+- полная поддержка всего LikeC4 DSL;
+- AI-assisted architecture generation;
+- lossless canonical regeneration любого входного DSL.
 
-## Verification
+## Архитектура
+
+- `EditorWorkspace` владеет sources, layouts, revision, compilation state и history.
+- `src/editor/persisted-workspace.ts` задаёт versioned serializable envelope и validation boundary.
+- `src/editor/indexeddb-workspace.ts` реализует atomic IndexedDB port и optimistic revision checks.
+- `src/editor/workspace-bundle.ts` отображает workspace в manifest и обратно, но не компилирует DSL и не становится semantic model.
+- `src/editor/zip-store.ts` реализует bounded deterministic ZIP codec.
+- `src/editor/use-durable-workspace.ts` координирует hydration, queued saves и isolated transactional replacement.
+- React components не сохраняют независимый semantic graph или compiled model.
+- LikeC4 DSL остаётся persisted semantic source of truth.
+
+Целевой контракт находится в [SPEC.md](./SPEC.md). Стабильные work packages и managed state находятся в [ROADMAP.md](./ROADMAP.md) и [ROADMAP.STATUS.md](./ROADMAP.STATUS.md).
+
+## Запуск и проверка
+
+Локальные команды ниже приведены для разработчиков. WP-08 agent validation выполняется только GitHub Actions.
 
 ```bash
-pnpm --filter @likec4/language-services test -- DocumentEditService
-pnpm --filter @likec4/language-services typecheck
-pnpm --filter @likec4/style-preset sources
-pnpm --filter @likec4/styles sources
-pnpm --filter @likec4/styles emit-pkg
-pnpm --filter @likec4/language-server generate
-pnpm --filter @likec4/layouts generate
 pnpm --filter @likec4/gui-to-code generate
 pnpm --filter @likec4/gui-to-code typecheck
 pnpm --filter @likec4/gui-to-code test
 pnpm --filter @likec4/gui-to-code build
 pnpm --filter @likec4/gui-to-code smoke:start
 pnpm run pretest:e2e
-pnpm install --no-lockfile
-pnpm install:chromium
-pnpm exec playwright test -c playwright.gui-to-code.config.ts
-pnpm check:agent-instructions
-git diff --check
+cd e2e && pnpm exec playwright test -c playwright.gui-to-code.config.ts
 ```
+
+Standalone workflow `GUI-to-code` собирает production `dist`, сохраняет его как ограниченный по retention artifact, запускает preview smoke и Playwright acceptance против production build.
