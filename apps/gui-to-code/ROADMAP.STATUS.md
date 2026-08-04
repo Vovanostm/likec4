@@ -1,19 +1,18 @@
 # Состояние исполнения roadmap
 
-Дата актуализации: 31 июля 2026  
-Текущая ветка: `main`  
-WP-05 PR: `https://github.com/Vovanostm/likec4/pull/6` — merged  
-WP-05 final implementation head: `79d1d5616bd1e5fd5be3bc8711ebd07def740768`  
-WP-05 squash merge commit: `44c2729965754bc27c5e772957032ec3c4d117a2`  
-AI-ready WP-06 specification commit: `ec4acb5c0914d8ca922e98c0b903c7b87c363f1a`
+Дата актуализации: 3 августа 2026  
+Текущая ветка: `feat/gui-to-code-wp07-durable-workspace`  
+WP-06 PR: `https://github.com/Vovanostm/likec4/pull/7` — merged  
+WP-06 squash merge commit: `88f13a7a8384217d73245d4350ae71288935a0aa`  
+WP-07 PR: `https://github.com/Vovanostm/likec4/pull/8`
 
-Этот файл — изменяемое состояние исполнения. Стабильные outcomes, acceptance criteria и границы work packages находятся в `ROADMAP.md`. Следующий агент обязан прочитать корневой и scoped `AGENTS.md`, `SPEC.md`, `ROADMAP.md`, этот файл и `AI-READY.WP-06.md` до изменений.
+Этот файл — изменяемое состояние исполнения. Стабильные outcomes и acceptance criteria находятся в `ROADMAP.md`.
 
 ## Managed state
 
 ```yaml
 # managed-state:v2
-revision: 9
+revision: 11
 contract_review: complete
 active: []
 done:
@@ -23,121 +22,78 @@ done:
   - WP-03
   - WP-04
   - WP-05
-ready:
   - WP-06
-planned:
   - WP-07
+ready:
   - WP-08
+planned: []
 blocked: []
 ```
 
-## WP-05 — done and merged
+## WP-07 — implementation complete
 
 ### Наблюдаемый результат
 
 Пользователь может:
 
-- создать source-backed static element view для выбранного logical element;
-- выбрать доступный view без semantic mutation и нового history entry;
-- переместить узлы в canvas edit mode и сохранить стандартную ручную раскладку;
-- экспортировать snapshot как `<view>.likec4.snap`;
-- сбросить только manual layout без изменения semantic DSL;
-- импортировать snapshot с проверкой `ViewId`, view type и структуры;
-- перезагрузить страницу и восстановить source и сохранённые snapshots;
-- отменить и повторить semantic/layout changes через общую атомарную историю;
-- увидеть core layout drift после semantic change без перезаписи snapshot.
+- закрыть или полностью перезагрузить страницу и восстановить последний valid workspace;
+- хранить committed sources, manual-layout snapshots и metadata одной IndexedDB transaction;
+- импортировать один `.c4` как полную transactional workspace replacement;
+- экспортировать текущий source как `model.c4`;
+- импортировать и экспортировать переносимый workspace ZIP;
+- получить прежний workspace после невалидного `.c4`, повреждённого ZIP или unsupported version;
+- видеть русские состояния восстановления, сохранения и ошибок;
+- явно подтвердить destructive import, который сбрасывает Undo/Redo history.
 
 ### Architecture state
 
-`EditorWorkspace` остаётся единственным owner:
+`EditorWorkspace` остаётся единственным owner semantic state. Persisted envelope `likec4.gui-to-code.workspace` version `1` содержит только:
 
-- committed/draft sources;
-- manual-layout snapshots;
-- revision и compilation state;
-- last-valid model;
-- shared Undo/Redo history.
+- committed source files;
+- standard `.likec4/<ViewId>.likec4.snap` snapshots;
+- workspace ID, revision, save timestamp и entry document metadata.
+
+Не сохраняются compiled model, diagnostics, selection, dialogs, focus, canvas nodes или отдельный deployment/dynamic graph.
 
 Production path:
 
 ```text
-UI/canvas intent
-→ revision-guarded queued EditorOperation
-→ source-preserving document edit или standard ViewChange snapshot
+valid EditorWorkspace commit
+→ immutable envelope
+→ queued optimistic IndexedDB save
+
+.c4 / ZIP input
+→ bounded validation
 → isolated candidate compile
-→ command-specific verification
-→ atomic sources + manualLayouts commit
-→ one history entry
+→ durable candidate transaction
+→ atomic active workspace replacement
 ```
 
-Source-edit owner для static views — browser/Node-compatible `ElementViewDocumentEditService` в `@likec4/language-services`.
+ZIP manifest authoritative; archive entries проверяются на traversal, absolute/drive paths, backslashes, case-collisions, duplicates, undeclared entries, CRC mismatch, unsupported compression, count и uncompressed size limits.
 
-Manual layout хранится в versioned envelope `likec4.gui-to-code.manual-layouts.v1` с canonical virtual paths `.likec4/<view>.likec4.snap`. App не владеет XYFlow geometry и не использует semantic `ViewChange`.
+### Scope decisions
 
-### Final evidence
+- Использован app-owned native IndexedDB adapter; новый state-management framework не добавлен.
+- Использован минимальный deterministic store-only ZIP codec; новая dependency и lockfile change не потребовались.
+- Imported/hydrated revision корректно rebased в новый `EditorWorkspace`; затем сразу фиксируется новый durable head.
+- Workspace replacement сбрасывает Undo/Redo history; semantic/layout commands сохраняют прежние history semantics.
+- `localStorage` WP-05 path остаётся backward-compatible fallback, но durable workspace owner — IndexedDB envelope.
+- Public publishable packages не изменены; changeset не требуется.
 
-Exact PR head: `79d1d5616bd1e5fd5be3bc8711ebd07def740768`.
+### Verification contract
 
-- standalone `GUI-to-code` workflow `30654350594` — success;
-- root `CI (PR & push)` workflow `30654352163` — success;
-- `push` workflow `30654352400` — success;
-- Playwright WP-05 acceptance — success без retries;
-- agent-instructions и `git diff --check` — success;
-- unresolved review threads — none;
-- PR mergeable и non-draft до merge;
-- squash merge commit — `44c2729965754bc27c5e772957032ec3c4d117a2`.
+Final exact-head evidence фиксируется в PR #8 после terminal GitHub CI:
 
-### Review outcome
+- standalone `GUI-to-code` workflow;
+- root `CI (PR & push)` workflow;
+- push workflow;
+- GUI typecheck, tests, build, smoke and Playwright acceptance;
+- agent-instructions and `git diff --check`;
+- unresolved review threads = 0;
+- PR non-draft and mergeable.
 
-Correctness review complete:
+Merge выполнять только после отдельной явной команды пользователя.
 
-- source preservation и target URI ambiguity fail closed;
-- candidate compile и exact semantic verification;
-- atomic source/layout history;
-- manual snapshot persistence/reload/import/export/reset;
-- stale selection, dialog focus и toolbar focus исправлены;
-- canvas edit mode включается до drag acceptance;
-- E2E storage isolation не очищает snapshot при проверяемом reload.
+## WP-08 — ready
 
-Architecture/product review complete:
-
-- один `EditorWorkspace` и один DSL owner;
-- один production `App.tsx`;
-- no semantic `ViewChange` extension;
-- no app-owned geometry;
-- no grammar change;
-- no WP-07/WP-08 scope leakage;
-- public package additions покрыты focused tests и patch changeset.
-
-## WP-06 — ready
-
-Следующий пакет: dynamic и deployment semantics без обхода document layer.
-
-Исполняемое AI-ready ТЗ:
-
-[`AI-READY.WP-06.md`](./AI-READY.WP-06.md)
-
-Baseline для старта:
-
-- минимально проверенный merged code baseline: `44c2729965754bc27c5e772957032ec3c4d117a2`;
-- документация ТЗ зафиксирована commit `ec4acb5c0914d8ca922e98c0b903c7b87c363f1a`;
-- агент должен брать фактический latest `main`, сравнить его с baseline и записать exact base SHA в PR body.
-
-WP-06 получает:
-
-- revision-safe `EditorWorkspace`;
-- atomic source/manual-layout history;
-- source-preserving logical CRUD и static view creation;
-- standard manual-layout persistence и core drift;
-- synchronized canvas/tree/inspector selection;
-- отдельный GUI browser acceptance workflow с failure artifacts.
-
-Обязательные границы:
-
-- dynamic и deployment families имеют собственные typed commands и verification;
-- grammar/AST/model/renderer capability сначала доказывается parse → model → render tests;
-- existing-source edits используют linked AST/CST owner;
-- deployment/dynamic semantics не маскируются под logical/static commands;
-- semantic commands не переписывают manual snapshots;
-- не начинать IndexedDB, ZIP, multi-project persistence и release hardening;
-- final DoD — один green, non-draft, mergeable PR без unresolved review threads;
-- не merge без отдельной команды пользователя.
+Следующий пакет: MVP release gate — финальная русификация UX, accessibility review, CI matrix, release documentation, artifact smoke и product/quality review.

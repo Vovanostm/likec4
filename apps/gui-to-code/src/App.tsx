@@ -1,8 +1,8 @@
 import type { ElementKind, Fqn } from '@likec4/core/types'
 import { LikeC4EditorProvider, LikeC4ModelProvider, ReactLikeC4 } from '@likec4/diagram'
-import type { ChangeEvent } from 'react'
 import { starterSource } from './document'
 import { downloadSource } from './editor/file-downloads'
+import { useDurableWorkspace } from './editor/use-durable-workspace'
 import { ElementInspector } from './editor/ui/ElementInspector'
 import { RemoveElementConfirmation } from './editor/ui/RemoveElementConfirmation'
 import { StructureTree } from './editor/ui/StructureTree'
@@ -11,7 +11,6 @@ import { Wp06Controls } from './editor/ui/Wp06Controls'
 import { useSemanticEditor } from './editor/use-semantic-editor'
 import { useWorkspaceRuntime } from './editor/use-workspace-runtime'
 import { useWp06Runtime } from './editor/use-wp06-runtime'
-import { userError, userMessages } from './user-messages'
 import './editor.css'
 
 export { downloadSource }
@@ -24,29 +23,14 @@ const createKinds = [
 
 export function App() {
   const runtime = useWorkspaceRuntime()
+  const durable = useDurableWorkspace(runtime)
   const semantic = useSemanticEditor(runtime)
   const wp06 = useWp06Runtime(runtime)
   const state = runtime.state
 
-  const importSource = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const input = event.currentTarget
-    const file = input.files?.[0]
-    if (!file) return
-    try {
-      const content = await file.text()
-      if (!content.length) {
-        runtime.setCommandError(userMessages.importEmpty)
-        return
-      }
-      semantic.updateDraftSource(content)
-    } catch (error) {
-      runtime.setCommandError(userError(userMessages.importFailed, error instanceof Error ? error.message : String(error)))
-    } finally {
-      input.value = ''
-    }
+  if (!state || durable.status === 'loading') {
+    return <main className="editor-shell" aria-busy="true"><p role="status">Восстановление workspace…</p></main>
   }
-
-  if (!state) return <main className="editor-shell"><p>Загрузка редактора…</p></main>
 
   const undoDisabled = state.history.past.length === 0 || state.compilation.status !== 'valid' || runtime.busy
   const redoDisabled = state.history.future.length === 0 || state.compilation.status !== 'valid' || runtime.busy
@@ -85,12 +69,21 @@ export function App() {
           onExportLayout={runtime.exportLayout}
           onResetLayout={() => void runtime.resetLayout()} />
         <div className="actions">
-          <label className="button">Импортировать .c4<input type="file" accept=".c4,text/plain" onChange={event => void importSource(event)} /></label>
+          <label className="button">Открыть .c4<input type="file" accept=".c4,text/plain" onChange={event => void durable.importSource(event)} /></label>
+          <label className="button">Импортировать workspace ZIP<input type="file" accept=".zip,application/zip" onChange={event => void durable.importBundle(event)} /></label>
           <button type="button" onClick={() => downloadSource(runtime.source)}>Экспортировать model.c4</button>
+          <button type="button" disabled={runtime.busy || state.compilation.status !== 'valid'} onClick={durable.exportBundle}>Экспортировать workspace ZIP</button>
           <button type="button" aria-label="Отменить последнее изменение" disabled={undoDisabled} onClick={() => void semantic.undo()}>Отменить</button>
           <button type="button" aria-label="Повторить отменённое изменение" disabled={redoDisabled} onClick={() => void semantic.redo()}>Повторить</button>
           <button type="button" disabled={runtime.busy} onClick={() => semantic.updateDraftSource(starterSource)}>Восстановить пример</button>
         </div>
+        <p role="status" aria-live="polite">
+          {durable.status === 'saving'
+            ? 'Сохранение workspace…'
+            : durable.status === 'error'
+            ? 'Ошибка сохранения workspace.'
+            : 'Workspace сохранён.'}
+        </p>
       </header>
 
       <section className="workspace" aria-label="Рабочая область редактора LikeC4">

@@ -1,50 +1,67 @@
 # LikeC4 GUI-to-code
 
-`@likec4/gui-to-code` is a private, browser-only semantic editor for LikeC4. It edits canonical LikeC4 source and renders the result in real time. The user-facing interface and accessibility labels are in Russian; LikeC4 DSL and technical diagnostics remain in their canonical language.
+`@likec4/gui-to-code` is a private browser semantic editor for LikeC4. It edits committed LikeC4 sources through `EditorWorkspace`, renders derived models in real time and exposes Russian user-facing UX and accessibility labels.
 
 ## Current behavior
 
-The WP-05 vertical slice supports:
+The WP-07 editor supports:
 
-- importing one `.c4` source file, editing it directly, and exporting the exact current text as `model.c4`;
-- preserving the visible source draft in browser `localStorage` under the existing versioned key;
-- creating root actors, systems and components through the canvas-first tool path;
-- creating one directed logical relation by dragging an explicit source handle or using the accessible source/target chooser;
-- selecting one logical element from the canvas or recursive «Структура» tree and keeping tree, diagram focus and inspector synchronized;
-- editing element title, description, technology and specification-backed tags in one atomic `element.patch` command;
-- moving an element and its complete subtree between root and parent scopes;
-- changing one local element ID while remapping the target subtree and typed semantic references;
-- inspecting removal dependencies before mutation and requiring an exact, revision-bound dependency approval;
-- removing an element, its subtree and approved removable dependencies in one atomic history entry;
-- creating one source-backed scoped static view, selecting available views without changing semantic history, and restoring selection after Undo/Redo;
-- editing node geometry through the existing LikeC4 editor contract and persisting one standard `.likec4/<view>.likec4.snap` snapshot;
-- importing, exporting, resetting and reloading manual-layout snapshots without changing semantic DSL;
-- applying existing core manual-layout drift handling after semantic model changes;
-- restoring byte-exact source and layout document snapshots through the shared Undo/Redo history;
-- using `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z`, Delete/Backspace, Escape and keyboard-accessible tree/confirmation controls;
-- preserving the last valid rendered model while a direct edit or import is invalid;
-- rejecting stale, ambiguous, malformed or unverifiable operations without mutating committed state.
+- source-preserving logical element, relation and static-view workflows;
+- source-preserving dynamic views and directed dynamic steps;
+- deployment views, nodes, named `instanceOf` references and deployment relations;
+- standard `.likec4/<view>.likec4.snap` manual layouts with shared Undo/Redo history;
+- automatic recovery of the last valid workspace after a full browser reload;
+- atomic IndexedDB persistence of committed sources, manual layouts and versioned workspace metadata;
+- transactional import of one `.c4` file without replacing the active workspace when compilation fails;
+- deterministic export of the current source as `model.c4`;
+- transactional import and export of a portable workspace ZIP containing `workspace.json`, source files and manual-layout snapshots;
+- path traversal, duplicate path, unsupported version, checksum, entry count and uncompressed-size protection for ZIP imports;
+- explicit confirmation before destructive workspace replacement;
+- revision-aware save conflict handling and stale-completion rejection;
+- safe recovery when durable data is corrupt or unsupported.
 
-The current package does not yet implement relation metadata/update/remove, style editing, dynamic-view CRUD, deployment CRUD, persistence migration, multi-file UI, IndexedDB, ZIP import/export, backend collaboration or AI generation.
+Selection, open dialogs, focus, connection mode, diagnostics, compiled models and rendered diagram nodes are derived or transient and are not persisted.
 
-## Current architecture
+## Durable workspace format
 
-- `EditorWorkspace` is the only runtime owner of committed sources, draft sources, manual-layout snapshots, workspace revision, compilation state, last-valid model and shared history.
-- LikeC4 DSL remains the persisted semantic representation. The compiled model and diagram are derived.
-- Semantic and layout changes enter through typed `EditorOperation` values carrying `expectedRevision`.
-- Workspace dispatch, removal inspection, layout save/reset, Undo and Redo share one serialization queue; concurrent same-revision actions cannot silently overwrite each other.
-- `src/compiler.ts` is the revision-aware browser compiler boundary.
-- `src/editor/language-services-adapter.ts` is the only app integration with `@likec4/language-services/browser`; React UI components do not apply source edits or compile.
-- Source-preserving document services produce AST/CST-backed, revision-bound edit plans for create, patch, move, subtree-safe rename, approved remove and scoped static-view creation.
-- Target document resolution is exact or uniquely suffix-matched; ambiguous basenames fail closed.
-- A centralized typed-reference remapper updates semantic references without global string replacement.
-- Selection, active view, focus and canvas tool state are transient React state and are not persisted or recorded as domain data.
-- `createCanvasIntentController` owns only transient semantic gesture lifecycle. It does not edit LikeC4 source or record history.
-- `@likec4/diagram` remains the layout/render owner. Manual geometry is persisted only as the standard snapshot returned by `ViewChange.SaveViewSnapshot`.
-- Workspace materialization passes auto-layouted views and snapshots separately to core; snapshots are not applied twice.
-- `ViewChange` remains layout-only and is not used for semantic CRUD.
+The IndexedDB record uses schema `likec4.gui-to-code.workspace`, version `1`:
 
-The target product and architecture live in [SPEC.md](./SPEC.md). Delivery order and managed state live in [ROADMAP.md](./ROADMAP.md) and [ROADMAP.STATUS.md](./ROADMAP.STATUS.md). The next execution packet is [AI-READY.WP-06.md](./AI-READY.WP-06.md).
+```text
+workspace envelope
+├── workspaceId
+├── revision / savedAt
+├── committed source files
+├── manual layout snapshots
+└── entry document metadata
+```
+
+The portable ZIP uses the same semantic payload through an authoritative `workspace.json` manifest. Sources and snapshots are preserved exactly. The archive codec emits deterministic store-only ZIP entries; unsupported compression is rejected instead of silently misreading data.
+
+Import is a replacement transaction:
+
+```text
+read input
+→ validate size, version and paths
+→ construct isolated candidate workspace
+→ compile and verify candidate
+→ persist candidate atomically
+→ replace active EditorWorkspace
+```
+
+A failed `.c4` or ZIP import leaves the active and durable workspace unchanged. Successful replacement intentionally starts a new Undo/Redo history.
+
+## Architecture
+
+- `EditorWorkspace` remains the sole semantic owner of sources, layouts, revision, compilation state and history.
+- `src/editor/persisted-workspace.ts` owns the versioned serializable envelope and validation boundary.
+- `src/editor/indexeddb-workspace.ts` owns the atomic IndexedDB port and optimistic revision checks.
+- `src/editor/workspace-bundle.ts` owns manifest mapping; it does not compile or become a semantic model.
+- `src/editor/zip-store.ts` owns bounded deterministic ZIP encoding/decoding.
+- `src/editor/use-durable-workspace.ts` coordinates hydration, queued durable saves and isolated transactional replacement.
+- React components never persist an independent semantic graph or compiled model.
+- LikeC4 DSL remains the persisted semantic source of truth. Canonical DSL generation remains a separate, potentially lossy operation.
+
+The target contract is in [SPEC.md](./SPEC.md). Stable work packages and managed state are in [ROADMAP.md](./ROADMAP.md) and [ROADMAP.STATUS.md](./ROADMAP.STATUS.md).
 
 ## Verification
 
@@ -68,5 +85,3 @@ pnpm exec playwright test -c playwright.gui-to-code.config.ts
 pnpm check:agent-instructions
 git diff --check
 ```
-
-`smoke:start` expects an existing production build and verifies only that Vite preview starts and serves the application root.
