@@ -1,7 +1,12 @@
-import type { ElementKind, Fqn, ViewId } from '@likec4/core/types'
+import type { ElementKind, Fqn } from '@likec4/core/types'
 import { LikeC4EditorProvider, LikeC4ModelProvider, ReactLikeC4 } from '@likec4/diagram'
 import { useEffect, useRef } from 'react'
 import { starterSource } from './document'
+import {
+  canCompleteConnectionGesture,
+  captureConnectionGesture,
+} from './editor/connection-gesture'
+import type { ConnectionGestureSnapshot } from './editor/connection-gesture'
 import { downloadSource } from './editor/file-downloads'
 import { useDurableWorkspace } from './editor/use-durable-workspace'
 import { ElementInspector } from './editor/ui/ElementInspector'
@@ -22,18 +27,13 @@ const createKinds = [
   ['component' as ElementKind, 'Компонент'],
 ] as const
 
-type ConnectionGesture = {
-  readonly revision: number
-  readonly viewId: ViewId
-}
-
 export function App() {
   const runtime = useWorkspaceRuntime()
   const durable = useDurableWorkspace(runtime)
   const semantic = useSemanticEditor(runtime)
   const wp06 = useWp06Runtime(runtime)
   const state = runtime.state
-  const connectionGesture = useRef<ConnectionGesture | null>(null)
+  const connectionGesture = useRef<ConnectionGestureSnapshot | null>(null)
   const canvasAuthoringEnabled = !!state
     && state.compilation.status === 'valid'
     && !runtime.busy
@@ -51,33 +51,31 @@ export function App() {
   const undoDisabled = state.history.past.length === 0 || state.compilation.status !== 'valid' || runtime.busy
   const redoDisabled = state.history.future.length === 0 || state.compilation.status !== 'valid' || runtime.busy
 
-  const captureConnectionGesture = (): void => {
-    if (!canvasAuthoringEnabled || !runtime.selectedView) {
-      connectionGesture.current = null
-      return
-    }
-    connectionGesture.current = {
+  const connectionContext = runtime.selectedView
+    ? {
+      enabled: canvasAuthoringEnabled,
       revision: state.revision,
       viewId: runtime.selectedView.id,
     }
+    : null
+
+  const beginConnectionGesture = (): void => {
+    connectionGesture.current = connectionContext
+      ? captureConnectionGesture(connectionContext)
+      : null
   }
 
   const completeDirectConnection = (sourceId: string, targetId: string): void => {
     const started = connectionGesture.current
     connectionGesture.current = null
-    if (!started
-      || !canvasAuthoringEnabled
-      || state.revision !== started.revision
-      || runtime.selectedView?.id !== started.viewId) {
+    if (!connectionContext || !canCompleteConnectionGesture(started, connectionContext)) {
       runtime.setCommandError('Рабочее пространство или текущий вид изменились. Повторите действие.')
       return
     }
-    if (runtime.selectedView._type === 'dynamic' || runtime.selectedView._type === 'deployment') {
+    if (runtime.selectedView?._type === 'dynamic' || runtime.selectedView?._type === 'deployment') {
       void wp06.completeCanvasConnection(sourceId, targetId)
       return
     }
-    // The legacy controller requires an active relation interaction. Start it
-    // synchronously for the direct gesture, then complete through the same intent path.
     semantic.activateRelationTool()
     semantic.completeRelation(sourceId, targetId)
   }
@@ -142,7 +140,7 @@ export function App() {
           className="panel diagram-panel"
           aria-label="Холст диаграммы"
           tabIndex={0}
-          onPointerDownCapture={captureConnectionGesture}>
+          onPointerDownCapture={beginConnectionGesture}>
           <header>
             <h2>Диаграмма</h2>
             <div className="actions" aria-label="Инструменты диаграммы">
