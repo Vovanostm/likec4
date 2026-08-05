@@ -12,7 +12,7 @@ WP-09 baseline: `66c7ce7b4ff3aca00637754534d53b89ed5e630f`
 
 ```yaml
 # managed-state:v2
-revision: 14
+revision: 15
 contract_review: complete
 active:
   - WP-09
@@ -57,9 +57,19 @@ blocked: []
 
 `EditorWorkspace` остаётся единственным владельцем source, revision, compilation, history и manual-layout snapshots. Diagram package сообщает typed intents и positions, но не создаёт IDs, DSL или semantic commands. Compound create реализуется dedicated domain command, а не generic command batch. Любой semantic/layout result коммитится только после isolated candidate compile и exact verification.
 
-### Текущий этап
+### Выполнено в текущей итерации
 
-Wave 0 завершён: baseline и initial discovery зафиксированы. Следующий этап — Wave 1: edge selection, relation inspector, source-preserving relation patch/remove и one-entry Undo/Redo.
+- direct drag existing → existing больше не требует предварительного включения режима;
+- static, dynamic и deployment routes остаются discriminated по active compiled view;
+- исправлен дефект static direct drag: legacy controller теперь синхронно переводится в `relation-create` перед завершением через существующий intent path;
+- connection gesture фиксирует view ID и workspace revision и fail-closed отклоняется при mismatch;
+- direct authoring отключается при invalid compilation, busy state и active element-create tool;
+- diagram `ReadOnly` синхронизирован с authoring availability;
+- добавлены focused unit tests на exact context, view switch, revision change и disabled state.
+
+### Review state
+
+Blocking review findings P0/P1 исправлены в production path. Keyboard-only acceptance для полного WP-09 и edge selection/editing остаются следующими обязательными этапами. PR остаётся draft до полного DoD.
 
 ## WP-08 — MVP release gate complete
 
