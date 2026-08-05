@@ -34,11 +34,9 @@ export function App() {
 
   const undoDisabled = state.history.past.length === 0 || state.compilation.status !== 'valid' || runtime.busy
   const redoDisabled = state.history.future.length === 0 || state.compilation.status !== 'valid' || runtime.busy
-  const connectionHandler = wp06.connectionMode
+  const connectionHandler = runtime.selectedView?._type === 'dynamic' || runtime.selectedView?._type === 'deployment'
     ? (sourceId: string, targetId: string) => { void wp06.completeCanvasConnection(sourceId, targetId) }
-    : semantic.relationActive
-    ? (sourceId: string, targetId: string) => semantic.completeRelation(sourceId, targetId)
-    : null
+    : (sourceId: string, targetId: string) => semantic.completeRelation(sourceId, targetId)
 
   return (
     <main
@@ -131,6 +129,7 @@ export function App() {
               </LikeC4EditorProvider>
             : <p className="empty">В проекте нет подходящего вида для отображения.</p>}
 
+          {!semantic.activeKind && runtime.selectedView && <p aria-live="polite">Потяните точку подключения одного элемента к другому, чтобы создать связь.</p>}
           {semantic.activeKind && <p aria-live="polite">Щёлкните по холсту или нажмите Enter, чтобы создать элемент.</p>}
           {wp06.connectionMode === 'dynamic-step' && <p aria-live="polite">Соедините два логических элемента, чтобы создать направленный шаг.</p>}
           {wp06.connectionMode === 'deployment-relation' && <p aria-live="polite">Соедините две сущности развёртывания, чтобы создать связь.</p>}
