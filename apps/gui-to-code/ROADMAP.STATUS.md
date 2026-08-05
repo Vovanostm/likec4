@@ -1,9 +1,10 @@
 # Состояние исполнения roadmap
 
 Дата актуализации: 5 августа 2026  
-Текущая ветка: `main`  
+Текущая ветка: `feat/gui-to-code-wp09-direct-canvas-authoring`  
 WP-08 PR: #10 — merged.  
 WP-08 merge commit: `4e41b09b4a750b20ba3343796599b8a05bd2f8d9`
+WP-09 baseline: `66c7ce7b4ff3aca00637754534d53b89ed5e630f`
 
 Этот файл — изменяемое состояние исполнения. Стабильные outcomes и acceptance criteria находятся в `ROADMAP.md`.
 
@@ -11,9 +12,10 @@ WP-08 merge commit: `4e41b09b4a750b20ba3343796599b8a05bd2f8d9`
 
 ```yaml
 # managed-state:v2
-revision: 13
+revision: 14
 contract_review: complete
-active: []
+active:
+  - WP-09
 done:
   - WP-00
   - WP-01
@@ -28,6 +30,36 @@ ready: []
 planned: []
 blocked: []
 ```
+
+## WP-09 — Direct Canvas Authoring active
+
+### Цель
+
+Сделать canvas основным местом создания и редактирования LikeC4-модели без введения второго semantic owner:
+
+- выбор и редактирование relation непосредственно на diagram edge;
+- direct drag existing → existing;
+- atomic drag existing → empty с созданием element + relation + standard manual layout;
+- double-click create и inline title edit;
+- contextual delete и keyboard parity;
+- collapsible tree, inspector и DSL при canvas-dominant shell;
+- dynamic/deployment parity через discriminated view context.
+
+### Baseline и discovery
+
+- `main`: `66c7ce7b4ff3aca00637754534d53b89ed5e630f`;
+- WP-08 и post-merge cleanup подтверждены;
+- discovery: `decisions/WP-09-DIRECT-CANVAS-AUTHORING-DISCOVERY.md`;
+- существующие `ReactLikeC4` integration callbacks уже покрывают node click, connection и canvas click;
+- доказанные gaps: edge selection, flow-coordinate contract, empty-drop lifecycle, relation patch/remove, dedicated create-connected transaction и canvas-dominant shell.
+
+### Architecture contract
+
+`EditorWorkspace` остаётся единственным владельцем source, revision, compilation, history и manual-layout snapshots. Diagram package сообщает typed intents и positions, но не создаёт IDs, DSL или semantic commands. Compound create реализуется dedicated domain command, а не generic command batch. Любой semantic/layout result коммитится только после isolated candidate compile и exact verification.
+
+### Текущий этап
+
+Wave 0 завершён: baseline и initial discovery зафиксированы. Следующий этап — Wave 1: edge selection, relation inspector, source-preserving relation patch/remove и one-entry Undo/Redo.
 
 ## WP-08 — MVP release gate complete
 
