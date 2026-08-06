@@ -273,7 +273,7 @@ export function LikeC4DiagramXYFlow({
         onCanvasConnectionEnd({
           sourceId,
           outcome: resolveCanvasConnectionOutcome(
-            connectionState.isValid && !!connectionState.toNode,
+            !!connectionState.isValid && !!connectionState.toNode,
             droppedOnPane,
           ),
           screenPosition,
