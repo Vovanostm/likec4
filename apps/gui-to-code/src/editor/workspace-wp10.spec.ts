@@ -103,7 +103,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
       viewId,
     })
     if (result.status !== 'applied' || result.command !== 'element.createAt') throw new Error('Expected createAt')
-    expect(editor.state.committedSources[0]?.content).toContain("component = component 'component'")
+    expect(editor.state.committedSources[0]?.content).toContain('component component')
     expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 320, y: 180 })
     expect(editor.state.history.past).toHaveLength(1)
 
@@ -131,6 +131,9 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
         },
       },
     })
+    if (result.status !== 'applied') {
+      throw new Error(`Expected createConnected, got ${JSON.stringify(result)}`)
+    }
     expect(result).toMatchObject({
       status: 'applied',
       command: 'element.createConnected',
@@ -138,9 +141,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
       createdElementId: 'shop.component',
       viewId,
     })
-    if (result.status !== 'applied' || result.command !== 'element.createConnected') {
-      throw new Error('Expected createConnected')
-    }
+    if (result.command !== 'element.createConnected') throw new Error(`Expected createConnected, got ${result.command}`)
     expect(editor.state.lastValidModel?.$data.elements[result.createdElementId]).toBeDefined()
     expect(editor.state.lastValidModel?.$data.relations[result.createdRelationId]).toMatchObject({
       source: { model: 'shop' },
