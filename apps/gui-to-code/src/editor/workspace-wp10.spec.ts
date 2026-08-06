@@ -14,7 +14,9 @@ const source = `specification {
 
 model {
   user = actor 'User'
-  shop = system 'Shop'
+  shop = system 'Shop' {
+    frontend = component 'Frontend'
+  }
   user -> shop 'Uses'
 }
 
@@ -114,7 +116,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
     expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 320, y: 180 })
   })
 
-  it('creates scoped element, directed relation and placement in one transaction', async () => {
+  it('creates scoped element, directed sibling relation and placement in one transaction', async () => {
     const editor = await workspace()
     const viewId = 'index' as ViewId
 
@@ -124,7 +126,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
       semantic: {
         type: 'element.createConnected',
         input: {
-          sourceId: 'shop' as Fqn,
+          sourceId: 'shop.frontend' as Fqn,
           kind: componentKind,
           viewId,
           position: { x: 420, y: 240 },
@@ -144,7 +146,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
     if (result.command !== 'element.createConnected') throw new Error(`Expected createConnected, got ${result.command}`)
     expect(editor.state.lastValidModel?.$data.elements[result.createdElementId]).toBeDefined()
     expect(editor.state.lastValidModel?.$data.relations[result.createdRelationId]).toMatchObject({
-      source: { model: 'shop' },
+      source: { model: 'shop.frontend' },
       target: { model: result.createdElementId },
     })
     expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 420, y: 240 })
