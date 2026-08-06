@@ -6,6 +6,7 @@
 // Portions of this file have been modified by NVIDIA CORPORATION & AFFILIATES.
 
 import { type EdgeId, type NodeId, nonNullable } from '@likec4/core'
+import type { Fqn } from '@likec4/core/types'
 import { cx } from '@likec4/styles/css'
 import { useDebouncedCallback, useTimeout } from '@mantine/hooks'
 import { useCustomCompareMemo } from '@react-hookz/web'
@@ -20,6 +21,7 @@ import { BaseXYFlow } from '../base/BaseXYFlow'
 import { MinZoom } from '../base/const'
 import { useDiagramEventHandlers } from '../context'
 import { useRootContainer } from '../context/RootContainerContext'
+import { pointerScreenPosition, resolveCanvasConnectionOutcome } from '../editor/CanvasConnection'
 import {
   selectDiagramSnapshot,
   useCallbackRef,
@@ -145,10 +147,12 @@ export function LikeC4DiagramXYFlow({
     onCanvasContextMenu,
     onEdgeContextMenu,
     onNodeClick,
+    onNodeDblClick,
     onEdgeClick,
     onCanvasClick,
     onCanvasDblClick,
     onConnect,
+    onCanvasConnectionEnd,
   } = useDiagramEventHandlers()
 
   const { reducedGraphics, $panning } = useRootContainer()
@@ -226,6 +230,13 @@ export function LikeC4DiagramXYFlow({
         diagram.send({ type: 'xyflow.nodeClick', node })
         onNodeClick?.(diagram.findDiagramNode(node.id as NodeId)!, e)
       })}
+      onNodeDoubleClick={useCallbackRef((e, node) => {
+        if (e.isPropagationStopped()) {
+          return
+        }
+        e.stopPropagation()
+        onNodeDblClick?.(diagram.findDiagramNode(node.id as NodeId)!, e)
+      })}
       onEdgeClick={useCallbackRef((e, edge) => {
         if (e.isPropagationStopped()) {
           return
@@ -241,7 +252,7 @@ export function LikeC4DiagramXYFlow({
         e.stopPropagation()
         diagram.send({ type: 'xyflow.edgeDoubleClick', edge })
       })}
-      nodesConnectable={!!onConnect}
+      nodesConnectable={!!onConnect || !!onCanvasConnectionEnd}
       onConnect={useCallbackRef(({ source, target }) => {
         if (!onConnect || !source || !target) return
         const sourceNode = nodes.find(node => node.id === source)
@@ -251,6 +262,22 @@ export function LikeC4DiagramXYFlow({
         if (sourceId && targetId) {
           onConnect(sourceId, targetId)
         }
+      })}
+      onConnectEnd={useCallbackRef((event, connectionState) => {
+        if (!onCanvasConnectionEnd) return
+        const screenPosition = pointerScreenPosition(event)
+        if (!screenPosition) return
+        const sourceId = modelFqn(connectionState.fromNode)
+        const droppedOnPane = event.target instanceof Element
+          && !!event.target.closest('.react-flow__pane')
+        onCanvasConnectionEnd({
+          sourceId,
+          outcome: resolveCanvasConnectionOutcome(
+            connectionState.isValid && !!connectionState.toNode,
+            droppedOnPane,
+          ),
+          screenPosition,
+        })
       })}
       onDelete={useCallbackRef(({ nodes, edges }) => {
         if (enableReadOnly) {
@@ -326,6 +353,13 @@ export function LikeC4DiagramXYFlow({
       {children}
     </BaseXYFlow>
   )
+}
+
+function modelFqn(node: { readonly data?: unknown } | null | undefined): Fqn | null {
+  const data = node?.data
+  if (!data || typeof data !== 'object' || !('modelFqn' in data)) return null
+  const value = (data as { readonly modelFqn?: unknown }).modelFqn
+  return typeof value === 'string' ? value as Fqn : null
 }
 
 const Controls = ({ padding }: { padding: ViewPaddings }) => (
