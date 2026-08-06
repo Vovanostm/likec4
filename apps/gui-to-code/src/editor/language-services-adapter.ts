@@ -79,17 +79,24 @@ async function serviceFor(sources: readonly SourceFile[]) {
   }
 }
 
-async function createElementCandidate(
+async function createRootElementCandidate(
   sources: readonly SourceFile[],
   input: CreateElementEditInput,
 ): Promise<readonly SourceFile[]> {
   const { documents } = await serviceFor(sources)
-  let candidate = applyPlan(sources, await documents.planAddElement({
+  return applyPlan(sources, await documents.planAddElement({
     id: input.id,
     kind: input.kind,
     ...(input.title ? { title: input.title } : {}),
     ...(input.documentUri ? { documentUri: input.documentUri } : {}),
   }))
+}
+
+async function createElementCandidate(
+  sources: readonly SourceFile[],
+  input: CreateElementEditInput,
+): Promise<readonly SourceFile[]> {
+  let candidate = await createRootElementCandidate(sources, input)
   if (input.parentId) {
     const { documents: candidateDocuments } = await serviceFor(candidate)
     candidate = applyPlan(candidate, await candidateDocuments.planMoveElement({
@@ -124,14 +131,21 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
 
   async createConnectedElement(sources, input) {
     try {
-      const withElement = await createElementCandidate(sources, input)
-      const { documents: candidateDocuments } = await serviceFor(withElement)
-      const target = (input.parentId ? `${input.parentId}.${input.id}` : input.id) as Fqn
-      return applyPlan(withElement, await candidateDocuments.planAddRelation({
+      let candidate = await createRootElementCandidate(sources, input)
+      const { documents: relationDocuments } = await serviceFor(candidate)
+      candidate = applyPlan(candidate, await relationDocuments.planAddRelation({
         source: input.sourceId,
-        target,
+        target: input.id as Fqn,
         ...(input.documentUri ? { documentUri: input.documentUri } : {}),
       }))
+      if (input.parentId) {
+        const { documents: moveDocuments } = await serviceFor(candidate)
+        candidate = applyPlan(candidate, await moveDocuments.planMoveElement({
+          target: input.id as Fqn,
+          parent: input.parentId,
+        }))
+      }
+      return candidate
     } catch (error) {
       return documentError(error)
     }
