@@ -60,7 +60,7 @@ export function InlineTitleEditor({
           }} />
       </label>
       <div className="actions">
-        <button type="submit" disabled={busy || !value.trim()}>Сохранить</button>
+        <button type="submit" disabled={busy || !value.trim()} onMouseDown={event => event.preventDefault()}>Сохранить</button>
         <button type="button" className="secondary-button" disabled={busy} onMouseDown={event => event.preventDefault()} onClick={cancel}>Отмена</button>
       </div>
     </form>
