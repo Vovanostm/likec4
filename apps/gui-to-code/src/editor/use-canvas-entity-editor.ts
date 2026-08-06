@@ -28,7 +28,7 @@ type Runtime = ReturnType<typeof useWorkspaceRuntime>
 
 export function useCanvasEntityEditor(
   runtime: Runtime,
-  onElementSelected: (id: Fqn) => void,
+  onElementSelected: (id: Fqn | null) => void,
   onElementCreated: (id: Fqn) => void,
 ) {
   const [selection, setSelection] = useState<CanvasEntityRef | null>(null)
@@ -77,6 +77,7 @@ export function useCanvasEntityEditor(
         runtime.setCommandError('Не удалось определить исходную logical relation для выбранной связи.')
         return
       }
+      onElementSelected(null)
       setSelection({ family: 'logical-relation', id: logical[0]! })
       setRelationAlternatives(logical)
       return
@@ -87,6 +88,7 @@ export function useCanvasEntityEditor(
         runtime.setCommandError('Не удалось определить deployment relation для выбранной связи.')
         return
       }
+      onElementSelected(null)
       setSelection({ family: 'deployment-relation', id: deployment as RelationId })
       setRelationAlternatives([])
       return
@@ -96,6 +98,7 @@ export function useCanvasEntityEditor(
       runtime.setCommandError('Не удалось определить dynamic step для выбранной связи.')
       return
     }
+    onElementSelected(null)
     setSelection({ family: 'dynamic-step', viewId: view.id, id })
     setRelationAlternatives([])
   }
@@ -265,6 +268,7 @@ export function useCanvasEntityEditor(
   const clearSelection = (): void => {
     setSelection(null)
     setRelationAlternatives([])
+    onElementSelected(null)
   }
 
   return {
