@@ -1,7 +1,10 @@
-import type { Fqn, RelationId, ViewId } from '@likec4/core/types'
+import type { ElementKind, Fqn, RelationId, ViewId } from '@likec4/core/types'
 import { describe, expect, it } from 'vitest'
 import { compile } from '../compiler'
 import { EditorWorkspace } from './workspace'
+
+const actorKind = 'actor' as ElementKind
+const componentKind = 'component' as ElementKind
 
 const source = `specification {
   element actor
@@ -89,7 +92,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
       expectedRevision: 0,
       semantic: {
         type: 'element.createAt',
-        input: { kind: 'component', viewId, position: { x: 320, y: 180 } },
+        input: { kind: componentKind, viewId, position: { x: 320, y: 180 } },
       },
     })
     expect(result).toMatchObject({
@@ -122,7 +125,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
         type: 'element.createConnected',
         input: {
           sourceId: 'shop' as Fqn,
-          kind: 'component',
+          kind: componentKind,
           viewId,
           position: { x: 420, y: 240 },
         },
@@ -161,7 +164,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
       expectedRevision: 99,
       semantic: {
         type: 'element.createAt',
-        input: { kind: 'actor', viewId: 'index' as ViewId, position: { x: 1, y: 2 } },
+        input: { kind: actorKind, viewId: 'index' as ViewId, position: { x: 1, y: 2 } },
       },
     })).toEqual({ status: 'conflict', revision: 0 })
     expect(editor.state).toBe(before)
@@ -171,7 +174,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
       expectedRevision: 0,
       semantic: {
         type: 'element.createAt',
-        input: { kind: 'actor', viewId: 'index' as ViewId, position: { x: Number.NaN, y: 2 } },
+        input: { kind: actorKind, viewId: 'index' as ViewId, position: { x: Number.NaN, y: 2 } },
       },
     })).toMatchObject({ status: 'rejected', issues: [{ code: 'invalid-position' }] })
     expect(editor.state).toBe(before)
