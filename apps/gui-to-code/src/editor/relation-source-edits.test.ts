@@ -46,6 +46,45 @@ describe('logical relation source edits', () => {
     expect(result[0]?.content).toContain('// user -> shop must stay in a comment')
   })
 
+  it('resolves relative endpoints against the exact lexical element scope', () => {
+    const nested = `model {
+  shop = system 'Shop' {
+    frontend = component 'Frontend'
+    backend = component 'Backend'
+    frontend -> backend 'Inside shop'
+  }
+  warehouse = system 'Warehouse' {
+    frontend = component 'Frontend'
+    backend = component 'Backend'
+    frontend -> backend 'Inside warehouse'
+  }
+}
+`
+    const result = patchLogicalRelationTitle([{ uri: 'nested.c4', content: nested }], {
+      sourceId: 'shop.frontend' as Fqn,
+      targetId: 'shop.backend' as Fqn,
+      occurrence: 0,
+    }, 'Updated shop')
+    expect(result[0]?.content).toContain("frontend -> backend 'Updated shop'")
+    expect(result[0]?.content).toContain("frontend -> backend 'Inside warehouse'")
+  })
+
+  it('resolves this-relative endpoints inside an element scope', () => {
+    const nested = `model {
+  shop = system 'Shop' {
+    backend = component 'Backend'
+    this -> backend 'Contains'
+  }
+}
+`
+    const result = patchLogicalRelationTitle([{ uri: 'nested.c4', content: nested }], {
+      sourceId: 'shop' as Fqn,
+      targetId: 'shop.backend' as Fqn,
+      occurrence: 0,
+    }, 'Owns')
+    expect(result[0]?.content).toContain("this -> backend 'Owns'")
+  })
+
   it('rejects a missing occurrence without changing input identity', () => {
     expect(() => removeLogicalRelation(files, { ...locator, occurrence: 9 })).toThrowError(
       expect.objectContaining({ code: 'not-found' }),
