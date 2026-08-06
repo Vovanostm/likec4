@@ -1,9 +1,8 @@
 # Состояние исполнения roadmap
 
-Дата актуализации: 5 августа 2026  
+Дата актуализации: 6 августа 2026  
 Текущая ветка: `feat/gui-to-code-wp09-direct-canvas-authoring`  
-WP-08 PR: #10 — merged.  
-WP-08 merge commit: `4e41b09b4a750b20ba3343796599b8a05bd2f8d9`
+WP-08 merge commit: `4e41b09b4a750b20ba3343796599b8a05bd2f8d9`  
 WP-09 baseline: `66c7ce7b4ff3aca00637754534d53b89ed5e630f`
 
 Этот файл — изменяемое состояние исполнения. Стабильные outcomes и acceptance criteria находятся в `ROADMAP.md`.
@@ -12,10 +11,9 @@ WP-09 baseline: `66c7ce7b4ff3aca00637754534d53b89ed5e630f`
 
 ```yaml
 # managed-state:v2
-revision: 15
+revision: 16
 contract_review: complete
-active:
-  - WP-09
+active: []
 done:
   - WP-00
   - WP-01
@@ -26,71 +24,67 @@ done:
   - WP-06
   - WP-07
   - WP-08
-ready: []
+  - WP-09
+ready:
+  - WP-10
 planned: []
 blocked: []
 ```
 
-## WP-09 — Direct Canvas Authoring active
+## WP-09 — Direct connection foundation complete
 
-### Цель
+### Delivered outcome
 
-Сделать canvas основным местом создания и редактирования LikeC4-модели без введения второго semantic owner:
-
-- выбор и редактирование relation непосредственно на diagram edge;
-- direct drag existing → existing;
-- atomic drag existing → empty с созданием element + relation + standard manual layout;
-- double-click create и inline title edit;
-- contextual delete и keyboard parity;
-- collapsible tree, inspector и DSL при canvas-dominant shell;
-- dynamic/deployment parity через discriminated view context.
-
-### Baseline и discovery
-
-- `main`: `66c7ce7b4ff3aca00637754534d53b89ed5e630f`;
-- WP-08 и post-merge cleanup подтверждены;
-- discovery: `decisions/WP-09-DIRECT-CANVAS-AUTHORING-DISCOVERY.md`;
-- существующие `ReactLikeC4` integration callbacks уже покрывают node click, connection и canvas click;
-- доказанные gaps: edge selection, flow-coordinate contract, empty-drop lifecycle, relation patch/remove, dedicated create-connected transaction и canvas-dominant shell.
-
-### Architecture contract
-
-`EditorWorkspace` остаётся единственным владельцем source, revision, compilation, history и manual-layout snapshots. Diagram package сообщает typed intents и positions, но не создаёт IDs, DSL или semantic commands. Compound create реализуется dedicated domain command, а не generic command batch. Любой semantic/layout result коммитится только после isolated candidate compile и exact verification.
-
-### Выполнено в текущей итерации
-
-- direct drag existing → existing больше не требует предварительного включения режима;
-- static, dynamic и deployment routes остаются discriminated по active compiled view;
-- исправлен дефект static direct drag: legacy controller теперь синхронно переводится в `relation-create` перед завершением через существующий intent path;
-- connection gesture фиксирует view ID и workspace revision и fail-closed отклоняется при mismatch;
+- pointer drag existing → existing больше не требует отдельного connection mode;
+- static views проходят через существующий typed `relation.create` intent/operation pipeline;
+- dynamic views маршрутизируются в `dynamicStep.create`;
+- deployment views маршрутизируются в `deploymentRelation.create`;
+- semantic family определяется active compiled view, а не visual shape;
+- connection gesture фиксирует exact view ID и workspace revision;
+- completion fail-closed отклоняется при смене view/revision;
 - direct authoring отключается при invalid compilation, busy state и active element-create tool;
 - diagram `ReadOnly` синхронизирован с authoring availability;
-- добавлены focused unit tests на exact context, view switch, revision change и disabled state.
+- existing form/select controls остаются keyboard fallback;
+- добавлены focused tests на exact context, view switch, revision change, disabled state и missing gesture start.
 
-### Review state
+### Review findings fixed
 
-Blocking review findings P0/P1 исправлены в production path. Keyboard-only acceptance для полного WP-09 и edge selection/editing остаются следующими обязательными этапами. PR остаётся draft до полного DoD.
+- P0 stale gesture: добавлен captured view/revision guard;
+- P1 invalid/busy/create-tool states: добавлен explicit authoring gate;
+- обнаруженный review-дефект static direct drag: legacy controller теперь синхронно входит в `relation-create` перед завершением через тот же intent path;
+- branded `ViewId` используется в tests без ослабления production typing.
+
+### Architecture
+
+`EditorWorkspace` остаётся единственным владельцем committed sources, revision, compilation, history и manual layouts. LikeC4 DSL остаётся semantic SSOT. Не добавлены public package APIs, новая dependency, отдельная canvas model, persistence schema или generic command batch. Changeset не требуется.
+
+### Scope boundary
+
+PR #12 является самостоятельным direct-connection foundation increment. Edge selection/editing, relation patch/remove, flow-coordinate creation, atomic create-and-connect, inline title editing, keyboard parity и canvas-dominant shell перенесены в WP-10, чтобы не смешивать несколько owning-package/API migrations в одном PR.
+
+## WP-10 — Canvas Entity Editing and Atomic Creation ready
+
+AI-ready contract: `apps/gui-to-code/AI-READY.WP-10.md`.
+
+Основные outcomes:
+
+- edge selection и relation patch/remove;
+- double-click create с flow coordinates;
+- atomic drag existing → empty: element + relation + standard manual layout;
+- inline title edit и contextual delete;
+- static/dynamic/deployment keyboard parity;
+- collapsible panels и canvas-dominant shell.
 
 ## WP-08 — MVP release gate complete
 
-### Результат
-
 - Русская терминология оболочки и состояний долговременного хранения приведена к единому виду.
-- Критические элементы управления имеют доступные имена; создание статического вида проверяет открытие с клавиатуры, начальный focus, Escape и возврат focus.
-- Release smoke покрывает размеры `390×844`, `1440×900` и `1920×1080`.
-- Production `dist` сохраняется как exact-SHA artifact с retention семь дней, запускается через preview и проходит Playwright acceptance.
-- README содержит supported-feature matrix, recovery/rollback, persisted schema, lossy behaviour и ограничения MVP.
+- Критические элементы управления имеют доступные имена; создание статического вида проверяет keyboard/focus/Escape.
+- Release smoke покрывает `390×844`, `1440×900` и `1920×1080`.
+- Production artifact сохраняется, запускается через preview и проходит Playwright acceptance.
+- README содержит supported-feature matrix, recovery/rollback, persisted schema и ограничения MVP.
 
-`EditorWorkspace` остаётся единственным владельцем committed semantic state. LikeC4 DSL и стандартные manual-layout snapshots остаются persisted canonical data. Persistence schema, public package API, DSL grammar и package boundaries не изменены. Новая dependency и changeset не требуются.
-
-Заключительный exact head PR #10: `7688f315f5253bed25c8db1d2c773472d4dd6546`.
-
-Exact-head GitHub CI:
+Exact-head GitHub CI PR #10:
 
 - `GUI-to-code` run `30933010189` — success;
 - `CI (PR & push)` run `30933010265` — success;
 - `push` run `30933010284` — success.
-
-PR #10 merged через squash в `main` коммитом `4e41b09b4a750b20ba3343796599b8a05bd2f8d9`.
-
-Выполнены два отдельных review-прохода: correctness/reliability и product/accessibility/release. Unresolved review threads: `0`. Residual limitations перечислены в README и PR body.
