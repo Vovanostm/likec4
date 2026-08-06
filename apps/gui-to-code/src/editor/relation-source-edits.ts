@@ -44,6 +44,12 @@ interface RelationMatch {
   readonly end: number
 }
 
+interface ScannedRelation extends RelationMatch {
+  readonly sourceRef: string
+  readonly targetRef: string
+  readonly scope: Fqn | null
+}
+
 function locateRelation(sources: readonly SourceFile[], locator: LogicalRelationLocator): RelationMatch {
   if (!Number.isInteger(locator.occurrence) || locator.occurrence < 0) {
     throw new EditorDocumentError('invalid-operation', 'Relation occurrence must be a non-negative integer')
@@ -52,7 +58,10 @@ function locateRelation(sources: readonly SourceFile[], locator: LogicalRelation
   for (const source of sources) {
     if (locator.documentUri && source.uri !== locator.documentUri) continue
     for (const match of scanRelations(source)) {
-      if (match.sourceId !== locator.sourceId || match.targetId !== locator.targetId) continue
+      if (
+        !endpointMatches(match.sourceRef, locator.sourceId, match.scope)
+        || !endpointMatches(match.targetRef, locator.targetId, match.scope)
+      ) continue
       if (occurrence === locator.occurrence) return match
       occurrence += 1
     }
@@ -60,24 +69,98 @@ function locateRelation(sources: readonly SourceFile[], locator: LogicalRelation
   throw new EditorDocumentError('not-found', `Relation "${locator.sourceId} -> ${locator.targetId}" was not found`)
 }
 
-function scanRelations(source: SourceFile): readonly (RelationMatch & { sourceId: Fqn; targetId: Fqn })[] {
-  const result: (RelationMatch & { sourceId: Fqn; targetId: Fqn })[] = []
+function scanRelations(source: SourceFile): readonly ScannedRelation[] {
+  const result: ScannedRelation[] = []
   const text = source.content
   const linePattern = /^[\t ]*([@A-Za-z_][\w@.-]*)[\t ]*->[\t ]*([@A-Za-z_][\w@.-]*)(?=[\t ]|'|\{|\/\/|\/\*|$)/gm
   for (const match of text.matchAll(linePattern)) {
     const start = match.index
     if (start === undefined || insideCommentOrString(text, start)) continue
     const lineEnd = endOfLine(text, start)
-    const end = declarationEnd(text, start, lineEnd)
     result.push({
       source,
       start,
-      end,
-      sourceId: match[1] as Fqn,
-      targetId: match[2] as Fqn,
+      end: declarationEnd(text, start, lineEnd),
+      sourceRef: match[1]!,
+      targetRef: match[2]!,
+      scope: logicalScopeAt(text, start),
     })
   }
   return result
+}
+
+function endpointMatches(reference: string, expected: Fqn, scope: Fqn | null): boolean {
+  if (reference === expected) return true
+  if (reference.startsWith('@')) return false
+  if (reference === 'this') return scope === expected
+  const relative = reference.startsWith('this.') ? reference.slice('this.'.length) : reference
+  let candidateScope = scope
+  while (candidateScope) {
+    if (`${candidateScope}.${relative}` === expected) return true
+    const separator = candidateScope.lastIndexOf('.')
+    candidateScope = separator < 0 ? null : candidateScope.slice(0, separator) as Fqn
+  }
+  return relative === expected
+}
+
+function logicalScopeAt(text: string, offset: number): Fqn | null {
+  const stack: (Fqn | null)[] = []
+  let quote: "'" | '"' | null = null
+  let escaped = false
+  let lineComment = false
+  let blockComment = false
+
+  for (let index = 0; index < offset; index += 1) {
+    const char = text[index]!
+    const next = text[index + 1]
+    if (lineComment) {
+      if (char === '\n') lineComment = false
+      continue
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false
+        index += 1
+      }
+      continue
+    }
+    if (quote) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === quote) quote = null
+      continue
+    }
+    if (char === '/' && next === '/') {
+      lineComment = true
+      index += 1
+      continue
+    }
+    if (char === '/' && next === '*') {
+      blockComment = true
+      index += 1
+      continue
+    }
+    if (char === "'" || char === '"') {
+      quote = char
+      continue
+    }
+    if (char === '{') {
+      const lineStart = text.lastIndexOf('\n', index - 1) + 1
+      const header = text.slice(lineStart, index)
+      const declaration = /^[\t ]*([A-Za-z_][\w-]*)[\t ]*=[\t ]*(?!instanceOf\b)([A-Za-z_][\w-]*)\b/.exec(header)
+      const parent = currentScope(stack)
+      stack.push(declaration
+        ? (parent ? `${parent}.${declaration[1]}` : declaration[1]) as Fqn
+        : parent)
+      continue
+    }
+    if (char === '}') stack.pop()
+  }
+  return currentScope(stack)
+}
+
+function currentScope(stack: readonly (Fqn | null)[]): Fqn | null {
+  return stack.length === 0 ? null : stack[stack.length - 1] ?? null
 }
 
 function declarationEnd(text: string, start: number, lineEnd: number): number {
