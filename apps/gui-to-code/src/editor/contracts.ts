@@ -33,6 +33,11 @@ export interface CompileResult {
 
 export type CompilerPort = (request: CompileRequest) => Promise<CompileResult>
 
+export interface CanvasPosition {
+  readonly x: number
+  readonly y: number
+}
+
 export interface CreateElementEditInput {
   readonly kind: ElementKind
   readonly id: string
@@ -43,6 +48,14 @@ export interface CreateElementEditInput {
 export interface CreateRelationEditInput {
   readonly sourceId: Fqn
   readonly targetId: Fqn
+  readonly documentUri?: string
+}
+
+export interface CreateConnectedElementEditInput {
+  readonly sourceId: Fqn
+  readonly kind: ElementKind
+  readonly id: string
+  readonly title?: string
   readonly documentUri?: string
 }
 
@@ -105,6 +118,27 @@ export interface ElementPatch {
 export interface PatchElementEditInput {
   readonly id: Fqn
   readonly patch: ElementPatch
+}
+
+export interface RelationPatch {
+  readonly title?: string
+}
+
+export interface PatchRelationEditInput {
+  readonly id: RelationId
+  readonly sourceId: Fqn
+  readonly targetId: Fqn
+  readonly occurrence: number
+  readonly patch: RelationPatch
+  readonly documentUri?: string
+}
+
+export interface RemoveRelationEditInput {
+  readonly id: RelationId
+  readonly sourceId: Fqn
+  readonly targetId: Fqn
+  readonly occurrence: number
+  readonly documentUri?: string
 }
 
 export interface MoveElementEditInput {
@@ -178,6 +212,10 @@ export class EditorDocumentError extends Error {
 export interface EditorDocumentPort {
   createElement(sources: readonly SourceFile[], input: CreateElementEditInput): Promise<readonly SourceFile[]>
   createRelation(sources: readonly SourceFile[], input: CreateRelationEditInput): Promise<readonly SourceFile[]>
+  createConnectedElement?(
+    sources: readonly SourceFile[],
+    input: CreateConnectedElementEditInput,
+  ): Promise<readonly SourceFile[]>
   createView(sources: readonly SourceFile[], input: CreateViewEditInput): Promise<readonly SourceFile[]>
   createDynamicView(sources: readonly SourceFile[], input: CreateDynamicViewEditInput): Promise<readonly SourceFile[]>
   createDynamicStep(sources: readonly SourceFile[], input: CreateDynamicStepEditInput): Promise<readonly SourceFile[]>
@@ -186,6 +224,8 @@ export interface EditorDocumentPort {
   createDeploymentInstance(sources: readonly SourceFile[], input: CreateDeploymentInstanceEditInput): Promise<readonly SourceFile[]>
   createDeploymentRelation(sources: readonly SourceFile[], input: CreateDeploymentRelationEditInput): Promise<readonly SourceFile[]>
   patchElement(sources: readonly SourceFile[], input: PatchElementEditInput): Promise<readonly SourceFile[]>
+  patchRelation?(sources: readonly SourceFile[], input: PatchRelationEditInput): Promise<readonly SourceFile[]>
+  removeRelation?(sources: readonly SourceFile[], input: RemoveRelationEditInput): Promise<readonly SourceFile[]>
   moveElement(sources: readonly SourceFile[], input: MoveElementEditInput): Promise<readonly SourceFile[]>
   renameElement(sources: readonly SourceFile[], input: RenameElementEditInput): Promise<readonly SourceFile[]>
   inspectRemoveElement(sources: readonly SourceFile[], id: Fqn): Promise<RemovalDependencyReport>
@@ -236,11 +276,53 @@ export interface CreateElementCommand {
   }
 }
 
+export interface CreateElementAtCommand {
+  readonly type: 'element.createAt'
+  readonly input: {
+    readonly kind: ElementKind
+    readonly id?: string
+    readonly title?: string
+    readonly documentUri?: string
+    readonly viewId: ViewId
+    readonly position: CanvasPosition
+  }
+}
+
+export interface CreateConnectedElementCommand {
+  readonly type: 'element.createConnected'
+  readonly input: {
+    readonly sourceId: Fqn
+    readonly kind: ElementKind
+    readonly id?: string
+    readonly title?: string
+    readonly documentUri?: string
+    readonly viewId: ViewId
+    readonly position: CanvasPosition
+  }
+}
+
 export interface CreateRelationCommand {
   readonly type: 'relation.create'
   readonly input: {
     readonly sourceId: Fqn
     readonly targetId: Fqn
+    readonly documentUri?: string
+  }
+}
+
+export interface PatchRelationCommand {
+  readonly type: 'relation.patch'
+  readonly input: {
+    readonly id: RelationId
+    readonly patch: RelationPatch
+    readonly documentUri?: string
+  }
+}
+
+export interface RemoveRelationCommand {
+  readonly type: 'relation.remove'
+  readonly input: {
+    readonly id: RelationId
     readonly documentUri?: string
   }
 }
@@ -311,7 +393,11 @@ export interface CreateDeploymentRelationCommand {
 
 export type EditorCommand =
   | CreateElementCommand
+  | CreateElementAtCommand
+  | CreateConnectedElementCommand
   | CreateRelationCommand
+  | PatchRelationCommand
+  | RemoveRelationCommand
   | CreateViewCommand
   | CreateDynamicViewCommand
   | CreateDynamicStepCommand
@@ -370,13 +456,21 @@ export type CommandIssueCode =
   | 'target-element-not-found'
   | 'same-endpoint'
   | 'relation-not-allowed'
+  | 'relation-not-found'
   | 'relation-source-edit-failed'
+  | 'relation-patch-source-edit-failed'
+  | 'relation-patch-verification-failed'
+  | 'relation-remove-source-edit-failed'
+  | 'relation-remove-verification-failed'
   | 'created-relation-not-found'
+  | 'create-connected-source-edit-failed'
+  | 'create-connected-verification-failed'
   | 'history-empty'
   | 'undo-compile-rejected'
   | 'element-not-found'
   | 'invalid-title'
   | 'invalid-tag'
+  | 'invalid-position'
   | 'patch-source-edit-failed'
   | 'patch-verification-failed'
   | 'invalid-parent'
@@ -406,6 +500,8 @@ export type CommandIssueCode =
   | 'layout-view-mismatch'
   | 'layout-type-mismatch'
   | 'layout-not-found'
+  | 'layout-created-element-not-found'
+  | 'layout-view-unsupported'
   | 'dynamic-view-not-found'
   | 'dynamic-view-verification-failed'
   | 'dynamic-step-verification-failed'
@@ -436,9 +532,36 @@ export type AppliedCommandResult =
   }
   | {
     readonly status: 'applied'
+    readonly command: 'element.createAt'
+    readonly revision: Revision
+    readonly createdElementId: Fqn
+    readonly viewId: ViewId
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'element.createConnected'
+    readonly revision: Revision
+    readonly createdElementId: Fqn
+    readonly createdRelationId: RelationId
+    readonly viewId: ViewId
+  }
+  | {
+    readonly status: 'applied'
     readonly command: 'relation.create'
     readonly revision: Revision
     readonly createdRelationId: RelationId
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'relation.patch'
+    readonly revision: Revision
+    readonly updatedRelationId: RelationId
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'relation.remove'
+    readonly revision: Revision
+    readonly removedRelationId: RelationId
   }
   | {
     readonly status: 'applied'
