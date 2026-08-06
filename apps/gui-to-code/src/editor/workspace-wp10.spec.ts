@@ -16,7 +16,7 @@ model {
 }
 
 views {
-  view index {
+  view index of shop {
     include *
   }
 }
@@ -34,7 +34,13 @@ function firstRelation(editor: Awaited<ReturnType<typeof workspace>>): RelationI
 
 function nodePosition(editor: Awaited<ReturnType<typeof workspace>>, viewId: ViewId, elementId: Fqn) {
   const snapshot = editor.state.manualLayouts[viewId]
-  const node = snapshot?.nodes.find(candidate => candidate.id === elementId || candidate.modelRef === elementId)
+  const nodes = snapshot?.nodes as readonly {
+    readonly id: string
+    readonly modelRef?: string
+    readonly x: number
+    readonly y: number
+  }[] | undefined
+  const node = nodes?.find(candidate => candidate.id === elementId || candidate.modelRef === elementId)
   return node ? { x: node.x, y: node.y } : null
 }
 
@@ -74,7 +80,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
     expect(Object.keys(editor.state.lastValidModel?.$data.relations ?? {})).toHaveLength(1)
   })
 
-  it('creates an element and exact manual position atomically', async () => {
+  it('creates a child of the scoped view and exact manual position atomically', async () => {
     const editor = await workspace()
     const viewId = 'index' as ViewId
 
@@ -86,8 +92,15 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
         input: { kind: 'component', viewId, position: { x: 320, y: 180 } },
       },
     })
-    expect(result).toMatchObject({ status: 'applied', command: 'element.createAt', revision: 1, viewId })
+    expect(result).toMatchObject({
+      status: 'applied',
+      command: 'element.createAt',
+      revision: 1,
+      createdElementId: 'shop.component',
+      viewId,
+    })
     if (result.status !== 'applied' || result.command !== 'element.createAt') throw new Error('Expected createAt')
+    expect(editor.state.committedSources[0]?.content).toContain("component = component 'component'")
     expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 320, y: 180 })
     expect(editor.state.history.past).toHaveLength(1)
 
@@ -98,7 +111,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
     expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 320, y: 180 })
   })
 
-  it('creates element, directed relation and placement in one transaction', async () => {
+  it('creates scoped element, directed relation and placement in one transaction', async () => {
     const editor = await workspace()
     const viewId = 'index' as ViewId
 
@@ -119,6 +132,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
       status: 'applied',
       command: 'element.createConnected',
       revision: 1,
+      createdElementId: 'shop.component',
       viewId,
     })
     if (result.status !== 'applied' || result.command !== 'element.createConnected') {
