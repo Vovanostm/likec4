@@ -22,13 +22,24 @@ export function InlineTitleEditor({
   readonly onReturnFocus: () => void
 }) {
   const input = useRef<HTMLInputElement | null>(null)
+  const submitting = useRef(false)
+  const previousBusy = useRef(busy)
 
   useEffect(() => {
     input.current?.focus()
     input.current?.select()
   }, [id])
 
+  useEffect(() => {
+    if (previousBusy.current && !busy && submitting.current) {
+      submitting.current = false
+      queueMicrotask(() => input.current?.focus())
+    }
+    previousBusy.current = busy
+  }, [busy])
+
   const cancel = (): void => {
+    submitting.current = false
     onCancel()
     queueMicrotask(onReturnFocus)
   }
@@ -40,7 +51,10 @@ export function InlineTitleEditor({
       style={screenPosition ? { left: screenPosition.x, top: screenPosition.y } : undefined}
       onSubmit={event => {
         event.preventDefault()
-        if (!busy && value.trim()) onSave()
+        if (!busy && value.trim()) {
+          submitting.current = true
+          onSave()
+        }
       }}>
       <label>
         <span className="visually-hidden">Название элемента</span>
@@ -50,7 +64,9 @@ export function InlineTitleEditor({
           value={value}
           disabled={busy}
           onChange={event => onChange(event.target.value)}
-          onBlur={cancel}
+          onBlur={() => {
+            if (!submitting.current) cancel()
+          }}
           onKeyDown={event => {
             if (event.key === 'Escape') {
               event.preventDefault()
