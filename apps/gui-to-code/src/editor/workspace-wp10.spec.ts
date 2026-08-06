@@ -159,6 +159,26 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
     expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 420, y: 240 })
   })
 
+  it('rejects a parent-to-new-child relation without mutating workspace state', async () => {
+    const editor = await workspace()
+    const before = editor.state
+
+    expect(await editor.dispatch({
+      id: 1,
+      expectedRevision: 0,
+      semantic: {
+        type: 'element.createConnected',
+        input: {
+          sourceId: 'shop' as Fqn,
+          kind: componentKind,
+          viewId: 'index' as ViewId,
+          position: { x: 420, y: 240 },
+        },
+      },
+    })).toMatchObject({ status: 'rejected', revision: 0, issues: [{ code: 'compile-rejected' }] })
+    expect(editor.state).toBe(before)
+  })
+
   it('rejects stale revision and invalid position without any mutation', async () => {
     const editor = await workspace()
     const before = editor.state
