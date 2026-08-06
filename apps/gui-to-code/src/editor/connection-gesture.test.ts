@@ -1,10 +1,11 @@
+import type { ViewId } from '@likec4/core/types'
 import { describe, expect, it } from 'vitest'
 import { canCompleteConnectionGesture, captureConnectionGesture } from './connection-gesture'
 
 const current = {
   enabled: true,
   revision: 7,
-  viewId: 'index',
+  viewId: 'index' as ViewId,
 } as const
 
 describe('direct connection gesture guard', () => {
@@ -20,7 +21,7 @@ describe('direct connection gesture guard', () => {
 
   it('rejects view changes during a gesture', () => {
     const started = captureConnectionGesture(current)
-    expect(canCompleteConnectionGesture(started, { ...current, viewId: 'secondary' })).toBe(false)
+    expect(canCompleteConnectionGesture(started, { ...current, viewId: 'secondary' as ViewId })).toBe(false)
   })
 
   it('rejects revision changes during a gesture', () => {
