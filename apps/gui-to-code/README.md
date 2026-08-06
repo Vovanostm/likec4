@@ -8,11 +8,18 @@
 
 - создание и изменение logical elements;
 - создание направленных logical relations;
+- выбор logical relation непосредственно на ребре, изменение её title и exact source-preserving удаление;
 - безопасные patch, rename, move и remove операции с общей историей Undo/Redo;
+- создание элемента double-click по пустому canvas с преобразованием screen coordinate в flow coordinate;
+- создание дочернего элемента внутри scope текущего static view;
+- атомарное создание element + directed relation + standard manual-layout position при отпускании connection handle на пустом canvas;
+- inline-редактирование display title по double-click или F2;
 - создание и выбор static views;
 - ручную раскладку через `.likec4/<view>.likec4.snap`;
 - dynamic views и направленные dynamic steps;
 - deployment views, узлы развёртывания, именованные `instanceOf` и deployment relations;
+- keyboard routes для relation authoring через Shift+F10, Enter, Delete/Backspace, F2 и Escape;
+- сворачиваемые structure, inspector и DSL panels; DSL скрыт по умолчанию;
 - автоматическое восстановление последнего подтверждённого рабочего пространства после reload;
 - атомарное сохранение sources, manual-layout snapshots и versioned metadata в IndexedDB;
 - транзакционный импорт одного `.c4` файла;
@@ -29,17 +36,29 @@ Selection, открытые dialogs, focus, connection mode, diagnostics, compil
 
 | Семейство | Создание | Изменение | Rename | Remove | Import | Export | Canvas |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Logical elements | Да | Да | Да | Да | `.c4`, ZIP | `.c4`, ZIP | Да |
-| Logical relations | Да | Да | Через обновление ссылок | Да | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Logical elements | Да, включая scoped create-at | Да, включая inline title | Да | Да | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Logical relations | Да, включая create-and-connect | Title | Через обновление ссылок | Да, exact selected relation | `.c4`, ZIP | `.c4`, ZIP | Да |
 | Static views | Да | Ограниченно | Нет отдельного flow | Через поддержанный remove flow | `.c4`, ZIP | `.c4`, ZIP | Да |
-| Dynamic views/steps | Да | Ограниченно | Нет отдельного flow | Через поддержанный remove flow | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Dynamic views/steps | Да | Selection; metadata edit не поддержан | Нет отдельного flow | Отдельный canvas remove не поддержан | `.c4`, ZIP | `.c4`, ZIP | Да |
 | Deployment nodes | Да | Ограниченно | Нет отдельного flow | Через поддержанный remove flow | `.c4`, ZIP | `.c4`, ZIP | Да |
 | Deployment instances | Да, именованные | Ограниченно | Нет отдельного flow | Через поддержанный remove flow | `.c4`, ZIP | `.c4`, ZIP | Да |
-| Deployment relations | Да | Ограниченно | Через обновление ссылок | Да | `.c4`, ZIP | `.c4`, ZIP | Да |
-| Manual layout snapshots | Да, через drag | Drag/reset | Не применимо | Reset | Snapshot, ZIP | Snapshot, ZIP | Да |
+| Deployment relations | Да | Selection; metadata edit не поддержан | Через обновление ссылок | Отдельный canvas remove не поддержан | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Manual layout snapshots | Да, через drag/create-at | Drag/reset | Не применимо | Reset | Snapshot, ZIP | Snapshot, ZIP | Да |
 | Config/libraries/styles | Нет отдельного authoring UI | Нет | Нет | Нет | Сохраняются только в пределах фактически принятого source | Через source/ZIP | Нет |
 
 «Ограниченно» означает только уже реализованные поля и операции. Редактор не заявляет полную поддержку всего LikeC4 DSL.
+
+## Canvas entity editing
+
+Diagram package публикует только typed gestures: node click/double-click, edge click, direct connection и discriminated connection completion `connected | empty | cancelled`. Он не генерирует DSL, IDs или editor commands.
+
+Screen coordinates преобразуются через `XYFlowInstance.screenToFlowPosition`. Browser `clientX/clientY` не сохраняются как geometry. Persisted coordinate нового узла записывается только в standard `ViewManualLayoutSnapshot` текущего вида.
+
+Для static view с `viewOf` новый canvas element создаётся как child этого scope. Например, создание `component` в `view ... of shop` даёт FQN `shop.component`, поэтому элемент действительно входит в active view.
+
+Canvas edge может агрегировать несколько logical relations. Inspector показывает discriminator и редактирует exact selected relation. Identity разрешается по compiled relation ID, directed endpoints и ordinal occurrence; после candidate compile workspace повторно подтверждает exact semantic delta.
+
+Dynamic steps и deployment relations можно выбрать и адресовать с клавиатуры. Их metadata patch/remove остаются явно unsupported, пока отсутствует доказанный source-preserving document owner.
 
 ## Надёжность и восстановление
 
@@ -48,11 +67,15 @@ Selection, открытые dialogs, focus, connection mode, diagnostics, compil
 ```text
 пользовательское действие
 → typed EditorCommand
-→ isolated candidate
-→ compile и semantic verification
+→ source-preserving isolated candidate
+→ compile и exact semantic verification
+→ optional standard manual-layout candidate
 → atomic workspace commit
+→ one Undo/Redo history entry
 → revision-guarded IndexedDB save
 ```
+
+`element.createConnected` является dedicated domain command. Generic batch `EditorCommand[]` не используется. Element, relation и placement либо подтверждаются и фиксируются вместе, либо не изменяют source, layout, revision и history.
 
 Импорт выполняется как replacement transaction:
 
@@ -99,6 +122,8 @@ Source locations, diagnostics, compiled models, selection, focus, открыты
 - прямая интеграция с desktop filesystem;
 - произвольное multi-project authoring сверх фактически импортируемого workspace;
 - полное authoring-покрытие config, libraries и styles;
+- relation metadata кроме logical relation title;
+- canvas metadata patch/remove для dynamic steps и deployment relations;
 - полная поддержка всего LikeC4 DSL;
 - AI-assisted architecture generation;
 - lossless canonical regeneration любого входного DSL.
@@ -106,6 +131,9 @@ Source locations, diagnostics, compiled models, selection, focus, открыты
 ## Архитектура
 
 - `EditorWorkspace` владеет sources, layouts, revision, compilation state и history.
+- `src/editor/language-services-adapter.ts` координирует public document planners; React components DSL не строят.
+- `src/editor/relation-source-edits.ts` выполняет exact logical relation title/remove edits и fail-closed отклоняет missing occurrence.
+- `src/editor/use-canvas-entity-editor.ts` владеет только transient selection/menu/inline-edit state.
 - `src/editor/persisted-workspace.ts` задаёт versioned serializable envelope и validation boundary.
 - `src/editor/indexeddb-workspace.ts` реализует atomic IndexedDB port и optimistic revision checks.
 - `src/editor/workspace-bundle.ts` отображает workspace в manifest и обратно, но не компилирует DSL и не становится semantic model.
@@ -118,7 +146,7 @@ Source locations, diagnostics, compiled models, selection, focus, открыты
 
 ## Запуск и проверка
 
-Локальные команды ниже приведены для разработчиков. WP-08 agent validation выполняется только GitHub Actions.
+Локальные команды ниже приведены для разработчиков. Agent validation выполняется только GitHub Actions.
 
 ```bash
 pnpm --filter @likec4/gui-to-code generate
