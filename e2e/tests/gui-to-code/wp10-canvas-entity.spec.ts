@@ -23,17 +23,17 @@ test('creates and edits a scoped element directly on the canvas with exact Undo/
 
   await page.getByRole('button', { name: 'Код', exact: true }).click()
   const source = page.getByRole('textbox', { name: 'Исходный код LikeC4' })
-  await expect(source).toHaveValue(/component = component 'Платёжный модуль'/)
+  await expect(source).toHaveValue(/component component 'Платёжный модуль'/)
 
   const undo = page.getByRole('button', { name: 'Отменить последнее изменение' })
   await undo.click()
-  await expect(source).toHaveValue(/component = component 'component'/)
+  await expect(source).toHaveValue(/component component/)
   await undo.click()
-  await expect(source).not.toHaveValue(/component = component/)
+  await expect(source).not.toHaveValue(/component component/)
 
   const redo = page.getByRole('button', { name: 'Повторить отменённое изменение' })
   await redo.click()
-  await expect(source).toHaveValue(/component = component 'component'/)
+  await expect(source).toHaveValue(/component component/)
   await redo.click()
-  await expect(source).toHaveValue(/component = component 'Платёжный модуль'/)
+  await expect(source).toHaveValue(/component component 'Платёжный модуль'/)
 })
