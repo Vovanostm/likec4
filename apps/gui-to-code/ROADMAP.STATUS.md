@@ -1,9 +1,9 @@
 # Состояние исполнения roadmap
 
 Дата актуализации: 6 августа 2026  
-Текущая ветка: `feat/gui-to-code-wp10-canvas-entity-editing`  
+Текущая ветка: `feat/gui-to-code-wp10-canvas-entity-editing-v2`  
 WP-09 merge commit: `d1b031268b65a7e0fe195572a926fc0d8c058582`  
-WP-10 delivery PR: #13
+WP-10 delivery PR: #15
 
 Этот файл — изменяемое состояние исполнения. Стабильные outcomes и acceptance criteria находятся в `ROADMAP.md`.
 
@@ -11,7 +11,7 @@ WP-10 delivery PR: #13
 
 ```yaml
 # managed-state:v2
-revision: 18
+revision: 19
 contract_review: complete
 active: []
 done:
@@ -76,7 +76,7 @@ Fixed findings:
 
 ### Verification
 
-Focused diagram lifecycle, source-preservation, workspace atomicity and Playwright canvas acceptance tests are included. Exact-head GitHub CI evidence is recorded in PR #13; no local validation is used as release evidence.
+Focused diagram lifecycle, source-preservation, workspace atomicity and Playwright canvas acceptance tests are included. Exact-head GitHub CI evidence is recorded in PR #15; no local validation is used as release evidence.
 
 ### Explicit limitations
 
