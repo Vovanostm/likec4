@@ -17,10 +17,10 @@ export function CanvasCreateMenu({
   readonly onCreate: (kind: ElementKind) => void
   readonly onCancel: () => void
 }) {
-  const firstButton = useRef<HTMLButtonElement | null>(null)
+  const menu = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
-    firstButton.current?.focus()
+    menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
   }, [])
 
   const kinds = [
@@ -31,6 +31,7 @@ export function CanvasCreateMenu({
 
   return (
     <section
+      ref={menu}
       className="canvas-create-menu"
       aria-label="Создать элемент на холсте"
       style={{ left: screenPosition.x, top: screenPosition.y }}
@@ -44,10 +45,9 @@ export function CanvasCreateMenu({
       <h3>{connected ? 'Создать и связать' : 'Создать элемент'}</h3>
       <p>{connected ? 'Выберите тип нового целевого элемента.' : 'Выберите тип элемента.'}</p>
       <div className="actions" role="group" aria-label="Тип нового элемента">
-        {kinds.map(([kind, label], index) => (
+        {kinds.map(([kind, label]) => (
           <button
             key={kind}
-            ref={index === 0 ? firstButton : undefined}
             type="button"
             disabled={busy || !availableKinds.has(kind)}
             onClick={() => onCreate(kind)}>
