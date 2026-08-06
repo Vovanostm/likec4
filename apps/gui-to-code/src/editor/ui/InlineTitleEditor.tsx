@@ -17,17 +17,26 @@ export function InlineTitleEditor({
   readonly screenPosition: CanvasPosition | null
   readonly busy: boolean
   readonly onChange: (value: string) => void
-  readonly onSave: () => Promise<boolean>
+  readonly onSave: () => void
   readonly onCancel: () => void
   readonly onReturnFocus: () => void
 }) {
   const input = useRef<HTMLInputElement | null>(null)
   const submitting = useRef(false)
+  const previousBusy = useRef(busy)
 
   useEffect(() => {
     input.current?.focus()
     input.current?.select()
   }, [id])
+
+  useEffect(() => {
+    if (previousBusy.current && !busy && submitting.current) {
+      submitting.current = false
+      queueMicrotask(() => input.current?.focus())
+    }
+    previousBusy.current = busy
+  }, [busy])
 
   const cancel = (): void => {
     submitting.current = false
@@ -42,12 +51,10 @@ export function InlineTitleEditor({
       style={screenPosition ? { left: screenPosition.x, top: screenPosition.y } : undefined}
       onSubmit={event => {
         event.preventDefault()
-        if (busy || !value.trim() || submitting.current) return
-        submitting.current = true
-        void onSave().then(saved => {
-          submitting.current = false
-          if (!saved) queueMicrotask(() => input.current?.focus())
-        })
+        if (!busy && value.trim()) {
+          submitting.current = true
+          onSave()
+        }
       }}>
       <label>
         <span className="visually-hidden">Название элемента</span>
