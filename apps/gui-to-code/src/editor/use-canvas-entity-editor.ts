@@ -147,30 +147,38 @@ export function useCanvasEntityEditor(
     return false
   }
 
-  const requestCreation = (
+  const captureCreation = (
     position: CanvasPosition,
     screenPosition: CanvasPosition,
     sourceId: Fqn | null = null,
-  ): void => {
+  ): PendingCanvasCreation | null => {
     const state = runtime.state
     const view = runtime.selectedView
     if (!state || !view || view._type !== 'element' || state.compilation.status !== 'valid' || runtime.busy) {
       runtime.setCommandError('Создание элемента сейчас недоступно.')
-      return
+      return null
     }
-    setPendingCreation({
+    return {
       viewId: view.id,
       revision: state.revision,
       position,
       screenPosition,
       sourceId,
-    })
+    }
   }
 
-  const createPendingElement = async (kind: ElementKind): Promise<boolean> => {
-    const pending = pendingCreation
+  const requestCreation = (
+    position: CanvasPosition,
+    screenPosition: CanvasPosition,
+    sourceId: Fqn | null = null,
+  ): void => {
+    const captured = captureCreation(position, screenPosition, sourceId)
+    if (captured) setPendingCreation(captured)
+  }
+
+  const executeCreation = async (pending: PendingCanvasCreation, kind: ElementKind): Promise<boolean> => {
     const state = runtime.state
-    if (!pending || !state) return false
+    if (!state) return false
     if (state.revision !== pending.revision || runtime.selectedViewId !== pending.viewId) {
       setPendingCreation(null)
       runtime.setCommandError('Рабочее пространство или текущий вид изменились. Повторите создание.')
@@ -211,6 +219,19 @@ export function useCanvasEntityEditor(
       return true
     }
     return false
+  }
+
+  const createPendingElement = async (kind: ElementKind): Promise<boolean> => {
+    return pendingCreation ? executeCreation(pendingCreation, kind) : false
+  }
+
+  const createElementAt = async (
+    kind: ElementKind,
+    position: CanvasPosition,
+    screenPosition: CanvasPosition,
+  ): Promise<boolean> => {
+    const pending = captureCreation(position, screenPosition)
+    return pending ? executeCreation(pending, kind) : false
   }
 
   const startInlineTitle = (id: Fqn, screenPosition: CanvasPosition | null = null): void => {
@@ -259,6 +280,7 @@ export function useCanvasEntityEditor(
     removeSelectedRelation,
     requestCreation,
     createPendingElement,
+    createElementAt,
     cancelCreation,
     startInlineTitle,
     updateInlineTitle,
