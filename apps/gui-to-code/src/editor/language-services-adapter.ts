@@ -13,6 +13,7 @@ import type {
   SourceFile,
 } from './contracts'
 import { EditorDocumentError } from './contracts'
+import { patchLogicalRelationTitle, removeLogicalRelation } from './relation-source-edits'
 
 interface ApplicableEditPlan {
   readonly baseRevisions: Readonly<Record<string, string>>
@@ -56,6 +57,7 @@ function removalReport(report: LanguageRemovalReport): RemovalDependencyReport {
 }
 
 function documentError(error: unknown): never {
+  if (error instanceof EditorDocumentError) throw error
   if (error instanceof DocumentEditError) {
     throw new EditorDocumentError(
       error.code as DocumentEditErrorCode,
@@ -96,6 +98,26 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
       return applyPlan(sources, await documents.planAddRelation({
         source: input.sourceId,
         target: input.targetId,
+        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+      }))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async createConnectedElement(sources, input) {
+    try {
+      const { documents } = await serviceFor(sources)
+      const withElement = applyPlan(sources, await documents.planAddElement({
+        id: input.id,
+        kind: input.kind,
+        ...(input.title ? { title: input.title } : {}),
+        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+      }))
+      const { documents: candidateDocuments } = await serviceFor(withElement)
+      return applyPlan(withElement, await candidateDocuments.planAddRelation({
+        source: input.sourceId,
+        target: input.id,
         ...(input.documentUri ? { documentUri: input.documentUri } : {}),
       }))
     } catch (error) {
@@ -184,6 +206,25 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
     try {
       const { documents } = await serviceFor(sources)
       return applyPlan(sources, await documents.planPatchElement({ target: input.id, patch: input.patch }))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async patchRelation(sources, input) {
+    try {
+      if (input.patch.title === undefined) {
+        throw new EditorDocumentError('invalid-operation', 'Relation patch is empty')
+      }
+      return patchLogicalRelationTitle(sources, input, input.patch.title)
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async removeRelation(sources, input) {
+    try {
+      return removeLogicalRelation(sources, input)
     } catch (error) {
       return documentError(error)
     }
