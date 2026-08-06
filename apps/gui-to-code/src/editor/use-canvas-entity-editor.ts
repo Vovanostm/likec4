@@ -1,5 +1,5 @@
 import type { ElementKind, Fqn, RelationId, ViewId } from '@likec4/core/types'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CanvasPosition } from './contracts'
 import type { useWorkspaceRuntime } from './use-workspace-runtime'
 
@@ -35,12 +35,15 @@ export function useCanvasEntityEditor(
   const [relationAlternatives, setRelationAlternatives] = useState<readonly RelationId[]>([])
   const [pendingCreation, setPendingCreation] = useState<PendingCanvasCreation | null>(null)
   const [inlineTitle, setInlineTitle] = useState<InlineTitleEdit | null>(null)
+  const onElementSelectedRef = useRef(onElementSelected)
+  onElementSelectedRef.current = onElementSelected
 
   useEffect(() => {
     setSelection(null)
     setRelationAlternatives([])
     setPendingCreation(null)
     setInlineTitle(null)
+    onElementSelectedRef.current(null)
   }, [runtime.selectedViewId])
 
   useEffect(() => {
