@@ -1,3 +1,4 @@
+import type { Fqn } from '@likec4/core/types'
 import {
   applyDocumentTextEdits,
   createDocumentEditService,
@@ -8,6 +9,7 @@ import {
 } from '@likec4/language-services/browser'
 import type { DocumentEditErrorCode, RemovalDependencyReport as LanguageRemovalReport } from '@likec4/language-services/browser'
 import type {
+  CreateElementEditInput,
   EditorDocumentPort,
   RemovalDependencyReport,
   SourceFile,
@@ -77,16 +79,31 @@ async function serviceFor(sources: readonly SourceFile[]) {
   }
 }
 
+async function createElementCandidate(
+  sources: readonly SourceFile[],
+  input: CreateElementEditInput,
+): Promise<readonly SourceFile[]> {
+  const { documents } = await serviceFor(sources)
+  let candidate = applyPlan(sources, await documents.planAddElement({
+    id: input.id,
+    kind: input.kind,
+    ...(input.title ? { title: input.title } : {}),
+    ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+  }))
+  if (input.parentId) {
+    const { documents: candidateDocuments } = await serviceFor(candidate)
+    candidate = applyPlan(candidate, await candidateDocuments.planMoveElement({
+      target: input.id as Fqn,
+      parent: input.parentId,
+    }))
+  }
+  return candidate
+}
+
 export const languageServicesDocumentPort: EditorDocumentPort = {
   async createElement(sources, input) {
     try {
-      const { documents } = await serviceFor(sources)
-      return applyPlan(sources, await documents.planAddElement({
-        id: input.id,
-        kind: input.kind,
-        ...(input.title ? { title: input.title } : {}),
-        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
-      }))
+      return await createElementCandidate(sources, input)
     } catch (error) {
       return documentError(error)
     }
@@ -107,17 +124,12 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
 
   async createConnectedElement(sources, input) {
     try {
-      const { documents } = await serviceFor(sources)
-      const withElement = applyPlan(sources, await documents.planAddElement({
-        id: input.id,
-        kind: input.kind,
-        ...(input.title ? { title: input.title } : {}),
-        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
-      }))
+      const withElement = await createElementCandidate(sources, input)
       const { documents: candidateDocuments } = await serviceFor(withElement)
+      const target = (input.parentId ? `${input.parentId}.${input.id}` : input.id) as Fqn
       return applyPlan(withElement, await candidateDocuments.planAddRelation({
         source: input.sourceId,
-        target: input.id,
+        target,
         ...(input.documentUri ? { documentUri: input.documentUri } : {}),
       }))
     } catch (error) {
