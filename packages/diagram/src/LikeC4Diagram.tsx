@@ -48,6 +48,7 @@ const noop = () => {}
  */
 export function LikeC4Diagram<A extends Any = Any>({
   onCanvasClick,
+  onCanvasConnectionEnd,
   onCanvasContextMenu,
   onCanvasDblClick,
   onConnect,
@@ -56,6 +57,7 @@ export function LikeC4Diagram<A extends Any = Any>({
   onNavigateTo,
   onNodeClick,
   onNodeContextMenu,
+  onNodeDblClick,
   onOpenSource,
   onLogoClick,
   onLayoutTypeChange,
@@ -172,6 +174,7 @@ export function LikeC4Diagram<A extends Any = Any>({
               <DiagramEventHandlers
                 handlers={{
                   onCanvasClick,
+                  onCanvasConnectionEnd,
                   onCanvasContextMenu,
                   onCanvasDblClick,
                   onConnect,
@@ -180,6 +183,7 @@ export function LikeC4Diagram<A extends Any = Any>({
                   onNavigateTo,
                   onNodeClick,
                   onNodeContextMenu,
+                  onNodeDblClick,
                   onOpenSource,
                   onLogoClick,
                   onInitialized,
