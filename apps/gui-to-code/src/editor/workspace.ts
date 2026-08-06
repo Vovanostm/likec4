@@ -169,6 +169,23 @@ function allocateId(state: EditorWorkspaceState, kind: ElementKind): string {
   }
 }
 
+function allocateCanvasId(state: EditorWorkspaceState, kind: ElementKind, parent: Fqn | null): string {
+  const existing = new Set(Object.keys(state.lastValidModel?.$data.elements ?? {}))
+  const available = (candidate: string): boolean => {
+    const scoped = parent ? `${parent}.${candidate}` : candidate
+    return !existing.has(candidate) && !existing.has(scoped)
+  }
+  if (available(kind)) return kind
+  for (let suffix = 2;; suffix += 1) {
+    const candidate = `${kind}${suffix}`
+    if (available(candidate)) return candidate
+  }
+}
+
+function scopedElementId(id: string, parent: Fqn | null): Fqn {
+  return (parent ? `${parent}.${id}` : id) as Fqn
+}
+
 function allocateViewId(state: EditorWorkspaceState): ViewId {
   const existing = new Set(Object.keys(state.lastValidModel?.$data.views ?? {}))
   if (!existing.has('view')) return 'view' as ViewId
@@ -556,18 +573,23 @@ export class EditorWorkspace {
     if (view._type !== 'element') {
       return this.rejected(state, 'layout-view-unsupported', 'Создание логического элемента доступно только в статическом виде.')
     }
-    const id = command.input.id ?? allocateId(state, command.input.kind)
+    const parent = view.viewOf ?? null
+    const id = command.input.id ?? allocateCanvasId(state, command.input.kind, parent)
+    const createdElementId = scopedElementId(id, parent)
+    if (state.lastValidModel?.$data.elements[id as Fqn] || state.lastValidModel?.$data.elements[createdElementId]) {
+      return this.rejected(state, 'identifier-collision', 'Идентификатор уже занят.')
+    }
     try {
       const candidateSources = await this.documents.createElement(state.committedSources, {
         id,
         kind: command.input.kind,
         ...(command.input.title ? { title: command.input.title } : {}),
+        ...(parent ? { parentId: parent } : {}),
         ...(command.input.documentUri ? { documentUri: command.input.documentUri } : {}),
       })
       const revision = state.revision + 1
       const compilation = await this.compileCandidate(revision, candidateSources)
       if (!compilation.model) return this.compileRejected(state)
-      const createdElementId = id as Fqn
       if (!compilation.model.$data.elements[createdElementId]) {
         return this.rejected(state, 'created-element-not-found', 'Созданный элемент отсутствует в скомпилированной модели.')
       }
@@ -619,14 +641,19 @@ export class EditorWorkspace {
     if (!this.documents.createConnectedElement) {
       return this.rejected(state, 'create-connected-source-edit-failed', 'Document layer не поддерживает атомарное создание элемента со связью.')
     }
-    const id = command.input.id ?? allocateId(state, command.input.kind)
-    const createdElementId = id as Fqn
+    const parent = view.viewOf ?? null
+    const id = command.input.id ?? allocateCanvasId(state, command.input.kind, parent)
+    const createdElementId = scopedElementId(id, parent)
+    if (state.lastValidModel.$data.elements[id as Fqn] || state.lastValidModel.$data.elements[createdElementId]) {
+      return this.rejected(state, 'identifier-collision', 'Идентификатор уже занят.')
+    }
     try {
       const candidateSources = await this.documents.createConnectedElement(state.committedSources, {
         sourceId: command.input.sourceId,
         kind: command.input.kind,
         id,
         ...(command.input.title ? { title: command.input.title } : {}),
+        ...(parent ? { parentId: parent } : {}),
         ...(command.input.documentUri ? { documentUri: command.input.documentUri } : {}),
       })
       const revision = state.revision + 1
