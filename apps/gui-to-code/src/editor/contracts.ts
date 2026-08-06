@@ -42,6 +42,7 @@ export interface CreateElementEditInput {
   readonly kind: ElementKind
   readonly id: string
   readonly title?: string
+  readonly parentId?: Fqn
   readonly documentUri?: string
 }
 
@@ -56,6 +57,7 @@ export interface CreateConnectedElementEditInput {
   readonly kind: ElementKind
   readonly id: string
   readonly title?: string
+  readonly parentId?: Fqn
   readonly documentUri?: string
 }
 
