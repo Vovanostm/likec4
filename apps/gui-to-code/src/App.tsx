@@ -106,12 +106,13 @@ export function App() {
 
   const overlayPoint = (screen: Point): Point => {
     const bounds = diagramPanel.current?.getBoundingClientRect()
-    return bounds
-      ? {
-        x: Math.max(12, screen.x - bounds.left),
-        y: Math.max(64, screen.y - bounds.top),
-      }
-      : screen
+    if (!bounds) return screen
+    const desiredX = screen.x - bounds.left
+    const desiredY = screen.y - bounds.top
+    return {
+      x: Math.min(Math.max(12, desiredX), Math.max(12, bounds.width - 320)),
+      y: Math.min(Math.max(64, desiredY), Math.max(64, bounds.height - 220)),
+    }
   }
 
   const flowPoint = (screen: Point): Point | null => {
@@ -159,7 +160,12 @@ export function App() {
           void canvas.removeSelectedRelation()
           return
         }
-        if (event.key === 'F2' && semantic.selection && !isEditableTarget(event.target)) {
+        if (
+          event.key === 'F2'
+          && semantic.selection
+          && (!canvas.selection || canvas.selection.family === 'logical-element')
+          && !isEditableTarget(event.target)
+        ) {
           event.preventDefault()
           canvas.startInlineTitle(semantic.selection.id)
           return
@@ -320,7 +326,10 @@ export function App() {
                       if (semantic.activeKind) {
                         const kind = semantic.activeKind
                         void canvas.createElementAt(kind, position, overlayPoint(screen)).then(created => {
-                          if (created) semantic.controller.current?.handleKeyDown('Escape')
+                          if (created) {
+                            semantic.controller.current?.cancel('tool-change')
+                            runtime.setFeedback('Элемент создан в выбранной позиции.')
+                          }
                         })
                         return
                       }
