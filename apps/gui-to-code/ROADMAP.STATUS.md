@@ -11,7 +11,7 @@ WP-10 delivery PR: #13
 
 ```yaml
 # managed-state:v2
-revision: 17
+revision: 18
 contract_review: complete
 active: []
 done:
@@ -59,7 +59,8 @@ Fixed findings:
 - nested relations can use relative endpoints; exact relation identity now resolves lexical element scope, `this` references and duplicate endpoint occurrence;
 - create-and-connect remains a dedicated domain command rather than a generic command batch;
 - renderer remains gesture-only; `EditorWorkspace` remains the sole source/revision/layout/history owner;
-- rejected or stale candidates do not mutate source, layout, revision or history.
+- rejected or stale candidates do not mutate source, layout, revision or history;
+- create-and-connect acceptance now uses a valid sibling relation, while a forbidden parent-to-child relation is covered as an exact rollback case.
 
 ### Review B — UX and accessibility
 
@@ -70,6 +71,7 @@ Fixed findings:
 - contextual overlays are clamped to canvas bounds;
 - direct-create tool reset no longer overwrites success feedback;
 - inline edit has explicit Enter-save, Escape-cancel and blur-cancel behaviour with focus return;
+- submit-induced blur no longer closes the inline editor, and a rejected save restores input focus;
 - edge alternatives expose a discriminator when one visual edge aggregates multiple logical relations.
 
 ### Verification
