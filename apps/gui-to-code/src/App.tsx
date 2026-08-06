@@ -1,6 +1,12 @@
 import type { ElementKind, Fqn } from '@likec4/core/types'
 import { LikeC4EditorProvider, LikeC4ModelProvider, ReactLikeC4 } from '@likec4/diagram'
+import { useEffect, useRef } from 'react'
 import { starterSource } from './document'
+import {
+  canCompleteConnectionGesture,
+  captureConnectionGesture,
+} from './editor/connection-gesture'
+import type { ConnectionGestureSnapshot } from './editor/connection-gesture'
 import { downloadSource } from './editor/file-downloads'
 import { useDurableWorkspace } from './editor/use-durable-workspace'
 import { ElementInspector } from './editor/ui/ElementInspector'
@@ -27,6 +33,16 @@ export function App() {
   const semantic = useSemanticEditor(runtime)
   const wp06 = useWp06Runtime(runtime)
   const state = runtime.state
+  const connectionGesture = useRef<ConnectionGestureSnapshot | null>(null)
+  const canvasAuthoringEnabled = !!state
+    && state.compilation.status === 'valid'
+    && !runtime.busy
+    && !semantic.activeKind
+
+  useEffect(() => {
+    semantic.diagramApi.current?.toggleFeature('ReadOnly', !canvasAuthoringEnabled)
+    if (!canvasAuthoringEnabled) connectionGesture.current = null
+  }, [canvasAuthoringEnabled, semantic.diagramApi])
 
   if (!state || durable.status === 'loading') {
     return <main className="editor-shell" aria-busy="true"><p role="status">Восстановление рабочего пространства…</p></main>
@@ -34,10 +50,38 @@ export function App() {
 
   const undoDisabled = state.history.past.length === 0 || state.compilation.status !== 'valid' || runtime.busy
   const redoDisabled = state.history.future.length === 0 || state.compilation.status !== 'valid' || runtime.busy
-  const connectionHandler = wp06.connectionMode
-    ? (sourceId: string, targetId: string) => { void wp06.completeCanvasConnection(sourceId, targetId) }
-    : semantic.relationActive
-    ? (sourceId: string, targetId: string) => semantic.completeRelation(sourceId, targetId)
+
+  const connectionContext = runtime.selectedView
+    ? {
+      enabled: canvasAuthoringEnabled,
+      revision: state.revision,
+      viewId: runtime.selectedView.id,
+    }
+    : null
+
+  const beginConnectionGesture = (): void => {
+    connectionGesture.current = connectionContext
+      ? captureConnectionGesture(connectionContext)
+      : null
+  }
+
+  const completeDirectConnection = (sourceId: string, targetId: string): void => {
+    const started = connectionGesture.current
+    connectionGesture.current = null
+    if (!connectionContext || !canCompleteConnectionGesture(started, connectionContext)) {
+      runtime.setCommandError('Рабочее пространство или текущий вид изменились. Повторите действие.')
+      return
+    }
+    if (runtime.selectedView?._type === 'dynamic' || runtime.selectedView?._type === 'deployment') {
+      void wp06.completeCanvasConnection(sourceId, targetId)
+      return
+    }
+    semantic.activateRelationTool()
+    semantic.completeRelation(sourceId, targetId)
+  }
+
+  const connectionHandler = canvasAuthoringEnabled
+    ? completeDirectConnection
     : null
 
   return (
@@ -92,7 +136,11 @@ export function App() {
           <StructureTree nodes={semantic.structure} selectedId={semantic.selection?.id ?? null} disabled={semantic.canvasDisabled} onSelect={id => semantic.selectElement(id)} />
         </section>
 
-        <section className="panel diagram-panel" aria-label="Холст диаграммы" tabIndex={0}>
+        <section
+          className="panel diagram-panel"
+          aria-label="Холст диаграммы"
+          tabIndex={0}
+          onPointerDownCapture={beginConnectionGesture}>
           <header>
             <h2>Диаграмма</h2>
             <div className="actions" aria-label="Инструменты диаграммы">
@@ -118,7 +166,7 @@ export function App() {
                     enableCompareWithLatest
                     onLayoutTypeChange={runtime.setLayoutMode}
                     onInitialized={({ diagram }) => {
-                      diagram.toggleFeature('ReadOnly', false)
+                      diagram.toggleFeature('ReadOnly', !canvasAuthoringEnabled)
                       semantic.diagramApi.current = diagram
                     }}
                     onNodeClick={node => { if (node.modelRef) semantic.selectElement(node.modelRef as Fqn, false) }}
@@ -131,6 +179,7 @@ export function App() {
               </LikeC4EditorProvider>
             : <p className="empty">В проекте нет подходящего вида для отображения.</p>}
 
+          {canvasAuthoringEnabled && runtime.selectedView && <p aria-live="polite">Потяните точку подключения одного элемента к другому, чтобы создать связь.</p>}
           {semantic.activeKind && <p aria-live="polite">Щёлкните по холсту или нажмите Enter, чтобы создать элемент.</p>}
           {wp06.connectionMode === 'dynamic-step' && <p aria-live="polite">Соедините два логических элемента, чтобы создать направленный шаг.</p>}
           {wp06.connectionMode === 'deployment-relation' && <p aria-live="polite">Соедините две сущности развёртывания, чтобы создать связь.</p>}

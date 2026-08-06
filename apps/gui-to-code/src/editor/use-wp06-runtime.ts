@@ -69,7 +69,7 @@ export function useWp06Runtime(runtime: Runtime) {
 
   const createDynamicStep = async (sourceId: string, targetId: string): Promise<boolean> => {
     if (!selectedView || selectedView._type !== 'dynamic') {
-      runtime.setCommandError('Сначала выберите динамический вид.')
+      runtime.setCommandError('Текущий вид изменился. Создание связи отменено.')
       return false
     }
     const result = await runtime.dispatchSemantic({
@@ -139,6 +139,10 @@ export function useWp06Runtime(runtime: Runtime) {
   }
 
   const createDeploymentRelation = async (sourceId: string, targetId: string): Promise<boolean> => {
+    if (!selectedView || selectedView._type !== 'deployment') {
+      runtime.setCommandError('Текущий вид изменился. Создание связи отменено.')
+      return false
+    }
     const result = await runtime.dispatchSemantic({
       type: 'deploymentRelation.create',
       input: {
@@ -162,7 +166,7 @@ export function useWp06Runtime(runtime: Runtime) {
     }
     setConnectionMode('dynamic-step')
     runtime.setCommandError(null)
-    runtime.setFeedback('Выберите исходный и целевой логические элементы на холсте.')
+    runtime.setFeedback('Соедините два логических элемента на холсте или используйте клавиатурный выбор.')
   }
 
   const activateDeploymentRelation = (): void => {
@@ -172,12 +176,16 @@ export function useWp06Runtime(runtime: Runtime) {
     }
     setConnectionMode('deployment-relation')
     runtime.setCommandError(null)
-    runtime.setFeedback('Выберите исходную и целевую deployment-сущности на холсте.')
+    runtime.setFeedback('Соедините две deployment-сущности на холсте или используйте клавиатурный выбор.')
   }
 
   const completeCanvasConnection = async (sourceId: string, targetId: string): Promise<boolean> => {
-    if (connectionMode === 'dynamic-step') return createDynamicStep(sourceId, targetId)
-    if (connectionMode === 'deployment-relation') return createDeploymentRelation(sourceId, targetId)
+    if (!selectedView) {
+      runtime.setCommandError('Текущий вид изменился. Создание связи отменено.')
+      return false
+    }
+    if (selectedView._type === 'dynamic') return createDynamicStep(sourceId, targetId)
+    if (selectedView._type === 'deployment') return createDeploymentRelation(sourceId, targetId)
     return false
   }
 
