@@ -1,9 +1,9 @@
 # Состояние исполнения roadmap
 
-Дата актуализации: 6 августа 2026  
-Текущая ветка: `feat/gui-to-code-wp10-canvas-entity-editing-v2`  
-WP-09 merge commit: `d1b031268b65a7e0fe195572a926fc0d8c058582`  
-WP-10 delivery PR: #15
+Дата актуализации: 8 августа 2026  
+Текущая ветка: `feat/gui-to-code-wp11-dynamic-deployment-edge-crud`  
+WP-10 merge commit: `69e7d0b55df300fc1a149eeb3b1fe0aaf2e2cc23`  
+WP-11 delivery PR: #16
 
 Этот файл — изменяемое состояние исполнения. Стабильные outcomes и acceptance criteria находятся в `ROADMAP.md`.
 
@@ -11,7 +11,7 @@ WP-10 delivery PR: #15
 
 ```yaml
 # managed-state:v2
-revision: 19
+revision: 20
 contract_review: complete
 active: []
 done:
@@ -26,10 +26,62 @@ done:
   - WP-08
   - WP-09
   - WP-10
+  - WP-11
 ready: []
 planned: []
 blocked: []
 ```
+
+## WP-11 — Dynamic & Deployment Edge CRUD Parity complete
+
+AI-ready contract: WP-11 implementation contract delivered in PR #16. Discovery record: `apps/gui-to-code/decisions/WP-11-DYNAMIC-DEPLOYMENT-EDGE-CRUD-DISCOVERY.md`.
+
+### Delivered outcome
+
+- canvas-selected dynamic steps expose a Russian inspector with endpoints, editable title and exact remove action;
+- canvas-selected deployment relations expose the same title/remove parity;
+- dynamic identity resolves through parser-owned `astPath` carried by the compiled edge;
+- deployment identity resolves through parser-owned `RelationId` to the owning parsed document and exact relation `astPath`;
+- duplicate endpoint declarations are source-addressed exactly rather than by endpoint-only matching;
+- public `DynamicDeploymentDocumentEditService` now owns source-preserving patch/remove planning for both edge families;
+- browser and Node language-services entrypoints expose the same additive API and a patch changeset records the package contract change;
+- all mutations remain `EditorWorkspace` transactions: captured revision → source-preserving candidate → compile → exact semantic verification → one atomic commit/history entry;
+- semantic patch/remove leaves `manualLayouts` unchanged;
+- Undo/Redo restores exact source bytes for patch/remove;
+- stale inspector actions fail closed after revision or view changes;
+- Enter and Shift+F10 focus the edge inspector, Delete/Backspace remove outside editable controls, and Escape clears selection with canvas focus restoration;
+- unsupported edge metadata remains hidden instead of rendered as a misleading disabled form.
+
+### Review A — correctness and architecture
+
+Fixed findings:
+
+- post-compile verification initially assumed non-selected dynamic `astPath` and deployment `RelationId` remained stable after deletion; removing an earlier declaration can renumber derived identities, so verification now compares the exact remaining semantic multiset while source targeting remains AST/CST-owned;
+- first and second duplicate declarations are covered separately so endpoint duplication cannot collapse patch/remove onto all matches;
+- dynamic `StepSeries` segment removal is rejected fail-closed when deleting one segment would structurally rewrite neighboring flow semantics;
+- source planners use Langium AST/CST and existing source revisions; React never computes source ranges or relation occurrences;
+- no renderer, persisted schema, dependency, grammar, manual-layout format or secondary semantic graph was introduced.
+
+### Review B — UX and accessibility
+
+Verified/fixed findings:
+
+- dynamic/deployment inspector labels use Russian domain terminology and no longer expose unsupported metadata messaging;
+- busy state disables title editing and destructive actions, preventing double submit;
+- Delete/Backspace is guarded for `input`, `textarea`, `select` and `contenteditable` targets;
+- successful patch deterministically returns focus to the editable title; successful removal returns focus to the canvas;
+- stale selection remains actionable through a Russian error and performs no mutation;
+- existing responsive inspector/workspace layout is reused without adding a new narrow-view surface.
+
+### Verification
+
+Focused language-services, workspace integration and Playwright WP-11 acceptance tests are included. Exact-head release evidence is the required green `GUI-to-code`, `CI (PR & push)` and `push` GitHub Actions set recorded in PR #16. No local validation is release evidence.
+
+### Explicit limitations
+
+- supported edge metadata editing is title-only;
+- exact removal is supported for standalone dynamic `Step`; deleting one segment from `StepSeries` fails closed when it would require structural rewriting of neighboring steps;
+- selection, inspector focus and captured stale-state guards remain transient and are not persisted as domain data.
 
 ## WP-10 — Canvas Entity Editing and Atomic Creation complete
 
@@ -81,7 +133,6 @@ Focused diagram lifecycle, source-preservation, workspace atomicity and Playwrig
 ### Explicit limitations
 
 - logical relation metadata editing is title-only;
-- dynamic steps and deployment relations are selectable and keyboard-addressable, but canvas metadata patch/remove remains unsupported until a source-preserving document owner is available;
 - selection, focus, menus and gesture state remain transient and are not persisted as domain data.
 
 ## WP-09 — Direct connection foundation complete
