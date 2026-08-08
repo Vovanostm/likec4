@@ -181,34 +181,77 @@ function dynamicEdgeByAstPath(view: unknown, astPath: string): SemanticEdge | nu
   return dynamicEdges(view).find(edge => edge.astPath === astPath) ?? null
 }
 
-function sameDynamicEdgesExcept(
+function multisetMatches(expected: readonly string[], actual: readonly string[]): boolean {
+  if (expected.length !== actual.length) return false
+  const counts = new Map<string, number>()
+  for (const value of expected) counts.set(value, (counts.get(value) ?? 0) + 1)
+  for (const value of actual) {
+    const count = counts.get(value) ?? 0
+    if (count === 0) return false
+    if (count === 1) counts.delete(value)
+    else counts.set(value, count - 1)
+  }
+  return counts.size === 0
+}
+
+function dynamicSignature(edge: SemanticEdge): string {
+  return JSON.stringify([
+    logicalEndpoint(edge.source),
+    logicalEndpoint(edge.target),
+    edge.label ?? '',
+  ])
+}
+
+function dynamicRemainderMatchesAfterPatch(
   before: readonly SemanticEdge[],
   after: readonly SemanticEdge[],
   astPath: string,
 ): boolean {
-  const remaining = before.filter(edge => edge.astPath !== astPath)
-  return remaining.every(edge => {
-    if (!edge.astPath) return false
-    const candidate = after.find(next => next.astPath === edge.astPath)
-    return !!candidate
-      && logicalEndpoint(candidate.source) === logicalEndpoint(edge.source)
-      && logicalEndpoint(candidate.target) === logicalEndpoint(edge.target)
-      && (candidate.label ?? '') === (edge.label ?? '')
-  })
+  return multisetMatches(
+    before.filter(edge => edge.astPath !== astPath).map(dynamicSignature),
+    after.filter(edge => edge.astPath !== astPath).map(dynamicSignature),
+  )
 }
 
-function sameDeploymentRelationsExcept(
+function dynamicRemainderMatchesAfterRemoval(
+  before: readonly SemanticEdge[],
+  after: readonly SemanticEdge[],
+  astPath: string,
+): boolean {
+  return multisetMatches(
+    before.filter(edge => edge.astPath !== astPath).map(dynamicSignature),
+    after.map(dynamicSignature),
+  )
+}
+
+function deploymentSignature(relation: DeploymentRelation): string {
+  return JSON.stringify([
+    deploymentEndpoint(relation.source),
+    deploymentEndpoint(relation.target),
+    relation.title ?? '',
+  ])
+}
+
+function deploymentRemainderMatchesAfterPatch(
   before: Readonly<Record<string, DeploymentRelation>>,
   after: Readonly<Record<string, DeploymentRelation>>,
   id: string,
 ): boolean {
-  return Object.entries(before).filter(([relationId]) => relationId !== id).every(([relationId, relation]) => {
-    const candidate = after[relationId]
-    return !!candidate
-      && deploymentEndpoint(candidate.source) === deploymentEndpoint(relation.source)
-      && deploymentEndpoint(candidate.target) === deploymentEndpoint(relation.target)
-      && (candidate.title ?? '') === (relation.title ?? '')
-  })
+  return multisetMatches(
+    Object.entries(before).filter(([relationId]) => relationId !== id).map(([, relation]) => deploymentSignature(relation)),
+    Object.entries(after).filter(([relationId]) => relationId !== id).map(([, relation]) => deploymentSignature(relation)),
+  )
+}
+
+function deploymentRemainderMatchesAfterRemoval(
+  before: Readonly<Record<string, DeploymentRelation>>,
+  after: Readonly<Record<string, DeploymentRelation>>,
+  id: string,
+): boolean {
+  return multisetMatches(
+    Object.entries(before).filter(([relationId]) => relationId !== id).map(([, relation]) => deploymentSignature(relation)),
+    Object.values(after).map(deploymentSignature),
+  )
 }
 
 async function compile(host: Wp06WorkspaceHost, sources: readonly SourceFile[]): Promise<{
@@ -322,7 +365,7 @@ export async function applyWp06Command(host: Wp06WorkspaceHost): Promise<Command
         || logicalEndpoint(updated.source) !== logicalEndpoint(selected.source)
         || logicalEndpoint(updated.target) !== logicalEndpoint(selected.target)
         || (updated.label ?? '') !== title
-        || !sameDynamicEdgesExcept(beforeEdges, afterEdges, selected.astPath)
+        || !dynamicRemainderMatchesAfterPatch(beforeEdges, afterEdges, selected.astPath)
       ) {
         return rejected(
           state,
@@ -366,8 +409,7 @@ export async function applyWp06Command(host: Wp06WorkspaceHost): Promise<Command
       const afterEdges = dynamicEdges(afterView)
       if (
         afterEdges.length !== beforeEdges.length - 1
-        || dynamicEdgeByAstPath(afterView, selected.astPath)
-        || !sameDynamicEdgesExcept(beforeEdges, afterEdges, selected.astPath)
+        || !dynamicRemainderMatchesAfterRemoval(beforeEdges, afterEdges, selected.astPath)
       ) {
         return rejected(
           state,
@@ -485,7 +527,7 @@ export async function applyWp06Command(host: Wp06WorkspaceHost): Promise<Command
         || deploymentEndpoint(updated.source) !== deploymentEndpoint(selected.source)
         || deploymentEndpoint(updated.target) !== deploymentEndpoint(selected.target)
         || (updated.title ?? '') !== title
-        || !sameDeploymentRelationsExcept(beforeRelations, afterRelations, command.input.id)
+        || !deploymentRemainderMatchesAfterPatch(beforeRelations, afterRelations, command.input.id)
       ) {
         return rejected(
           state,
@@ -520,8 +562,7 @@ export async function applyWp06Command(host: Wp06WorkspaceHost): Promise<Command
     const afterRelations = deploymentRelations(compiled.model)
     if (
       Object.keys(afterRelations).length !== Object.keys(beforeRelations).length - 1
-      || afterRelations[command.input.id]
-      || !sameDeploymentRelationsExcept(beforeRelations, afterRelations, command.input.id)
+      || !deploymentRemainderMatchesAfterRemoval(beforeRelations, afterRelations, command.input.id)
     ) {
       return rejected(
         state,
