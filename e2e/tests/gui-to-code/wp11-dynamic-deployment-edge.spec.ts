@@ -64,6 +64,7 @@ test('edits and removes dynamic and deployment edges with exact Undo/Redo', asyn
   await redo.click()
   await expect(source).toHaveValue(/user -> app 'Updated step'/)
 
+  await selectCanvasEdge(page)
   await page.getByRole('region', { name: 'Холст диаграммы' }).focus()
   await page.keyboard.press('Delete')
   await expect(source).not.toHaveValue(/user -> app/)
@@ -83,6 +84,7 @@ test('edits and removes dynamic and deployment edges with exact Undo/Redo', asyn
   await redo.click()
   await expect(source).toHaveValue(/prod -> edge 'Updated deployment'/)
 
+  await selectCanvasEdge(page)
   await page.getByRole('region', { name: 'Холст диаграммы' }).focus()
   await page.keyboard.press('Backspace')
   await expect(source).not.toHaveValue(/prod -> edge/)
