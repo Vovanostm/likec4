@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 const sourceFixture = `specification {
   element actor
@@ -28,7 +28,7 @@ views {
 }
 `
 
-async function loadFixture(page: Parameters<typeof test>[0]['page']) {
+async function loadFixture(page: Page) {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'LikeC4: визуальный редактор' })).toBeVisible()
   await page.getByRole('button', { name: 'Код', exact: true }).click()
@@ -40,7 +40,7 @@ async function loadFixture(page: Parameters<typeof test>[0]['page']) {
   return { source, view }
 }
 
-async function selectCanvasEdge(page: Parameters<typeof test>[0]['page']) {
+async function selectCanvasEdge(page: Page) {
   const edge = page.locator('.react-flow__edge').first()
   await expect(edge).toBeVisible()
   await edge.dispatchEvent('click')
