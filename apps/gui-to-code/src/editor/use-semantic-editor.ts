@@ -65,7 +65,7 @@ export interface SemanticEditorRuntime {
   readonly activateCreateTool: (kind: ElementKind) => void
   readonly activateRelationTool: () => void
   readonly completeRelation: (sourceId: string, targetId: string) => void
-  readonly selectElement: (id: Fqn, focusDiagram?: boolean) => void
+  readonly selectElement: (id: Fqn | null, focusDiagram?: boolean) => void
   readonly updateDraftSource: (content: string) => void
   readonly undo: () => Promise<void>
   readonly redo: () => Promise<void>
@@ -263,10 +263,10 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
     if (!completed && sourceId === targetId) runtime.setCommandError('Нельзя связать элемент с самим собой.')
   }
 
-  const selectElement = (id: Fqn, focusDiagram = true): void => {
-    setSelection({ type: 'element', id })
+  const selectElement = (id: Fqn | null, focusDiagram = true): void => {
+    setSelection(id ? { type: 'element', id } : null)
     setInspectorError(null)
-    if (focusDiagram) diagramApi.current?.focusOnElement(id)
+    if (id && focusDiagram) diagramApi.current?.focusOnElement(id)
   }
 
   const updateDraftSource = (content: string): void => {

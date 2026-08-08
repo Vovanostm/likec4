@@ -10,6 +10,7 @@ type RequiredOrNull<T> = {
 const defaultHandlers: Required<LikeC4DiagramEventHandlers> = {
   onNavigateTo: null,
   onNodeClick: null,
+  onNodeDblClick: null,
   onNodeContextMenu: null,
   onCanvasContextMenu: null,
   onEdgeClick: null,
@@ -17,6 +18,7 @@ const defaultHandlers: Required<LikeC4DiagramEventHandlers> = {
   onCanvasClick: null,
   onCanvasDblClick: null,
   onConnect: null,
+  onCanvasConnectionEnd: null,
   onLogoClick: null,
   onOpenSource: null,
   onInitialized: null,

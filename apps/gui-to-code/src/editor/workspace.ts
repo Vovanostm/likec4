@@ -7,6 +7,7 @@ import type {
   ViewManualLayoutSnapshot,
 } from '@likec4/core/types'
 import type {
+  CanvasPosition,
   CommandIssue,
   CommandResult,
   CompileResult,
@@ -26,7 +27,37 @@ import { applyWp06Command } from './wp06-workspace'
 
 const supportedKinds = new Set<ElementKind>(['actor', 'system', 'component'] as ElementKind[])
 type CompiledElements = NonNullable<CompileResult['model']>['$data']['elements']
+type CompiledRelations = NonNullable<CompileResult['model']>['$data']['relations']
 type ManualLayouts = Readonly<Record<ViewId, ViewManualLayoutSnapshot>>
+
+type MutableSnapshotNode = {
+  id: string
+  modelRef?: string
+  x: number
+  y: number
+  width: number
+  height: number
+  children: string[]
+  [key: string]: unknown
+}
+type MutableSnapshotEdge = {
+  id: string
+  source: string
+  target: string
+  points: unknown[]
+  [key: string]: unknown
+}
+type MutableSnapshot = {
+  _stage: 'layouted'
+  _type: 'element' | 'dynamic' | 'deployment'
+  id: ViewId
+  hash: string
+  nodes: MutableSnapshotNode[]
+  edges: MutableSnapshotEdge[]
+  bounds: { x: number; y: number; width: number; height: number }
+  autoLayout: object
+  [key: string]: unknown
+}
 
 let loadedDefaultPort: EditorDocumentPort | null = null
 async function defaultPort(): Promise<EditorDocumentPort> {
@@ -40,6 +71,11 @@ const defaultDocumentPort: EditorDocumentPort = {
   },
   async createRelation(sources, input) {
     return (await defaultPort()).createRelation(sources, input)
+  },
+  async createConnectedElement(sources, input) {
+    const method = (await defaultPort()).createConnectedElement
+    if (!method) throw new EditorDocumentError('invalid-operation', 'Connected element creation is unavailable')
+    return method(sources, input)
   },
   async createView(sources, input) {
     return (await defaultPort()).createView(sources, input)
@@ -64,6 +100,16 @@ const defaultDocumentPort: EditorDocumentPort = {
   },
   async patchElement(sources, input) {
     return (await defaultPort()).patchElement(sources, input)
+  },
+  async patchRelation(sources, input) {
+    const method = (await defaultPort()).patchRelation
+    if (!method) throw new EditorDocumentError('invalid-operation', 'Relation patch is unavailable')
+    return method(sources, input)
+  },
+  async removeRelation(sources, input) {
+    const method = (await defaultPort()).removeRelation
+    if (!method) throw new EditorDocumentError('invalid-operation', 'Relation removal is unavailable')
+    return method(sources, input)
   },
   async moveElement(sources, input) {
     return (await defaultPort()).moveElement(sources, input)
@@ -123,6 +169,23 @@ function allocateId(state: EditorWorkspaceState, kind: ElementKind): string {
   }
 }
 
+function allocateCanvasId(state: EditorWorkspaceState, kind: ElementKind, parent: Fqn | null): string {
+  const existing = new Set(Object.keys(state.lastValidModel?.$data.elements ?? {}))
+  const available = (candidate: string): boolean => {
+    const scoped = parent ? `${parent}.${candidate}` : candidate
+    return !existing.has(candidate) && !existing.has(scoped)
+  }
+  if (available(kind)) return kind
+  for (let suffix = 2;; suffix += 1) {
+    const candidate = `${kind}${suffix}`
+    if (available(candidate)) return candidate
+  }
+}
+
+function scopedElementId(id: string, parent: Fqn | null): Fqn {
+  return (parent ? `${parent}.${id}` : id) as Fqn
+}
+
 function allocateViewId(state: EditorWorkspaceState): ViewId {
   const existing = new Set(Object.keys(state.lastValidModel?.$data.views ?? {}))
   if (!existing.has('view')) return 'view' as ViewId
@@ -169,6 +232,8 @@ function sourceFailure(command: EditorCommand['type'], error: unknown): CommandI
     case 'not-found':
       return command === 'view.create'
         ? issue('view-scope-not-found', 'Область или целевой документ для вида больше не существует.')
+        : command === 'relation.patch' || command === 'relation.remove'
+        ? issue('relation-not-found', 'Выбранная связь больше не существует.')
         : issue('element-not-found', 'Выбранный элемент больше не существует.')
     case 'invalid-title':
       return issue('invalid-title', 'Название не может быть пустым.')
@@ -192,6 +257,12 @@ function sourceFailure(command: EditorCommand['type'], error: unknown): CommandI
           ? 'move-source-edit-failed'
           : command === 'element.rename'
           ? 'rename-source-edit-failed'
+          : command === 'relation.patch'
+          ? 'relation-patch-source-edit-failed'
+          : command === 'relation.remove'
+          ? 'relation-remove-source-edit-failed'
+          : command === 'element.createConnected'
+          ? 'create-connected-source-edit-failed'
           : command === 'view.create'
           ? 'view-source-edit-failed'
           : 'source-edit-failed', 'Исходный код изменился. Повторите действие.')
@@ -219,6 +290,12 @@ function sourceFailure(command: EditorCommand['type'], error: unknown): CommandI
           ? 'remove-source-edit-failed'
           : command === 'relation.create'
           ? 'relation-source-edit-failed'
+          : command === 'relation.patch'
+          ? 'relation-patch-source-edit-failed'
+          : command === 'relation.remove'
+          ? 'relation-remove-source-edit-failed'
+          : command === 'element.createConnected'
+          ? 'create-connected-source-edit-failed'
           : command === 'view.create'
           ? 'view-source-edit-failed'
           : 'source-edit-failed',
@@ -245,6 +322,10 @@ function snapshotShapeIsValid(snapshot: ViewManualLayoutSnapshot): boolean {
     && snapshot.bounds !== null
     && typeof snapshot.autoLayout === 'object'
     && snapshot.autoLayout !== null
+}
+
+function positionIsValid(position: CanvasPosition): boolean {
+  return Number.isFinite(position.x) && Number.isFinite(position.y)
 }
 
 export class EditorWorkspace {
@@ -411,26 +492,34 @@ export class EditorWorkspace {
     switch (operation.semantic.type) {
       case 'element.create':
         return this.applyCreateElement(state, operation.semantic)
+      case 'element.createAt':
+        return this.applyCreateElementAt(state, operation.semantic)
+      case 'element.createConnected':
+        return this.applyCreateConnectedElement(state, operation.semantic)
       case 'relation.create':
         return this.applyCreateRelation(state, operation.semantic)
+      case 'relation.patch':
+        return this.applyPatchRelation(state, operation.semantic)
+      case 'relation.remove':
+        return this.applyRemoveRelation(state, operation.semantic)
       case 'view.create':
         return this.applyCreateView(state, operation.semantic)
       case 'dynamicView.create':
-    case 'dynamicStep.create':
-    case 'deploymentView.create':
-    case 'deploymentElement.create':
-    case 'deploymentRelation.create':
-      return applyWp06Command({
-        state,
-        command: operation.semantic,
-        documents: this.documents,
-        compileCandidate: (revision, sources) => this.compileCandidate(revision, sources),
-        commitCandidate: (revision, sources, model, layouts) =>
-          this.commitCandidate(state, revision, sources, model, layouts),
-        isCurrent: () => this.isCurrent(state),
-        currentRevision: () => this.current.revision,
-      })
-    case 'element.patch':
+      case 'dynamicStep.create':
+      case 'deploymentView.create':
+      case 'deploymentElement.create':
+      case 'deploymentRelation.create':
+        return applyWp06Command({
+          state,
+          command: operation.semantic,
+          documents: this.documents,
+          compileCandidate: (revision, sources) => this.compileCandidate(revision, sources),
+          commitCandidate: (revision, sources, model, layouts) =>
+            this.commitCandidate(state, revision, sources, model, layouts),
+          isCurrent: () => this.isCurrent(state),
+          currentRevision: () => this.current.revision,
+        })
+      case 'element.patch':
         return this.applyPatchElement(state, operation.semantic)
       case 'element.move':
         return this.applyMoveElement(state, operation.semantic)
@@ -445,13 +534,8 @@ export class EditorWorkspace {
     state: EditorWorkspaceState,
     command: Extract<EditorCommand, { type: 'element.create' }>,
   ): Promise<CommandResult> {
-    if (!supportedKinds.has(command.input.kind) || !availableKinds(state).has(command.input.kind)) {
-      return {
-        status: 'rejected',
-        revision: state.revision,
-        issues: [issue('kind-unavailable', 'Этот тип элемента недоступен в текущей спецификации.')],
-      }
-    }
+    const invalidKind = this.validateCreateKind(state, command.input.kind)
+    if (invalidKind) return invalidKind
     const id = command.input.id ?? allocateId(state, command.input.kind)
     try {
       const candidateSources = await this.documents.createElement(state.committedSources, {
@@ -470,6 +554,151 @@ export class EditorWorkspace {
       if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
       this.commitCandidate(state, revision, candidateSources, compilation.model, state.manualLayouts)
       return { status: 'applied', command: 'element.create', revision, createdElementId }
+    } catch (error) {
+      return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
+    }
+  }
+
+  private async applyCreateElementAt(
+    state: EditorWorkspaceState,
+    command: Extract<EditorCommand, { type: 'element.createAt' }>,
+  ): Promise<CommandResult> {
+    const invalidKind = this.validateCreateKind(state, command.input.kind)
+    if (invalidKind) return invalidKind
+    if (!positionIsValid(command.input.position)) {
+      return this.rejected(state, 'invalid-position', 'Позиция создания на холсте некорректна.')
+    }
+    const view = state.lastValidModel?.$data.views[command.input.viewId]
+    if (!view) return this.rejected(state, 'layout-view-not-found', 'Выбранный вид больше не существует.')
+    if (view._type !== 'element') {
+      return this.rejected(state, 'layout-view-unsupported', 'Создание логического элемента доступно только в статическом виде.')
+    }
+    const parent = view.viewOf ?? null
+    const id = command.input.id ?? allocateCanvasId(state, command.input.kind, parent)
+    const createdElementId = scopedElementId(id, parent)
+    if (state.lastValidModel?.$data.elements[id as Fqn] || state.lastValidModel?.$data.elements[createdElementId]) {
+      return this.rejected(state, 'identifier-collision', 'Идентификатор уже занят.')
+    }
+    try {
+      const candidateSources = await this.documents.createElement(state.committedSources, {
+        id,
+        kind: command.input.kind,
+        ...(command.input.title ? { title: command.input.title } : {}),
+        ...(parent ? { parentId: parent } : {}),
+        ...(command.input.documentUri ? { documentUri: command.input.documentUri } : {}),
+      })
+      const revision = state.revision + 1
+      const compilation = await this.compileCandidate(revision, candidateSources)
+      if (!compilation.model) return this.compileRejected(state)
+      if (!compilation.model.$data.elements[createdElementId]) {
+        return this.rejected(state, 'created-element-not-found', 'Созданный элемент отсутствует в скомпилированной модели.')
+      }
+      const nextLayouts = this.positionedLayouts(
+        state,
+        compilation.model,
+        command.input.viewId,
+        createdElementId,
+        command.input.position,
+      )
+      if (!nextLayouts) {
+        return this.rejected(
+          state,
+          'layout-created-element-not-found',
+          'Созданный элемент не отображается в выбранном виде.',
+        )
+      }
+      if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
+      this.commitCandidate(state, revision, candidateSources, compilation.model, nextLayouts)
+      return {
+        status: 'applied',
+        command: 'element.createAt',
+        revision,
+        createdElementId,
+        viewId: command.input.viewId,
+      }
+    } catch (error) {
+      return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
+    }
+  }
+
+  private async applyCreateConnectedElement(
+    state: EditorWorkspaceState,
+    command: Extract<EditorCommand, { type: 'element.createConnected' }>,
+  ): Promise<CommandResult> {
+    const invalidKind = this.validateCreateKind(state, command.input.kind)
+    if (invalidKind) return invalidKind
+    if (!positionIsValid(command.input.position)) {
+      return this.rejected(state, 'invalid-position', 'Позиция создания на холсте некорректна.')
+    }
+    if (!state.lastValidModel?.$data.elements[command.input.sourceId]) {
+      return this.rejected(state, 'source-element-not-found', 'Исходный элемент больше не существует.')
+    }
+    const view = state.lastValidModel.$data.views[command.input.viewId]
+    if (!view) return this.rejected(state, 'layout-view-not-found', 'Выбранный вид больше не существует.')
+    if (view._type !== 'element') {
+      return this.rejected(state, 'layout-view-unsupported', 'Создание элемента со связью доступно только в статическом виде.')
+    }
+    if (!this.documents.createConnectedElement) {
+      return this.rejected(state, 'create-connected-source-edit-failed', 'Document layer не поддерживает атомарное создание элемента со связью.')
+    }
+    const parent = view.viewOf ?? null
+    const id = command.input.id ?? allocateCanvasId(state, command.input.kind, parent)
+    const createdElementId = scopedElementId(id, parent)
+    if (state.lastValidModel.$data.elements[id as Fqn] || state.lastValidModel.$data.elements[createdElementId]) {
+      return this.rejected(state, 'identifier-collision', 'Идентификатор уже занят.')
+    }
+    try {
+      const candidateSources = await this.documents.createConnectedElement(state.committedSources, {
+        sourceId: command.input.sourceId,
+        kind: command.input.kind,
+        id,
+        ...(command.input.title ? { title: command.input.title } : {}),
+        ...(parent ? { parentId: parent } : {}),
+        ...(command.input.documentUri ? { documentUri: command.input.documentUri } : {}),
+      })
+      const revision = state.revision + 1
+      const compilation = await this.compileCandidate(revision, candidateSources)
+      if (!compilation.model) return this.compileRejected(state)
+
+      const addedElements = Object.keys(compilation.model.$data.elements)
+        .filter(elementId => !state.lastValidModel?.$data.elements[elementId])
+      const previousRelationIds = new Set(Object.keys(state.lastValidModel?.$data.relations ?? {}))
+      const addedRelations = Object.entries(compilation.model.$data.relations ?? {})
+        .filter(([relationId]) => !previousRelationIds.has(relationId))
+      if (addedElements.length !== 1 || addedElements[0] !== createdElementId || addedRelations.length !== 1) {
+        return this.rejected(state, 'create-connected-verification-failed', 'Не удалось подтвердить точный semantic delta создания.')
+      }
+      const [createdRelationId, relation] = addedRelations[0]!
+      if (
+        localEndpoint(relation.source) !== command.input.sourceId
+        || localEndpoint(relation.target) !== createdElementId
+      ) {
+        return this.rejected(state, 'create-connected-verification-failed', 'Созданная связь не совпадает с выбранным направлением.')
+      }
+      const nextLayouts = this.positionedLayouts(
+        state,
+        compilation.model,
+        command.input.viewId,
+        createdElementId,
+        command.input.position,
+      )
+      if (!nextLayouts) {
+        return this.rejected(
+          state,
+          'layout-created-element-not-found',
+          'Созданный элемент не отображается в выбранном виде.',
+        )
+      }
+      if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
+      this.commitCandidate(state, revision, candidateSources, compilation.model, nextLayouts)
+      return {
+        status: 'applied',
+        command: 'element.createConnected',
+        revision,
+        createdElementId,
+        createdRelationId: createdRelationId as RelationId,
+        viewId: command.input.viewId,
+      }
     } catch (error) {
       return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
     }
@@ -512,6 +741,95 @@ export class EditorWorkspace {
         command: 'relation.create',
         revision,
         createdRelationId: createdRelationId as RelationId,
+      }
+    } catch (error) {
+      return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
+    }
+  }
+
+  private async applyPatchRelation(
+    state: EditorWorkspaceState,
+    command: Extract<EditorCommand, { type: 'relation.patch' }>,
+  ): Promise<CommandResult> {
+    const located = this.relationLocator(state.lastValidModel?.$data.relations ?? {}, command.input.id)
+    if (!located) return this.rejected(state, 'relation-not-found', 'Выбранная связь больше не существует.')
+    const title = command.input.patch.title?.trim()
+    if (!title) return this.rejected(state, 'invalid-title', 'Название связи не может быть пустым.')
+    if (!this.documents.patchRelation) {
+      return this.rejected(state, 'relation-patch-source-edit-failed', 'Document layer не поддерживает изменение связи.')
+    }
+    try {
+      const candidateSources = await this.documents.patchRelation(state.committedSources, {
+        id: command.input.id,
+        sourceId: located.sourceId,
+        targetId: located.targetId,
+        occurrence: located.occurrence,
+        patch: { title },
+        ...(command.input.documentUri ? { documentUri: command.input.documentUri } : {}),
+      })
+      const revision = state.revision + 1
+      const compilation = await this.compileCandidate(revision, candidateSources)
+      if (!compilation.model) return this.compileRejected(state)
+      if (Object.keys(compilation.model.$data.relations).length !== Object.keys(state.lastValidModel?.$data.relations ?? {}).length) {
+        return this.rejected(state, 'relation-patch-verification-failed', 'Изменение связи создало неожиданный semantic delta.')
+      }
+      const updated = this.relationAtOccurrence(
+        compilation.model.$data.relations,
+        located.sourceId,
+        located.targetId,
+        located.occurrence,
+      )
+      if (!updated || (updated.relation.title ?? '') !== title) {
+        return this.rejected(state, 'relation-patch-verification-failed', 'Не удалось подтвердить новое название связи.')
+      }
+      if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
+      this.commitCandidate(state, revision, candidateSources, compilation.model, state.manualLayouts)
+      return {
+        status: 'applied',
+        command: 'relation.patch',
+        revision,
+        updatedRelationId: updated.id,
+      }
+    } catch (error) {
+      return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
+    }
+  }
+
+  private async applyRemoveRelation(
+    state: EditorWorkspaceState,
+    command: Extract<EditorCommand, { type: 'relation.remove' }>,
+  ): Promise<CommandResult> {
+    const beforeRelations = state.lastValidModel?.$data.relations ?? {}
+    const located = this.relationLocator(beforeRelations, command.input.id)
+    if (!located) return this.rejected(state, 'relation-not-found', 'Выбранная связь больше не существует.')
+    if (!this.documents.removeRelation) {
+      return this.rejected(state, 'relation-remove-source-edit-failed', 'Document layer не поддерживает удаление связи.')
+    }
+    const beforeEndpointCount = this.relationsWithEndpoints(beforeRelations, located.sourceId, located.targetId).length
+    try {
+      const candidateSources = await this.documents.removeRelation(state.committedSources, {
+        id: command.input.id,
+        sourceId: located.sourceId,
+        targetId: located.targetId,
+        occurrence: located.occurrence,
+        ...(command.input.documentUri ? { documentUri: command.input.documentUri } : {}),
+      })
+      const revision = state.revision + 1
+      const compilation = await this.compileCandidate(revision, candidateSources)
+      if (!compilation.model) return this.compileRejected(state)
+      const afterRelations = compilation.model.$data.relations
+      const exactCount = Object.keys(afterRelations).length === Object.keys(beforeRelations).length - 1
+      const endpointCount = this.relationsWithEndpoints(afterRelations, located.sourceId, located.targetId).length
+      if (!exactCount || endpointCount !== beforeEndpointCount - 1) {
+        return this.rejected(state, 'relation-remove-verification-failed', 'Не удалось подтвердить удаление ровно одной выбранной связи.')
+      }
+      if (!this.isCurrent(state)) return { status: 'conflict', revision: this.current.revision }
+      this.commitCandidate(state, revision, candidateSources, compilation.model, state.manualLayouts)
+      return {
+        status: 'applied',
+        command: 'relation.remove',
+        revision,
+        removedRelationId: command.input.id,
       }
     } catch (error) {
       return { status: 'rejected', revision: state.revision, issues: [sourceFailure(command.type, error)] }
@@ -832,6 +1150,83 @@ export class EditorWorkspace {
     }
   }
 
+  private validateCreateKind(state: EditorWorkspaceState, kind: ElementKind): CommandResult | null {
+    if (supportedKinds.has(kind) && availableKinds(state).has(kind)) return null
+    return {
+      status: 'rejected',
+      revision: state.revision,
+      issues: [issue('kind-unavailable', 'Этот тип элемента недоступен в текущей спецификации.')],
+    }
+  }
+
+  private relationLocator(relations: CompiledRelations, id: RelationId) {
+    const entries = Object.entries(relations)
+    const index = entries.findIndex(([relationId]) => relationId === id)
+    if (index < 0) return null
+    const relation = entries[index]![1]
+    const sourceId = localEndpoint(relation.source) as Fqn
+    const targetId = localEndpoint(relation.target) as Fqn
+    const occurrence = entries.slice(0, index).filter(([, previous]) =>
+      localEndpoint(previous.source) === sourceId && localEndpoint(previous.target) === targetId).length
+    return { relation, sourceId, targetId, occurrence }
+  }
+
+  private relationsWithEndpoints(relations: CompiledRelations, sourceId: Fqn, targetId: Fqn) {
+    return Object.entries(relations).filter(([, relation]) =>
+      localEndpoint(relation.source) === sourceId && localEndpoint(relation.target) === targetId)
+  }
+
+  private relationAtOccurrence(
+    relations: CompiledRelations,
+    sourceId: Fqn,
+    targetId: Fqn,
+    occurrence: number,
+  ): { id: RelationId; relation: CompiledRelations[RelationId] } | null {
+    const match = this.relationsWithEndpoints(relations, sourceId, targetId)[occurrence]
+    return match ? { id: match[0] as RelationId, relation: match[1] } : null
+  }
+
+  private positionedLayouts(
+    state: EditorWorkspaceState,
+    autoModel: NonNullable<CompileResult['model']>,
+    viewId: ViewId,
+    elementId: Fqn,
+    position: CanvasPosition,
+  ): Record<ViewId, ViewManualLayoutSnapshot> | null {
+    const autoView = autoModel.$data.views[viewId]
+    if (!autoView || autoView._type !== 'element') return null
+    const snapshot = structuredClone(autoView) as unknown as MutableSnapshot
+    const previous = state.manualLayouts[viewId] as unknown as MutableSnapshot | undefined
+    const previousNodes = new Map(previous?.nodes.map(node => [node.id, node]) ?? [])
+    const previousEdges = new Map(previous?.edges.map(edge => [edge.id, edge]) ?? [])
+
+    snapshot.nodes = snapshot.nodes.map(node => {
+      const persisted = previousNodes.get(node.id)
+      if (!persisted) return node
+      return {
+        ...node,
+        x: persisted.x,
+        y: persisted.y,
+        width: persisted.width,
+        height: persisted.height,
+        children: [...node.children],
+      }
+    })
+    snapshot.edges = snapshot.edges.map(edge => previousEdges.get(edge.id)
+      ? structuredClone(previousEdges.get(edge.id)!)
+      : edge)
+
+    const created = snapshot.nodes.find(node => node.id === elementId || node.modelRef === elementId)
+    if (!created) return null
+    created.x = position.x
+    created.y = position.y
+    snapshot.bounds = boundsFromNodes(snapshot.nodes)
+
+    const nextLayouts = cloneLayouts(state.manualLayouts)
+    nextLayouts[viewId] = snapshot as unknown as ViewManualLayoutSnapshot
+    return nextLayouts
+  }
+
   private patchMatches(
     element: NonNullable<CompileResult['model']>['$data']['elements'][Fqn],
     patch: Extract<EditorCommand, { type: 'element.patch' }>['input']['patch'],
@@ -930,4 +1325,13 @@ export class EditorWorkspace {
       },
     }
   }
+}
+
+function boundsFromNodes(nodes: readonly MutableSnapshotNode[]) {
+  if (nodes.length === 0) return { x: 0, y: 0, width: 0, height: 0 }
+  const x = Math.min(...nodes.map(node => node.x))
+  const y = Math.min(...nodes.map(node => node.y))
+  const right = Math.max(...nodes.map(node => node.x + node.width))
+  const bottom = Math.max(...nodes.map(node => node.y + node.height))
+  return { x, y, width: right - x, height: bottom - y }
 }

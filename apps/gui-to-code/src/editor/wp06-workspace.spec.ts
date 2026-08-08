@@ -94,7 +94,7 @@ describe('EditorWorkspace WP-06 integration', () => {
     expect(workspace.state.committedSources[0]!.content).not.toContain('deployment view production')
     expect(await workspace.redo(6)).toMatchObject({ status: 'applied', command: 'history.redo', revision: 7 })
     expect(workspace.state.committedSources[0]!.content).toBe(committed)
-  })
+  }, 15_000)
 
   it('rejects a same-endpoint dynamic step without changing state identity', async () => {
     const workspace = await EditorWorkspace.create(

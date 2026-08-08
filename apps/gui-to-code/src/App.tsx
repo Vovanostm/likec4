@@ -1,6 +1,7 @@
 import type { ElementKind, Fqn } from '@likec4/core/types'
 import { LikeC4EditorProvider, LikeC4ModelProvider, ReactLikeC4 } from '@likec4/diagram'
-import { useEffect, useRef } from 'react'
+import type { CSSProperties } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { starterSource } from './document'
 import {
   canCompleteConnectionGesture,
@@ -8,8 +9,12 @@ import {
 } from './editor/connection-gesture'
 import type { ConnectionGestureSnapshot } from './editor/connection-gesture'
 import { downloadSource } from './editor/file-downloads'
+import { useCanvasEntityEditor } from './editor/use-canvas-entity-editor'
 import { useDurableWorkspace } from './editor/use-durable-workspace'
+import { CanvasCreateMenu } from './editor/ui/CanvasCreateMenu'
 import { ElementInspector } from './editor/ui/ElementInspector'
+import { InlineTitleEditor } from './editor/ui/InlineTitleEditor'
+import { RelationInspector } from './editor/ui/RelationInspector'
 import { RemoveElementConfirmation } from './editor/ui/RemoveElementConfirmation'
 import { StructureTree } from './editor/ui/StructureTree'
 import { ViewToolbar } from './editor/ui/ViewToolbar'
@@ -27,6 +32,11 @@ const createKinds = [
   ['component' as ElementKind, 'Компонент'],
 ] as const
 
+interface Point {
+  readonly x: number
+  readonly y: number
+}
+
 export function App() {
   const runtime = useWorkspaceRuntime()
   const durable = useDurableWorkspace(runtime)
@@ -34,6 +44,16 @@ export function App() {
   const wp06 = useWp06Runtime(runtime)
   const state = runtime.state
   const connectionGesture = useRef<ConnectionGestureSnapshot | null>(null)
+  const diagramPanel = useRef<HTMLElement | null>(null)
+  const screenToFlowPosition = useRef<((position: Point) => Point) | null>(null)
+  const [structureOpen, setStructureOpen] = useState(true)
+  const [inspectorOpen, setInspectorOpen] = useState(true)
+  const [codeOpen, setCodeOpen] = useState(false)
+  const canvas = useCanvasEntityEditor(
+    runtime,
+    id => semantic.selectElement(id, false),
+    id => semantic.selectElement(id, false),
+  )
   const canvasAuthoringEnabled = !!state
     && state.compilation.status === 'valid'
     && !runtime.busy
@@ -84,17 +104,96 @@ export function App() {
     ? completeDirectConnection
     : null
 
+  const overlayPoint = (screen: Point): Point => {
+    const bounds = diagramPanel.current?.getBoundingClientRect()
+    if (!bounds) return screen
+    const desiredX = screen.x - bounds.left
+    const desiredY = screen.y - bounds.top
+    return {
+      x: Math.min(Math.max(12, desiredX), Math.max(12, bounds.width - 320)),
+      y: Math.min(Math.max(64, desiredY), Math.max(64, bounds.height - 220)),
+    }
+  }
+
+  const flowPoint = (screen: Point): Point | null => {
+    const convert = screenToFlowPosition.current
+    if (!convert) {
+      runtime.setCommandError('Холст ещё не готов к созданию элемента.')
+      return null
+    }
+    return convert(screen)
+  }
+
+  const workspaceColumns = [
+    structureOpen ? 'minmax(13rem, 16rem)' : null,
+    'minmax(24rem, 1fr)',
+    inspectorOpen ? 'minmax(18rem, 22rem)' : null,
+    codeOpen ? 'minmax(24rem, 28rem)' : null,
+  ].filter(Boolean).join(' ')
+
   return (
     <main
       className="editor-shell"
       onKeyDown={event => {
+        if (event.key === 'Escape' && canvas.inlineTitle) {
+          event.preventDefault()
+          canvas.cancelInlineTitle()
+          diagramPanel.current?.focus()
+          return
+        }
+        if (event.key === 'Escape' && canvas.pendingCreation) {
+          event.preventDefault()
+          canvas.cancelCreation()
+          diagramPanel.current?.focus()
+          return
+        }
+        if (event.key === 'Escape' && canvas.selection && canvas.selection.family !== 'logical-element') {
+          event.preventDefault()
+          canvas.clearSelection()
+          diagramPanel.current?.focus()
+          return
+        }
+        if ((event.key === 'Delete' || event.key === 'Backspace')
+          && canvas.selection?.family === 'logical-relation'
+          && !isEditableTarget(event.target)) {
+          event.preventDefault()
+          void canvas.removeSelectedRelation()
+          return
+        }
+        if (
+          event.key === 'F2'
+          && semantic.selection
+          && (!canvas.selection || canvas.selection.family === 'logical-element')
+          && !isEditableTarget(event.target)
+        ) {
+          event.preventDefault()
+          canvas.startInlineTitle(semantic.selection.id)
+          return
+        }
+        if (event.key === 'Enter'
+          && canvas.selection
+          && canvas.selection.family !== 'logical-element'
+          && !isEditableTarget(event.target)) {
+          event.preventDefault()
+          setInspectorOpen(true)
+          queueMicrotask(() => document.querySelector<HTMLElement>('.relation-inspector')?.focus())
+          return
+        }
+        if (event.shiftKey && event.key === 'F10' && !isEditableTarget(event.target)) {
+          event.preventDefault()
+          setInspectorOpen(true)
+          if (runtime.selectedView?._type === 'dynamic') wp06.activateDynamicStep()
+          else if (runtime.selectedView?._type === 'deployment') wp06.activateDeploymentRelation()
+          else semantic.activateRelationTool()
+          return
+        }
         if (event.key === 'Escape' && wp06.connectionMode) wp06.cancelConnection()
         semantic.handleEditorKeyDown(event)
       }}>
       <header className="topbar">
         <div>
           <h1>LikeC4: визуальный редактор</h1>
-          <p>Выбирайте элементы, виды и раскладку; исходный код обновляется безопасно.</p>
+          <p>Создавайте, связывайте и редактируйте сущности непосредственно на холсте.</p>
         </div>
         <ViewToolbar
           views={runtime.views}
@@ -112,6 +211,11 @@ export function App() {
           onImportLayout={event => void runtime.importLayout(event)}
           onExportLayout={runtime.exportLayout}
           onResetLayout={() => void runtime.resetLayout()} />
+        <div className="actions" aria-label="Панели редактора">
+          <button type="button" aria-expanded={structureOpen} onClick={() => setStructureOpen(open => !open)}>Структура</button>
+          <button type="button" aria-expanded={inspectorOpen} onClick={() => setInspectorOpen(open => !open)}>Инспектор</button>
+          <button type="button" aria-expanded={codeOpen} onClick={() => setCodeOpen(open => !open)}>Код</button>
+        </div>
         <div className="actions" aria-label="Действия с рабочим пространством">
           <label className="button">Открыть .c4<input aria-label="Открыть файл .c4" type="file" accept=".c4,text/plain" onChange={event => void durable.importSource(event)} /></label>
           <label className="button">Импортировать ZIP<input aria-label="Импортировать архив рабочего пространства" type="file" accept=".zip,application/zip" onChange={event => void durable.importBundle(event)} /></label>
@@ -130,13 +234,23 @@ export function App() {
         </p>
       </header>
 
-      <section className="workspace" aria-label="Рабочая область редактора LikeC4">
-        <section className="panel structure-panel" aria-label="Структура модели">
-          <h2>Структура</h2>
-          <StructureTree nodes={semantic.structure} selectedId={semantic.selection?.id ?? null} disabled={semantic.canvasDisabled} onSelect={id => semantic.selectElement(id)} />
-        </section>
+      <section
+        className="workspace canvas-dominant-workspace"
+        aria-label="Рабочая область редактора LikeC4"
+        style={{ '--workspace-columns': workspaceColumns } as CSSProperties}>
+        {structureOpen && (
+          <section className="panel structure-panel" aria-label="Структура модели">
+            <h2>Структура</h2>
+            <StructureTree
+              nodes={semantic.structure}
+              selectedId={semantic.selection?.id ?? null}
+              disabled={semantic.canvasDisabled}
+              onSelect={id => canvas.selectElement(id)} />
+          </section>
+        )}
 
         <section
+          ref={diagramPanel}
           className="panel diagram-panel"
           aria-label="Холст диаграммы"
           tabIndex={0}
@@ -165,21 +279,100 @@ export function App() {
                     nodesSelectable
                     enableCompareWithLatest
                     onLayoutTypeChange={runtime.setLayoutMode}
-                    onInitialized={({ diagram }) => {
+                    onInitialized={({ diagram, xyflow }) => {
                       diagram.toggleFeature('ReadOnly', !canvasAuthoringEnabled)
                       semantic.diagramApi.current = diagram
+                      screenToFlowPosition.current = position => xyflow.screenToFlowPosition(position)
                     }}
-                    onNodeClick={node => { if (node.modelRef) semantic.selectElement(node.modelRef as Fqn, false) }}
+                    onNodeClick={node => {
+                      if (node.modelRef) canvas.selectElement(node.modelRef as Fqn)
+                    }}
+                    onNodeDblClick={(node, event) => {
+                      if (node.modelRef) {
+                        canvas.startInlineTitle(node.modelRef as Fqn, overlayPoint({ x: event.clientX, y: event.clientY }))
+                      }
+                    }}
+                    onEdgeClick={edge => {
+                      canvas.selectEdge(edge)
+                      setInspectorOpen(true)
+                    }}
                     onConnect={connectionHandler}
+                    onCanvasConnectionEnd={canvasAuthoringEnabled
+                      ? connection => {
+                        if (connection.outcome !== 'empty' || !connection.sourceId) {
+                          if (connection.outcome === 'cancelled') connectionGesture.current = null
+                          return
+                        }
+                        const started = connectionGesture.current
+                        connectionGesture.current = null
+                        if (!connectionContext || !canCompleteConnectionGesture(started, connectionContext)) {
+                          runtime.setCommandError('Рабочее пространство или текущий вид изменились. Повторите действие.')
+                          return
+                        }
+                        const position = flowPoint(connection.screenPosition)
+                        if (position) {
+                          canvas.requestCreation(
+                            position,
+                            overlayPoint(connection.screenPosition),
+                            connection.sourceId as Fqn,
+                          )
+                        }
+                      }
+                      : null}
                     onCanvasClick={event => {
-                      if (!semantic.activeKind) return
-                      semantic.controller.current?.requestElementCreation({ x: event.clientX, y: event.clientY })
+                      const screen = { x: event.clientX, y: event.clientY }
+                      const position = flowPoint(screen)
+                      if (!position) return
+                      if (semantic.activeKind) {
+                        const kind = semantic.activeKind
+                        void canvas.createElementAt(kind, position, overlayPoint(screen)).then(created => {
+                          if (created) {
+                            semantic.controller.current?.cancel('tool-change')
+                            runtime.setFeedback('Элемент создан в выбранной позиции.')
+                          }
+                        })
+                        return
+                      }
+                      canvas.clearSelection()
+                    }}
+                    onCanvasDblClick={event => {
+                      if (semantic.activeKind || runtime.selectedView?._type !== 'element') return
+                      const screen = { x: event.clientX, y: event.clientY }
+                      const position = flowPoint(screen)
+                      if (position) canvas.requestCreation(position, overlayPoint(screen))
                     }} />
                 </LikeC4ModelProvider>
               </LikeC4EditorProvider>
             : <p className="empty">В проекте нет подходящего вида для отображения.</p>}
 
-          {canvasAuthoringEnabled && runtime.selectedView && <p aria-live="polite">Потяните точку подключения одного элемента к другому, чтобы создать связь.</p>}
+          {canvas.pendingCreation && (
+            <CanvasCreateMenu
+              screenPosition={canvas.pendingCreation.screenPosition}
+              connected={!!canvas.pendingCreation.sourceId}
+              availableKinds={semantic.availableKinds}
+              busy={runtime.busy}
+              onCreate={kind => void canvas.createPendingElement(kind)}
+              onCancel={() => {
+                canvas.cancelCreation()
+                diagramPanel.current?.focus()
+              }} />
+          )}
+
+          {canvas.inlineTitle && (
+            <InlineTitleEditor
+              id={canvas.inlineTitle.id}
+              value={canvas.inlineTitle.value}
+              screenPosition={canvas.inlineTitle.screenPosition}
+              busy={runtime.busy}
+              onChange={canvas.updateInlineTitle}
+              onSave={() => void canvas.saveInlineTitle().then(saved => {
+                if (saved) diagramPanel.current?.focus()
+              })}
+              onCancel={canvas.cancelInlineTitle}
+              onReturnFocus={() => diagramPanel.current?.focus()} />
+          )}
+
+          {canvasAuthoringEnabled && runtime.selectedView && <p aria-live="polite">Потяните точку подключения к существующему элементу или на пустое место.</p>}
           {semantic.activeKind && <p aria-live="polite">Щёлкните по холсту или нажмите Enter, чтобы создать элемент.</p>}
           {wp06.connectionMode === 'dynamic-step' && <p aria-live="polite">Соедините два логических элемента, чтобы создать направленный шаг.</p>}
           {wp06.connectionMode === 'deployment-relation' && <p aria-live="polite">Соедините две сущности развёртывания, чтобы создать связь.</p>}
@@ -197,20 +390,38 @@ export function App() {
           {runtime.commandError && <p className="error" role="alert">{runtime.commandError}</p>}
         </section>
 
-        <section className="panel inspector-panel" aria-label="Инспектор">
-          <Wp06Controls wp06={wp06} busy={runtime.busy} />
-          <ElementInspector element={semantic.selectedElement} availableTags={semantic.availableTags} parents={semantic.parents} disabled={state.compilation.status !== 'valid'} busy={runtime.busy} error={semantic.inspectorError} onPatch={semantic.patchElement} onRename={semantic.renameElement} onMove={semantic.moveElement} onRemove={semantic.inspectRemoval} />
-        </section>
+        {inspectorOpen && (
+          <section className="panel inspector-panel" aria-label="Инспектор">
+            <RelationInspector
+              selection={canvas.selection}
+              relation={canvas.selectedLogicalRelation}
+              alternatives={canvas.relationAlternatives}
+              busy={runtime.busy}
+              onSelectAlternative={canvas.selectRelationAlternative}
+              onPatch={canvas.patchSelectedRelation}
+              onRemove={canvas.removeSelectedRelation} />
+            <Wp06Controls wp06={wp06} busy={runtime.busy} />
+            {(!canvas.selection || canvas.selection.family === 'logical-element' || canvas.selection.family === 'deployment-element') && (
+              <ElementInspector element={semantic.selectedElement} availableTags={semantic.availableTags} parents={semantic.parents} disabled={state.compilation.status !== 'valid'} busy={runtime.busy} error={semantic.inspectorError} onPatch={semantic.patchElement} onRename={semantic.renameElement} onMove={semantic.moveElement} onRemove={semantic.inspectRemoval} />
+            )}
+          </section>
+        )}
 
-        <section className="panel code-panel" aria-label="Код LikeC4">
-          <h2>Код LikeC4</h2>
-          <textarea aria-label="Исходный код LikeC4" value={runtime.source} onChange={event => semantic.updateDraftSource(event.target.value)} spellCheck={false} />
-          {state.compilation.diagnostics.length > 0 && <section className="diagnostics" aria-live="polite"><h2>Ошибки</h2><ul>{state.compilation.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.line ?? 0}-${index}`}>{diagnostic.line ? `Строка ${diagnostic.line}: ` : ''}{diagnostic.message}</li>)}</ul></section>}
-          <p>Ревизия проекта: {state.revision}</p>
-        </section>
+        {codeOpen && (
+          <section className="panel code-panel" aria-label="Код LikeC4">
+            <h2>Код LikeC4</h2>
+            <textarea aria-label="Исходный код LikeC4" value={runtime.source} onChange={event => semantic.updateDraftSource(event.target.value)} spellCheck={false} />
+            {state.compilation.diagnostics.length > 0 && <section className="diagnostics" aria-live="polite"><h2>Ошибки</h2><ul>{state.compilation.diagnostics.map((diagnostic, index) => <li key={`${diagnostic.line ?? 0}-${index}`}>{diagnostic.line ? `Строка ${diagnostic.line}: ` : ''}{diagnostic.message}</li>)}</ul></section>}
+            <p>Ревизия проекта: {state.revision}</p>
+          </section>
+        )}
       </section>
 
       {semantic.removalReport && <RemoveElementConfirmation report={semantic.removalReport} busy={runtime.busy} onCancel={semantic.closeRemoval} onConfirm={semantic.confirmRemoval} />}
     </main>
   )
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && !!target.closest('input, textarea, select, [contenteditable="true"]')
 }

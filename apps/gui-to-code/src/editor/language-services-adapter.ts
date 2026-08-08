@@ -1,3 +1,4 @@
+import type { Fqn } from '@likec4/core/types'
 import {
   applyDocumentTextEdits,
   createDocumentEditService,
@@ -8,11 +9,13 @@ import {
 } from '@likec4/language-services/browser'
 import type { DocumentEditErrorCode, RemovalDependencyReport as LanguageRemovalReport } from '@likec4/language-services/browser'
 import type {
+  CreateElementEditInput,
   EditorDocumentPort,
   RemovalDependencyReport,
   SourceFile,
 } from './contracts'
 import { EditorDocumentError } from './contracts'
+import { patchLogicalRelationTitle, removeLogicalRelation } from './relation-source-edits'
 
 interface ApplicableEditPlan {
   readonly baseRevisions: Readonly<Record<string, string>>
@@ -56,6 +59,7 @@ function removalReport(report: LanguageRemovalReport): RemovalDependencyReport {
 }
 
 function documentError(error: unknown): never {
+  if (error instanceof EditorDocumentError) throw error
   if (error instanceof DocumentEditError) {
     throw new EditorDocumentError(
       error.code as DocumentEditErrorCode,
@@ -75,16 +79,38 @@ async function serviceFor(sources: readonly SourceFile[]) {
   }
 }
 
+async function createRootElementCandidate(
+  sources: readonly SourceFile[],
+  input: CreateElementEditInput,
+): Promise<readonly SourceFile[]> {
+  const { documents } = await serviceFor(sources)
+  return applyPlan(sources, await documents.planAddElement({
+    id: input.id,
+    kind: input.kind,
+    ...(input.title ? { title: input.title } : {}),
+    ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+  }))
+}
+
+async function createElementCandidate(
+  sources: readonly SourceFile[],
+  input: CreateElementEditInput,
+): Promise<readonly SourceFile[]> {
+  let candidate = await createRootElementCandidate(sources, input)
+  if (input.parentId) {
+    const { documents: candidateDocuments } = await serviceFor(candidate)
+    candidate = applyPlan(candidate, await candidateDocuments.planMoveElement({
+      target: input.id as Fqn,
+      parent: input.parentId,
+    }))
+  }
+  return candidate
+}
+
 export const languageServicesDocumentPort: EditorDocumentPort = {
   async createElement(sources, input) {
     try {
-      const { documents } = await serviceFor(sources)
-      return applyPlan(sources, await documents.planAddElement({
-        id: input.id,
-        kind: input.kind,
-        ...(input.title ? { title: input.title } : {}),
-        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
-      }))
+      return await createElementCandidate(sources, input)
     } catch (error) {
       return documentError(error)
     }
@@ -98,6 +124,28 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
         target: input.targetId,
         ...(input.documentUri ? { documentUri: input.documentUri } : {}),
       }))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async createConnectedElement(sources, input) {
+    try {
+      let candidate = await createRootElementCandidate(sources, input)
+      const { documents: relationDocuments } = await serviceFor(candidate)
+      candidate = applyPlan(candidate, await relationDocuments.planAddRelation({
+        source: input.sourceId,
+        target: input.id as Fqn,
+        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+      }))
+      if (input.parentId) {
+        const { documents: moveDocuments } = await serviceFor(candidate)
+        candidate = applyPlan(candidate, await moveDocuments.planMoveElement({
+          target: input.id as Fqn,
+          parent: input.parentId,
+        }))
+      }
+      return candidate
     } catch (error) {
       return documentError(error)
     }
@@ -184,6 +232,25 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
     try {
       const { documents } = await serviceFor(sources)
       return applyPlan(sources, await documents.planPatchElement({ target: input.id, patch: input.patch }))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async patchRelation(sources, input) {
+    try {
+      if (input.patch.title === undefined) {
+        throw new EditorDocumentError('invalid-operation', 'Relation patch is empty')
+      }
+      return patchLogicalRelationTitle(sources, input, input.patch.title)
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async removeRelation(sources, input) {
+    try {
+      return removeLogicalRelation(sources, input)
     } catch (error) {
       return documentError(error)
     }

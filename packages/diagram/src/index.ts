@@ -56,6 +56,14 @@ export {
 } from './editor/CanvasIntent'
 
 export {
+  pointerScreenPosition,
+  resolveCanvasConnectionOutcome,
+  type CanvasConnectionEnd,
+  type CanvasConnectionOutcome,
+  type OnCanvasConnectionEnd,
+} from './editor/CanvasConnection'
+
+export {
   LikeC4ProjectsProvider,
   type LikeC4ProjectsProviderProps,
 } from './LikeC4ProjectsProvider'

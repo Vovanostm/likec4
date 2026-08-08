@@ -55,10 +55,15 @@ export function selectionAfterResult(
     case 'element.move':
     case 'element.patch':
       return { type: 'element', id: result.updatedElementId }
+    case 'element.createAt':
+    case 'element.createConnected':
+      return { type: 'element', id: result.createdElementId }
     case 'element.remove':
       return null
     case 'element.create':
     case 'relation.create':
+    case 'relation.patch':
+    case 'relation.remove':
     case 'view.create':
     case 'dynamicView.create':
     case 'dynamicStep.create':

@@ -17,6 +17,7 @@ import type {
 import type { ReactFlowProps } from '@xyflow/react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { CamelCasedProperties, SetRequired } from 'type-fest'
+import type { OnCanvasConnectionEnd } from './editor/CanvasConnection'
 import type { DiagramApi } from './hooks/useDiagram'
 import type { XYFlowInstance } from './hooks/useXYFlow'
 import type { Types } from './likec4diagram/types'
@@ -353,6 +354,7 @@ export type OnLayoutTypeChange = (layoutType: LayoutType) => void
 export interface LikeC4DiagramEventHandlers<A extends Any = Unknown> {
   onNavigateTo?: OnNavigateTo<A> | null | undefined
   onNodeClick?: OnNodeClick<A> | null | undefined
+  onNodeDblClick?: OnNodeClick<A> | null | undefined
   onNodeContextMenu?: OnNodeClick<A> | null | undefined
   onCanvasContextMenu?: OnCanvasContextMenu | null | undefined
   onEdgeClick?: OnEdgeClick<A> | null | undefined
@@ -360,6 +362,7 @@ export interface LikeC4DiagramEventHandlers<A extends Any = Unknown> {
   onCanvasClick?: OnCanvasClick | null | undefined
   onCanvasDblClick?: OnCanvasClick | null | undefined
   onConnect?: OnConnect<A> | null | undefined
+  onCanvasConnectionEnd?: OnCanvasConnectionEnd<A> | null | undefined
 
   // if set, will render a logo icon in the top left corner
   onLogoClick?: null | undefined | (() => void)

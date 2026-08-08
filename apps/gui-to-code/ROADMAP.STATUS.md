@@ -1,9 +1,9 @@
 # Состояние исполнения roadmap
 
 Дата актуализации: 6 августа 2026  
-Текущая ветка: `feat/gui-to-code-wp09-direct-canvas-authoring`  
-WP-08 merge commit: `4e41b09b4a750b20ba3343796599b8a05bd2f8d9`  
-WP-09 baseline: `66c7ce7b4ff3aca00637754534d53b89ed5e630f`
+Текущая ветка: `feat/gui-to-code-wp10-canvas-entity-editing-v2`  
+WP-09 merge commit: `d1b031268b65a7e0fe195572a926fc0d8c058582`  
+WP-10 delivery PR: #15
 
 Этот файл — изменяемое состояние исполнения. Стабильные outcomes и acceptance criteria находятся в `ROADMAP.md`.
 
@@ -11,7 +11,7 @@ WP-09 baseline: `66c7ce7b4ff3aca00637754534d53b89ed5e630f`
 
 ```yaml
 # managed-state:v2
-revision: 16
+revision: 19
 contract_review: complete
 active: []
 done:
@@ -25,66 +25,76 @@ done:
   - WP-07
   - WP-08
   - WP-09
-ready:
   - WP-10
+ready: []
 planned: []
 blocked: []
 ```
 
-## WP-09 — Direct connection foundation complete
-
-### Delivered outcome
-
-- pointer drag existing → existing больше не требует отдельного connection mode;
-- static views проходят через существующий typed `relation.create` intent/operation pipeline;
-- dynamic views маршрутизируются в `dynamicStep.create`;
-- deployment views маршрутизируются в `deploymentRelation.create`;
-- semantic family определяется active compiled view, а не visual shape;
-- connection gesture фиксирует exact view ID и workspace revision;
-- completion fail-closed отклоняется при смене view/revision;
-- direct authoring отключается при invalid compilation, busy state и active element-create tool;
-- diagram `ReadOnly` синхронизирован с authoring availability;
-- existing form/select controls остаются keyboard fallback;
-- добавлены focused tests на exact context, view switch, revision change, disabled state и missing gesture start.
-
-### Review findings fixed
-
-- P0 stale gesture: добавлен captured view/revision guard;
-- P1 invalid/busy/create-tool states: добавлен explicit authoring gate;
-- обнаруженный review-дефект static direct drag: legacy controller теперь синхронно входит в `relation-create` перед завершением через тот же intent path;
-- branded `ViewId` используется в tests без ослабления production typing.
-
-### Architecture
-
-`EditorWorkspace` остаётся единственным владельцем committed sources, revision, compilation, history и manual layouts. LikeC4 DSL остаётся semantic SSOT. Не добавлены public package APIs, новая dependency, отдельная canvas model, persistence schema или generic command batch. Changeset не требуется.
-
-### Scope boundary
-
-PR #12 является самостоятельным direct-connection foundation increment. Edge selection/editing, relation patch/remove, flow-coordinate creation, atomic create-and-connect, inline title editing, keyboard parity и canvas-dominant shell перенесены в WP-10, чтобы не смешивать несколько owning-package/API migrations в одном PR.
-
-## WP-10 — Canvas Entity Editing and Atomic Creation ready
+## WP-10 — Canvas Entity Editing and Atomic Creation complete
 
 AI-ready contract: `apps/gui-to-code/AI-READY.WP-10.md`.
 
-Основные outcomes:
+### Delivered outcome
 
-- edge selection и relation patch/remove;
-- double-click create с flow coordinates;
-- atomic drag existing → empty: element + relation + standard manual layout;
-- inline title edit и contextual delete;
-- static/dynamic/deployment keyboard parity;
-- collapsible panels и canvas-dominant shell.
+- canvas edges are selectable as typed logical relation, dynamic step or deployment relation entities;
+- logical relation title can be patched and the exact selected duplicate can be removed source-preservingly;
+- node double-click and F2 open inline display-title editing;
+- empty-canvas double-click creates a logical element at the exact flow coordinate;
+- active static `viewOf` scope owns newly created canvas elements, so they remain visible in the current view;
+- connection existing → empty creates element, directed relation and standard manual-layout position atomically;
+- connection lifecycle distinguishes `connected`, `empty` and `cancelled` without creating DSL inside `@likec4/diagram`;
+- screen coordinates are converted through `XYFlowInstance.screenToFlowPosition` before persistence;
+- source and `ViewManualLayoutSnapshot` are committed through one `EditorWorkspace` transaction and one history entry;
+- Undo/Redo restores source and layout together;
+- structure, inspector and DSL panels are collapsible; DSL is hidden by default;
+- keyboard routes cover F2, Enter, Delete/Backspace, Escape and Shift+F10 without intercepting editable controls;
+- responsive layout collapses to one column and avoids page-level horizontal overflow.
+
+### Review A — architecture and atomicity
+
+Fixed findings:
+
+- scoped static view creation initially produced an invisible root element; document planning now creates and moves it under `viewOf`, then verifies the full FQN;
+- nested relations can use relative endpoints; exact relation identity now resolves lexical element scope, `this` references and duplicate endpoint occurrence;
+- create-and-connect remains a dedicated domain command rather than a generic command batch;
+- renderer remains gesture-only; `EditorWorkspace` remains the sole source/revision/layout/history owner;
+- rejected or stale candidates do not mutate source, layout, revision or history;
+- create-and-connect acceptance now uses a valid sibling relation, while a forbidden parent-to-child relation is covered as an exact rollback case.
+
+### Review B — UX and accessibility
+
+Fixed findings:
+
+- creation menu focuses the first enabled kind rather than a disabled control;
+- F2 cannot edit a stale node selection while an edge is selected;
+- contextual overlays are clamped to canvas bounds;
+- direct-create tool reset no longer overwrites success feedback;
+- inline edit has explicit Enter-save, Escape-cancel and blur-cancel behaviour with focus return;
+- submit-induced blur no longer closes the inline editor, and a rejected save restores input focus;
+- edge alternatives expose a discriminator when one visual edge aggregates multiple logical relations.
+
+### Verification
+
+Focused diagram lifecycle, source-preservation, workspace atomicity and Playwright canvas acceptance tests are included. Exact-head GitHub CI evidence is recorded in PR #15; no local validation is used as release evidence.
+
+### Explicit limitations
+
+- logical relation metadata editing is title-only;
+- dynamic steps and deployment relations are selectable and keyboard-addressable, but canvas metadata patch/remove remains unsupported until a source-preserving document owner is available;
+- selection, focus, menus and gesture state remain transient and are not persisted as domain data.
+
+## WP-09 — Direct connection foundation complete
+
+- pointer drag existing → existing creates static, dynamic or deployment semantics through the existing typed command pipeline;
+- semantic family is selected by the active compiled view rather than visual node shape;
+- gesture start captures exact view ID and workspace revision and completion fails closed after either changes;
+- invalid, busy and element-create-tool states disable direct authoring;
+- existing form/select controls remain keyboard fallbacks.
 
 ## WP-08 — MVP release gate complete
 
-- Русская терминология оболочки и состояний долговременного хранения приведена к единому виду.
-- Критические элементы управления имеют доступные имена; создание статического вида проверяет keyboard/focus/Escape.
-- Release smoke покрывает `390×844`, `1440×900` и `1920×1080`.
-- Production artifact сохраняется, запускается через preview и проходит Playwright acceptance.
-- README содержит supported-feature matrix, recovery/rollback, persisted schema и ограничения MVP.
-
-Exact-head GitHub CI PR #10:
-
-- `GUI-to-code` run `30933010189` — success;
-- `CI (PR & push)` run `30933010265` — success;
-- `push` run `30933010284` — success.
+- Russian UX terminology and durable-workspace states are consistent;
+- critical controls have accessible names and responsive production smoke coverage;
+- production artifact build, preview smoke and Playwright acceptance are part of the standalone `GUI-to-code` workflow;
+- README documents supported features, recovery, persisted schema and MVP limitations.
