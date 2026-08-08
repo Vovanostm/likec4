@@ -14,14 +14,28 @@ type Wp06Command = Extract<EditorCommand, {
   type:
     | 'dynamicView.create'
     | 'dynamicStep.create'
+    | 'dynamicStep.patch'
+    | 'dynamicStep.remove'
     | 'deploymentView.create'
     | 'deploymentElement.create'
     | 'deploymentRelation.create'
+    | 'deploymentRelation.patch'
+    | 'deploymentRelation.remove'
 }>
 
 type ManualLayouts = Readonly<Record<ViewId, ViewManualLayoutSnapshot>>
-type SemanticEdge = { readonly source: unknown; readonly target: unknown; readonly id?: string }
-type DeploymentRelation = { readonly source: unknown; readonly target: unknown }
+type SemanticEdge = {
+  readonly source: unknown
+  readonly target: unknown
+  readonly id?: string
+  readonly label?: string | null
+  readonly astPath?: string
+}
+type DeploymentRelation = {
+  readonly source: unknown
+  readonly target: unknown
+  readonly title?: string | null
+}
 
 export interface Wp06WorkspaceHost {
   readonly state: EditorWorkspaceState
@@ -56,12 +70,27 @@ function sourceIssue(command: Wp06Command, error: unknown): CommandIssue {
       'Выбранный идентификатор уже занят.',
     )
   }
-  if (code === 'invalid-identifier') return issue('invalid-identifier', 'ID должен быть корректным идентификатором LikeC4.')
-  if (code === 'ambiguous-reference') return issue('ambiguous-target-document', 'Целевой документ нельзя определить однозначно.')
+  if (code === 'invalid-identifier') {
+    return issue('invalid-identifier', 'ID должен быть корректным идентификатором LikeC4.')
+  }
+  if (code === 'invalid-title') return issue('invalid-title', 'Название не может быть пустым.')
+  if (code === 'ambiguous-reference') {
+    return issue('ambiguous-target-document', 'Целевой документ нельзя определить однозначно.')
+  }
   if (code === 'stale-document') return issue('stale-source-edit', 'Исходный код изменился. Повторите действие.')
-  if (code === 'invalid-parent') return issue('invalid-parent', 'Выбранная deployment-сущность не может быть родительским узлом.')
-  if (code === 'unsupported-reference') return issue('semantic-operation-invalid', 'Этот тип deployment-ссылки не поддерживается в WP-06.')
+  if (code === 'invalid-parent') {
+    return issue('invalid-parent', 'Выбранная deployment-сущность не может быть родительским узлом.')
+  }
+  if (code === 'unsupported-reference') {
+    return issue('semantic-operation-invalid', 'Этот тип deployment-ссылки не поддерживается.')
+  }
   if (code === 'not-found') {
+    if (command.type === 'dynamicStep.patch' || command.type === 'dynamicStep.remove') {
+      return issue('dynamic-step-not-found', 'Выбранный направленный шаг больше не существует.')
+    }
+    if (command.type === 'deploymentRelation.patch' || command.type === 'deploymentRelation.remove') {
+      return issue('deployment-relation-not-found', 'Выбранная связь развёртывания больше не существует.')
+    }
     return issue(
       command.type === 'dynamicStep.create' || command.type === 'deploymentRelation.create'
         ? 'semantic-endpoint-not-found'
@@ -70,12 +99,35 @@ function sourceIssue(command: Wp06Command, error: unknown): CommandIssue {
     )
   }
   if (code === 'invalid-operation') {
+    if (command.type === 'dynamicStep.remove') {
+      return issue(
+        'dynamic-step-remove-source-edit-failed',
+        error instanceof Error ? error.message : 'Не удалось безопасно удалить направленный шаг.',
+      )
+    }
     return issue(
       command.type === 'deploymentElement.create' ? 'deployment-kind-unsupported' : 'semantic-operation-invalid',
       'Операция не поддерживается текущей спецификацией или областью.',
     )
   }
-  return issue('wp06-source-edit-failed', 'Не удалось применить изменение к исходному коду.')
+  switch (command.type) {
+    case 'dynamicStep.patch':
+      return issue('dynamic-step-patch-source-edit-failed', 'Не удалось изменить направленный шаг в исходном коде.')
+    case 'dynamicStep.remove':
+      return issue('dynamic-step-remove-source-edit-failed', 'Не удалось удалить направленный шаг из исходного кода.')
+    case 'deploymentRelation.patch':
+      return issue(
+        'deployment-relation-patch-source-edit-failed',
+        'Не удалось изменить связь развёртывания в исходном коде.',
+      )
+    case 'deploymentRelation.remove':
+      return issue(
+        'deployment-relation-remove-source-edit-failed',
+        'Не удалось удалить связь развёртывания из исходного кода.',
+      )
+    default:
+      return issue('wp06-source-edit-failed', 'Не удалось применить изменение к исходному коду.')
+  }
 }
 
 function viewIds(model: NonNullable<CompileResult['model']>): Set<string> {
@@ -121,6 +173,44 @@ function instanceTarget(element: unknown): string | null {
   return logicalEndpoint(target)
 }
 
+function dynamicEdgeById(view: unknown, id: string): SemanticEdge | null {
+  return dynamicEdges(view).find(edge => edge.id === id) ?? null
+}
+
+function dynamicEdgeByAstPath(view: unknown, astPath: string): SemanticEdge | null {
+  return dynamicEdges(view).find(edge => edge.astPath === astPath) ?? null
+}
+
+function sameDynamicEdgesExcept(
+  before: readonly SemanticEdge[],
+  after: readonly SemanticEdge[],
+  astPath: string,
+): boolean {
+  const remaining = before.filter(edge => edge.astPath !== astPath)
+  return remaining.every(edge => {
+    if (!edge.astPath) return false
+    const candidate = after.find(next => next.astPath === edge.astPath)
+    return !!candidate
+      && logicalEndpoint(candidate.source) === logicalEndpoint(edge.source)
+      && logicalEndpoint(candidate.target) === logicalEndpoint(edge.target)
+      && (candidate.label ?? '') === (edge.label ?? '')
+  })
+}
+
+function sameDeploymentRelationsExcept(
+  before: Readonly<Record<string, DeploymentRelation>>,
+  after: Readonly<Record<string, DeploymentRelation>>,
+  id: string,
+): boolean {
+  return Object.entries(before).filter(([relationId]) => relationId !== id).every(([relationId, relation]) => {
+    const candidate = after[relationId]
+    return !!candidate
+      && deploymentEndpoint(candidate.source) === deploymentEndpoint(relation.source)
+      && deploymentEndpoint(candidate.target) === deploymentEndpoint(relation.target)
+      && (candidate.title ?? '') === (relation.title ?? '')
+  })
+}
+
 async function compile(host: Wp06WorkspaceHost, sources: readonly SourceFile[]): Promise<{
   revision: number
   model: NonNullable<CompileResult['model']>
@@ -133,7 +223,11 @@ async function compile(host: Wp06WorkspaceHost, sources: readonly SourceFile[]):
   return { revision, model: result.model }
 }
 
-function commit(host: Wp06WorkspaceHost, compiled: { revision: number; model: NonNullable<CompileResult['model']> }, sources: readonly SourceFile[]): CommandResult | null {
+function commit(
+  host: Wp06WorkspaceHost,
+  compiled: { revision: number; model: NonNullable<CompileResult['model']> },
+  sources: readonly SourceFile[],
+): CommandResult | null {
   if (!host.isCurrent()) return { status: 'conflict', revision: host.currentRevision() }
   host.commitCandidate(compiled.revision, sources, compiled.model, host.state.manualLayouts)
   return null
@@ -164,7 +258,9 @@ export async function applyWp06Command(host: Wp06WorkspaceHost): Promise<Command
     if (command.type === 'dynamicStep.create') {
       const { viewId, sourceId, targetId } = command.input
       const before = model.$data.views[viewId]
-      if (!before || before._type !== 'dynamic') return rejected(state, 'dynamic-view-not-found', 'Выбранный dynamic view не существует.')
+      if (!before || before._type !== 'dynamic') {
+        return rejected(state, 'dynamic-view-not-found', 'Выбранный dynamic view не существует.')
+      }
       if (!model.$data.elements[sourceId] || !model.$data.elements[targetId]) {
         return rejected(state, 'semantic-endpoint-not-found', 'Выбранный logical endpoint не существует.')
       }
@@ -189,6 +285,103 @@ export async function applyWp06Command(host: Wp06WorkspaceHost): Promise<Command
         revision: compiled.revision,
         createdStepId: step.id ?? `${viewId}:${beforeEdges.length}`,
         viewId,
+      }
+    }
+
+    if (command.type === 'dynamicStep.patch') {
+      const beforeView = model.$data.views[command.input.viewId]
+      if (!beforeView || beforeView._type !== 'dynamic') {
+        return rejected(state, 'dynamic-view-not-found', 'Выбранный динамический вид больше не существует.')
+      }
+      const selected = dynamicEdgeById(beforeView, command.input.id)
+      if (!selected?.astPath) {
+        return rejected(state, 'dynamic-step-not-found', 'Выбранный направленный шаг больше не существует.')
+      }
+      const title = command.input.patch.title?.trim()
+      if (!title) return rejected(state, 'invalid-title', 'Название направленного шага не может быть пустым.')
+      if (!host.documents.patchDynamicStep) {
+        return rejected(state, 'dynamic-step-patch-source-edit-failed', 'Document layer не поддерживает изменение шага.')
+      }
+      const beforeEdges = dynamicEdges(beforeView)
+      const sources = await host.documents.patchDynamicStep(state.committedSources, {
+        viewId: command.input.viewId,
+        astPath: selected.astPath,
+        patch: { title },
+      })
+      const compiled = await compile(host, sources)
+      if ('status' in compiled) return compiled
+      const afterView = compiled.model.$data.views[command.input.viewId]
+      if (!afterView || afterView._type !== 'dynamic') {
+        return rejected(state, 'dynamic-step-patch-verification-failed', 'Динамический вид исчез после изменения шага.')
+      }
+      const afterEdges = dynamicEdges(afterView)
+      const updated = dynamicEdgeByAstPath(afterView, selected.astPath)
+      if (
+        afterEdges.length !== beforeEdges.length
+        || !updated
+        || logicalEndpoint(updated.source) !== logicalEndpoint(selected.source)
+        || logicalEndpoint(updated.target) !== logicalEndpoint(selected.target)
+        || (updated.label ?? '') !== title
+        || !sameDynamicEdgesExcept(beforeEdges, afterEdges, selected.astPath)
+      ) {
+        return rejected(
+          state,
+          'dynamic-step-patch-verification-failed',
+          'Не удалось подтвердить точное изменение выбранного направленного шага.',
+        )
+      }
+      const conflict = commit(host, compiled, sources)
+      return conflict ?? {
+        status: 'applied',
+        command: command.type,
+        revision: compiled.revision,
+        updatedStepId: updated.id ?? command.input.id,
+        viewId: command.input.viewId,
+      }
+    }
+
+    if (command.type === 'dynamicStep.remove') {
+      const beforeView = model.$data.views[command.input.viewId]
+      if (!beforeView || beforeView._type !== 'dynamic') {
+        return rejected(state, 'dynamic-view-not-found', 'Выбранный динамический вид больше не существует.')
+      }
+      const selected = dynamicEdgeById(beforeView, command.input.id)
+      if (!selected?.astPath) {
+        return rejected(state, 'dynamic-step-not-found', 'Выбранный направленный шаг больше не существует.')
+      }
+      if (!host.documents.removeDynamicStep) {
+        return rejected(state, 'dynamic-step-remove-source-edit-failed', 'Document layer не поддерживает удаление шага.')
+      }
+      const beforeEdges = dynamicEdges(beforeView)
+      const sources = await host.documents.removeDynamicStep(state.committedSources, {
+        viewId: command.input.viewId,
+        astPath: selected.astPath,
+      })
+      const compiled = await compile(host, sources)
+      if ('status' in compiled) return compiled
+      const afterView = compiled.model.$data.views[command.input.viewId]
+      if (!afterView || afterView._type !== 'dynamic') {
+        return rejected(state, 'dynamic-step-remove-verification-failed', 'Динамический вид исчез после удаления шага.')
+      }
+      const afterEdges = dynamicEdges(afterView)
+      if (
+        afterEdges.length !== beforeEdges.length - 1
+        || dynamicEdgeByAstPath(afterView, selected.astPath)
+        || !sameDynamicEdgesExcept(beforeEdges, afterEdges, selected.astPath)
+      ) {
+        return rejected(
+          state,
+          'dynamic-step-remove-verification-failed',
+          'Не удалось подтвердить удаление ровно выбранного направленного шага.',
+        )
+      }
+      const conflict = commit(host, compiled, sources)
+      return conflict ?? {
+        status: 'applied',
+        command: command.type,
+        revision: compiled.revision,
+        removedStepId: command.input.id,
+        viewId: command.input.viewId,
       }
     }
 
@@ -236,29 +429,112 @@ export async function applyWp06Command(host: Wp06WorkspaceHost): Promise<Command
       return conflict ?? { status: 'applied', command: command.type, revision: compiled.revision, createdDeploymentId: createdId }
     }
 
-    const before = new Set(Object.keys(deploymentRelations(model)))
-    const sources = await host.documents.createDeploymentRelation(state.committedSources, command.input)
+    if (command.type === 'deploymentRelation.create') {
+      const before = new Set(Object.keys(deploymentRelations(model)))
+      const sources = await host.documents.createDeploymentRelation(state.committedSources, command.input)
+      const compiled = await compile(host, sources)
+      if ('status' in compiled) return compiled
+      const added = Object.entries(deploymentRelations(compiled.model)).filter(([id]) => !before.has(id))
+      if (added.length !== 1) {
+        return rejected(state, 'deployment-relation-verification-failed', 'Не удалось подтвердить создание ровно одной deployment relation.')
+      }
+      const [id, relation] = added[0]!
+      const source = deploymentEndpoint(relation.source)
+      const target = deploymentEndpoint(relation.target)
+      if (!source || !target) {
+        return rejected(state, 'deployment-relation-verification-failed', 'Связи с вложенными logical references не поддерживаются.')
+      }
+      if (source !== command.input.sourceId || target !== command.input.targetId) {
+        return rejected(state, 'deployment-relation-verification-failed', 'Созданная deployment relation не совпадает с выбранным направлением.')
+      }
+      const conflict = commit(host, compiled, sources)
+      return conflict ?? {
+        status: 'applied',
+        command: command.type,
+        revision: compiled.revision,
+        createdRelationId: id as RelationId,
+      }
+    }
+
+    if (command.type === 'deploymentRelation.patch') {
+      const beforeRelations = deploymentRelations(model)
+      const selected = beforeRelations[command.input.id]
+      if (!selected) {
+        return rejected(state, 'deployment-relation-not-found', 'Выбранная связь развёртывания больше не существует.')
+      }
+      const title = command.input.patch.title?.trim()
+      if (!title) return rejected(state, 'invalid-title', 'Название связи развёртывания не может быть пустым.')
+      if (!host.documents.patchDeploymentRelation) {
+        return rejected(
+          state,
+          'deployment-relation-patch-source-edit-failed',
+          'Document layer не поддерживает изменение связи развёртывания.',
+        )
+      }
+      const sources = await host.documents.patchDeploymentRelation(state.committedSources, {
+        id: command.input.id,
+        patch: { title },
+      })
+      const compiled = await compile(host, sources)
+      if ('status' in compiled) return compiled
+      const afterRelations = deploymentRelations(compiled.model)
+      const updated = afterRelations[command.input.id]
+      if (
+        Object.keys(afterRelations).length !== Object.keys(beforeRelations).length
+        || !updated
+        || deploymentEndpoint(updated.source) !== deploymentEndpoint(selected.source)
+        || deploymentEndpoint(updated.target) !== deploymentEndpoint(selected.target)
+        || (updated.title ?? '') !== title
+        || !sameDeploymentRelationsExcept(beforeRelations, afterRelations, command.input.id)
+      ) {
+        return rejected(
+          state,
+          'deployment-relation-patch-verification-failed',
+          'Не удалось подтвердить точное изменение выбранной связи развёртывания.',
+        )
+      }
+      const conflict = commit(host, compiled, sources)
+      return conflict ?? {
+        status: 'applied',
+        command: command.type,
+        revision: compiled.revision,
+        updatedRelationId: command.input.id,
+      }
+    }
+
+    const beforeRelations = deploymentRelations(model)
+    const selected = beforeRelations[command.input.id]
+    if (!selected) {
+      return rejected(state, 'deployment-relation-not-found', 'Выбранная связь развёртывания больше не существует.')
+    }
+    if (!host.documents.removeDeploymentRelation) {
+      return rejected(
+        state,
+        'deployment-relation-remove-source-edit-failed',
+        'Document layer не поддерживает удаление связи развёртывания.',
+      )
+    }
+    const sources = await host.documents.removeDeploymentRelation(state.committedSources, { id: command.input.id })
     const compiled = await compile(host, sources)
     if ('status' in compiled) return compiled
-    const added = Object.entries(deploymentRelations(compiled.model)).filter(([id]) => !before.has(id))
-    if (added.length !== 1) {
-      return rejected(state, 'deployment-relation-verification-failed', 'Не удалось подтвердить создание ровно одной deployment relation.')
-    }
-    const [id, relation] = added[0]!
-    const source = deploymentEndpoint(relation.source)
-    const target = deploymentEndpoint(relation.target)
-    if (!source || !target) {
-      return rejected(state, 'deployment-relation-verification-failed', 'Связи с вложенными logical references не поддерживаются в WP-06.')
-    }
-    if (source !== command.input.sourceId || target !== command.input.targetId) {
-      return rejected(state, 'deployment-relation-verification-failed', 'Созданная deployment relation не совпадает с выбранным направлением.')
+    const afterRelations = deploymentRelations(compiled.model)
+    if (
+      Object.keys(afterRelations).length !== Object.keys(beforeRelations).length - 1
+      || afterRelations[command.input.id]
+      || !sameDeploymentRelationsExcept(beforeRelations, afterRelations, command.input.id)
+    ) {
+      return rejected(
+        state,
+        'deployment-relation-remove-verification-failed',
+        'Не удалось подтвердить удаление ровно выбранной связи развёртывания.',
+      )
     }
     const conflict = commit(host, compiled, sources)
     return conflict ?? {
       status: 'applied',
       command: command.type,
       revision: compiled.revision,
-      createdRelationId: id as RelationId,
+      removedRelationId: command.input.id,
     }
   } catch (error) {
     return { status: 'rejected', revision: state.revision, issues: [sourceIssue(command, error)] }
