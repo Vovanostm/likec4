@@ -1,6 +1,6 @@
 import type { Fqn } from '@likec4/core/types'
 import type { AstNode, DocumentSegment, LangiumDocument } from 'langium'
-import { AstUtils } from 'langium'
+import { AstUtils, GrammarUtils } from 'langium'
 import { DocumentEditError, type DocumentTextEdit } from './DocumentEditService'
 
 interface LikeC4Root extends AstNode {
@@ -34,6 +34,27 @@ export function createDynamicStepEdit(
   return insertStatement(document, view, `${source} -> ${target}`)
 }
 
+export function patchDynamicStepTitleEdit(
+  document: LangiumDocument,
+  node: AstNode,
+  title: string,
+): DocumentTextEdit {
+  return patchInlineTitle(document, node, title)
+}
+
+export function removeDynamicStepEdit(document: LangiumDocument, node: AstNode): DocumentTextEdit {
+  if (node.$type === 'StepSeries' || node.$container?.$type === 'StepSeries') {
+    throw new DocumentEditError(
+      'invalid-operation',
+      'Нельзя безопасно удалить один сегмент цепочки направленных шагов без изменения соседних шагов',
+    )
+  }
+  if (node.$type !== 'Step') {
+    throw new DocumentEditError('invalid-operation', 'Выбранный направленный шаг нельзя удалить как отдельную декларацию')
+  }
+  return removeDeclaration(document, node)
+}
+
 export function createDeploymentNodeEdit(
   document: LangiumDocument,
   id: string,
@@ -60,6 +81,75 @@ export function createDeploymentRelationEdit(
   target: Fqn,
 ): DocumentTextEdit {
   return insertDeploymentStatement(document, `${source} -> ${target}`)
+}
+
+export function patchDeploymentRelationTitleEdit(
+  document: LangiumDocument,
+  node: AstNode,
+  title: string,
+): DocumentTextEdit {
+  return patchInlineTitle(document, node, title)
+}
+
+export function removeDeploymentRelationEdit(document: LangiumDocument, node: AstNode): DocumentTextEdit {
+  if (node.$type !== 'DeploymentRelation') {
+    throw new DocumentEditError('invalid-operation', 'Выбранная связь развёртывания не является декларацией связи')
+  }
+  return removeDeclaration(document, node)
+}
+
+function patchInlineTitle(document: LangiumDocument, node: AstNode, title: string): DocumentTextEdit {
+  const segment = node.$cstNode
+  if (!segment) {
+    throw new DocumentEditError('not-found', 'Диапазон исходного кода выбранной связи не найден')
+  }
+  const escaped = `'${escapeTitle(title)}'`
+  const currentTitle = GrammarUtils.findNodeForProperty(segment, 'title')
+  if (currentTitle) {
+    return {
+      uri: document.uri.toString(),
+      range: currentTitle.range,
+      newText: escaped,
+    }
+  }
+  const target = GrammarUtils.findNodeForProperty(segment, 'target')
+  if (!target) {
+    throw new DocumentEditError('not-found', 'Диапазон целевой сущности выбранной связи не найден')
+  }
+  const position = document.textDocument.positionAt(target.end)
+  return {
+    uri: document.uri.toString(),
+    range: { start: position, end: position },
+    newText: ` ${escaped}`,
+  }
+}
+
+function removeDeclaration(document: LangiumDocument, node: AstNode): DocumentTextEdit {
+  const segment = node.$cstNode
+  if (!segment) {
+    throw new DocumentEditError('not-found', 'Диапазон исходного кода выбранной связи не найден')
+  }
+  const source = document.textDocument.getText()
+  let start = segment.offset
+  let end = segment.end
+  const lineStart = source.lastIndexOf('\n', Math.max(0, start - 1)) + 1
+  if (/^\s*$/.test(source.slice(lineStart, start))) {
+    start = lineStart
+  }
+  const nextLine = source.indexOf('\n', end)
+  if (nextLine >= 0 && /^\s*$/.test(source.slice(end, nextLine))) {
+    end = nextLine + 1
+  } else if (nextLine < 0 && /^\s*$/.test(source.slice(end))) {
+    end = source.length
+  }
+  return {
+    uri: document.uri.toString(),
+    range: {
+      start: document.textDocument.positionAt(start),
+      end: document.textDocument.positionAt(end),
+    },
+    newText: '',
+  }
 }
 
 function insertView(
@@ -92,7 +182,7 @@ function insertStatement(document: LangiumDocument, node: AstNode, statement: st
     throw new DocumentEditError('not-found', 'Диапазон исходного кода LikeC4 не найден')
   }
   const indent = `${lineIndent(document.textDocument.getText(), segment.offset)}  `
-  const indented = statement.split('\n').map((line, index) => index === 0 ? `${indent}${line}` : `${indent}${line}`).join('\n')
+  const indented = statement.split('\n').map(line => `${indent}${line}`).join('\n')
   return insertBeforeClosing(document, segment, indented)
 }
 
