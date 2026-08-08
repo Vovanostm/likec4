@@ -1,8 +1,13 @@
-import type { Fqn, ProjectId, ViewId } from '@likec4/core/types'
+import type { Fqn, ProjectId, RelationId, ViewId } from '@likec4/core/types'
 import type { AstNode, LangiumDocument } from 'langium'
 import { AstUtils } from 'langium'
 import type { LikeC4, LikeC4Langium } from './LikeC4'
-import { DocumentEditError, type SourceEditPlan, sourceRevision } from './DocumentEditService'
+import {
+  DocumentEditError,
+  type DocumentTextEdit,
+  type SourceEditPlan,
+  sourceRevision,
+} from './DocumentEditService'
 import {
   createDeploymentInstanceEdit,
   createDeploymentNodeEdit,
@@ -10,6 +15,10 @@ import {
   createDeploymentViewEdit,
   createDynamicStepEdit,
   createDynamicViewEdit,
+  patchDeploymentRelationTitleEdit,
+  patchDynamicStepTitleEdit,
+  removeDeploymentRelationEdit,
+  removeDynamicStepEdit,
 } from './dynamicDeploymentSourceEdit'
 
 export interface AddDynamicViewInput {
@@ -24,6 +33,23 @@ export interface AddDynamicStepInput {
   readonly source: Fqn
   readonly target: Fqn
   readonly documentUri?: string
+  readonly project?: string
+}
+
+export interface DynamicStepPatch {
+  readonly title?: string
+}
+
+export interface PatchDynamicStepInput {
+  readonly viewId: ViewId
+  readonly astPath: string
+  readonly patch: DynamicStepPatch
+  readonly project?: string
+}
+
+export interface RemoveDynamicStepInput {
+  readonly viewId: ViewId
+  readonly astPath: string
   readonly project?: string
 }
 
@@ -57,6 +83,21 @@ export interface AddDeploymentRelationInput {
   readonly project?: string
 }
 
+export interface DeploymentRelationPatch {
+  readonly title?: string
+}
+
+export interface PatchDeploymentRelationInput {
+  readonly id: RelationId
+  readonly patch: DeploymentRelationPatch
+  readonly project?: string
+}
+
+export interface RemoveDeploymentRelationInput {
+  readonly id: RelationId
+  readonly project?: string
+}
+
 const ID_PATTERN = /^([a-zA-Z]|_+[a-zA-Z0-9])[-\w]*$/
 
 type ParsedDeploymentElement = {
@@ -80,8 +121,29 @@ type ParsedModel = {
   }
 }
 
+type ParsedViewDescriptor = {
+  readonly _type?: string
+  readonly id: ViewId
+  readonly astPath: string
+}
+
+type ParsedDeploymentRelationDescriptor = {
+  readonly id: RelationId
+  readonly astPath: string
+}
+
 type ParsedDocument = LangiumDocument & {
-  readonly c4Views?: readonly { readonly id: ViewId }[]
+  readonly c4Views?: readonly ParsedViewDescriptor[]
+  readonly c4DeploymentRelations?: readonly ParsedDeploymentRelationDescriptor[]
+}
+
+type DynamicViewNode = AstNode & {
+  readonly body?: AstNode
+}
+
+type LocatedNode = {
+  readonly document: LangiumDocument
+  readonly node: AstNode
 }
 
 export class DynamicDeploymentDocumentEditService {
@@ -108,6 +170,19 @@ export class DynamicDeploymentDocumentEditService {
     this.assertLogicalElement(parsed, input.target)
     const document = this.selectDocument(projectId, input.documentUri, input.viewId)
     return this.plan(document, createDynamicStepEdit(document, input.viewId, input.source, input.target))
+  }
+
+  async planPatchDynamicStep(input: PatchDynamicStepInput): Promise<SourceEditPlan> {
+    const title = this.patchTitle(input.patch)
+    const { projectId } = await this.model(input.project)
+    const located = this.locateDynamicStep(projectId, input.viewId, input.astPath)
+    return this.plan(located.document, patchDynamicStepTitleEdit(located.document, located.node, title))
+  }
+
+  async planRemoveDynamicStep(input: RemoveDynamicStepInput): Promise<SourceEditPlan> {
+    const { projectId } = await this.model(input.project)
+    const located = this.locateDynamicStep(projectId, input.viewId, input.astPath)
+    return this.plan(located.document, removeDynamicStepEdit(located.document, located.node))
   }
 
   async planAddDeploymentView(input: AddDeploymentViewInput): Promise<SourceEditPlan> {
@@ -152,6 +227,19 @@ export class DynamicDeploymentDocumentEditService {
     return this.plan(document, createDeploymentRelationEdit(document, input.source, input.target))
   }
 
+  async planPatchDeploymentRelation(input: PatchDeploymentRelationInput): Promise<SourceEditPlan> {
+    const title = this.patchTitle(input.patch)
+    const { projectId } = await this.model(input.project)
+    const located = this.locateDeploymentRelation(projectId, input.id)
+    return this.plan(located.document, patchDeploymentRelationTitleEdit(located.document, located.node, title))
+  }
+
+  async planRemoveDeploymentRelation(input: RemoveDeploymentRelationInput): Promise<SourceEditPlan> {
+    const { projectId } = await this.model(input.project)
+    const located = this.locateDeploymentRelation(projectId, input.id)
+    return this.plan(located.document, removeDeploymentRelationEdit(located.document, located.node))
+  }
+
   private async model(project?: string): Promise<{ projectId: ProjectId; parsed: ParsedModel }> {
     const projectId = this.langium.shared.workspace.ProjectsManager.ensureProjectId(project as ProjectId | undefined)
     const parsed = await this.langium.likec4.likec4.ModelBuilder.parseModel(projectId) as unknown as ParsedModel | undefined
@@ -159,6 +247,70 @@ export class DynamicDeploymentDocumentEditService {
       throw new DocumentEditError('not-found', 'Скомпилированная модель LikeC4 не найдена')
     }
     return { projectId, parsed }
+  }
+
+  private patchTitle(patch: DynamicStepPatch | DeploymentRelationPatch): string {
+    if (patch.title === undefined) {
+      throw new DocumentEditError('invalid-operation', 'Изменение связи не содержит поддерживаемых полей')
+    }
+    const title = patch.title.trim()
+    if (!title) {
+      throw new DocumentEditError('invalid-title', 'Название связи не может быть пустым')
+    }
+    return title
+  }
+
+  private locateDynamicStep(projectId: ProjectId, viewId: ViewId, astPath: string): LocatedNode {
+    const owners = this.parsedDocuments(projectId).flatMap(document =>
+      (document.c4Views ?? [])
+        .filter(view => view.id === viewId && view._type === 'dynamic')
+        .map(view => ({ document, view })))
+    if (owners.length === 0) {
+      throw new DocumentEditError('not-found', `Динамический вид «${viewId}» не найден`)
+    }
+    if (owners.length > 1) {
+      throw new DocumentEditError('ambiguous-reference', `Динамический вид «${viewId}» имеет несколько владельцев исходного кода`)
+    }
+    const owner = owners[0]!
+    const viewNode = this.langium.likec4.workspace.AstNodeLocator.getAstNode(
+      owner.document.parseResult.value,
+      owner.view.astPath,
+    ) as DynamicViewNode | undefined
+    const body = viewNode?.body
+    if (!body) {
+      throw new DocumentEditError('not-found', `Тело динамического вида «${viewId}» не найдено`)
+    }
+    const node = this.langium.likec4.workspace.AstNodeLocator.getAstNode(body, astPath) as AstNode | undefined
+    if (!node?.$cstNode || (node.$type !== 'Step' && node.$type !== 'StepSeries')) {
+      throw new DocumentEditError('not-found', 'Выбранный направленный шаг больше не существует')
+    }
+    return { document: owner.document, node }
+  }
+
+  private locateDeploymentRelation(projectId: ProjectId, id: RelationId): LocatedNode {
+    const matches = this.parsedDocuments(projectId).flatMap(document =>
+      (document.c4DeploymentRelations ?? [])
+        .filter(relation => relation.id === id)
+        .map(relation => ({ document, relation })))
+    if (matches.length === 0) {
+      throw new DocumentEditError('not-found', `Связь развёртывания «${id}» не найдена`)
+    }
+    if (matches.length > 1) {
+      throw new DocumentEditError('ambiguous-reference', `Связь развёртывания «${id}» имеет несколько владельцев исходного кода`)
+    }
+    const match = matches[0]!
+    const node = this.langium.likec4.workspace.AstNodeLocator.getAstNode(
+      match.document.parseResult.value,
+      match.relation.astPath,
+    ) as AstNode | undefined
+    if (!node?.$cstNode || node.$type !== 'DeploymentRelation') {
+      throw new DocumentEditError('not-found', `Исходная декларация связи развёртывания «${id}» не найдена`)
+    }
+    return { document: match.document, node }
+  }
+
+  private parsedDocuments(projectId: ProjectId): ParsedDocument[] {
+    return [...this.langium.likec4.likec4.ModelParser.documents(projectId)] as ParsedDocument[]
   }
 
   private assertIdentifier(id: string): void {
@@ -245,7 +397,7 @@ export class DynamicDeploymentDocumentEditService {
       .filter(document => document.likec4ProjectId === projectId)
   }
 
-  private plan(document: LangiumDocument, edit: ReturnType<typeof createDynamicViewEdit>): SourceEditPlan {
+  private plan(document: LangiumDocument, edit: DocumentTextEdit): SourceEditPlan {
     return {
       baseRevisions: { [edit.uri]: sourceRevision(document.textDocument.getText()) },
       edits: [edit],
