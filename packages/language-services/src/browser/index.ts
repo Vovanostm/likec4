@@ -52,7 +52,13 @@ export {
   type AddDynamicStepInput,
   type AddDynamicViewInput,
   createDynamicDeploymentDocumentEditService,
+  type DeploymentRelationPatch,
   DynamicDeploymentDocumentEditService,
+  type DynamicStepPatch,
+  type PatchDeploymentRelationInput,
+  type PatchDynamicStepInput,
+  type RemoveDeploymentRelationInput,
+  type RemoveDynamicStepInput,
 } from '../common/DynamicDeploymentDocumentEditService'
 
 /**

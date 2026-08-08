@@ -6,9 +6,16 @@ import type { useWorkspaceRuntime } from './use-workspace-runtime'
 export type CanvasEntityRef =
   | { readonly family: 'logical-element'; readonly id: Fqn }
   | { readonly family: 'logical-relation'; readonly id: RelationId }
-  | { readonly family: 'dynamic-step'; readonly viewId: ViewId; readonly id: string }
+  | { readonly family: 'dynamic-step'; readonly viewId: ViewId; readonly revision: number; readonly id: string }
   | { readonly family: 'deployment-element'; readonly id: Fqn }
-  | { readonly family: 'deployment-relation'; readonly id: RelationId }
+  | { readonly family: 'deployment-relation'; readonly viewId: ViewId; readonly revision: number; readonly id: RelationId }
+
+export interface EditableEdgeDetails {
+  readonly id: string
+  readonly title: string
+  readonly sourceId: string
+  readonly targetId: string
+}
 
 interface PendingCanvasCreation {
   readonly viewId: ViewId
@@ -57,6 +64,9 @@ export function useCanvasEntityEditor(
       && !runtime.state.lastValidModel.$data.deployments.relations[selection.id]) {
       setSelection(null)
     }
+    if (selection.family === 'dynamic-step' && !findDynamicEdge(runtime.state.lastValidModel.$data.views[selection.viewId], selection.id)) {
+      setSelection(null)
+    }
   }, [runtime.state?.revision, selection])
 
   const selectElement = (id: Fqn): void => {
@@ -67,8 +77,9 @@ export function useCanvasEntityEditor(
 
   const selectEdge = (edge: unknown): void => {
     const view = runtime.selectedView
-    const model = runtime.state?.lastValidModel
-    if (!view || !model) return
+    const state = runtime.state
+    const model = state?.lastValidModel
+    if (!view || !state || !model) return
     const ids = edgeRelationIds(edge)
     if (view._type === 'element') {
       const logical = ids.filter(id => !!model.$data.relations[id as RelationId]) as RelationId[]
@@ -77,7 +88,7 @@ export function useCanvasEntityEditor(
         logical.push(fallback as RelationId)
       }
       if (logical.length === 0) {
-        runtime.setCommandError('Не удалось определить исходную logical relation для выбранной связи.')
+        runtime.setCommandError('Не удалось определить исходную логическую связь для выбранной связи.')
         return
       }
       onElementSelected(null)
@@ -88,21 +99,26 @@ export function useCanvasEntityEditor(
     if (view._type === 'deployment') {
       const deployment = ids.find(id => !!model.$data.deployments.relations[id as RelationId]) ?? edgeId(edge)
       if (!deployment || !model.$data.deployments.relations[deployment as RelationId]) {
-        runtime.setCommandError('Не удалось определить deployment relation для выбранной связи.')
+        runtime.setCommandError('Не удалось определить связь развёртывания для выбранной связи.')
         return
       }
       onElementSelected(null)
-      setSelection({ family: 'deployment-relation', id: deployment as RelationId })
+      setSelection({
+        family: 'deployment-relation',
+        viewId: view.id,
+        revision: state.revision,
+        id: deployment as RelationId,
+      })
       setRelationAlternatives([])
       return
     }
     const id = edgeId(edge)
     if (!id) {
-      runtime.setCommandError('Не удалось определить dynamic step для выбранной связи.')
+      runtime.setCommandError('Не удалось определить направленный шаг для выбранной связи.')
       return
     }
     onElementSelected(null)
-    setSelection({ family: 'dynamic-step', viewId: view.id, id })
+    setSelection({ family: 'dynamic-step', viewId: view.id, revision: state.revision, id })
     setRelationAlternatives([])
   }
 
@@ -111,7 +127,7 @@ export function useCanvasEntityEditor(
     setSelection({ family: 'logical-relation', id })
   }
 
-  const selectedLogicalRelation = useMemo(() => {
+  const selectedLogicalRelation = useMemo((): EditableEdgeDetails | null => {
     if (selection?.family !== 'logical-relation') return null
     const relation = runtime.state?.lastValidModel?.$data.relations[selection.id]
     if (!relation) return null
@@ -120,6 +136,31 @@ export function useCanvasEntityEditor(
       title: relation.title ?? '',
       sourceId: localEndpoint(relation.source),
       targetId: localEndpoint(relation.target),
+    }
+  }, [runtime.state?.revision, selection])
+
+  const selectedDynamicStep = useMemo((): EditableEdgeDetails | null => {
+    if (selection?.family !== 'dynamic-step') return null
+    const view = runtime.state?.lastValidModel?.$data.views[selection.viewId]
+    const edge = findDynamicEdge(view, selection.id)
+    if (!edge) return null
+    return {
+      id: selection.id,
+      title: typeof edge['label'] === 'string' ? edge['label'] : '',
+      sourceId: dynamicEndpoint(view, edge['source']),
+      targetId: dynamicEndpoint(view, edge['target']),
+    }
+  }, [runtime.state?.revision, selection])
+
+  const selectedDeploymentRelation = useMemo((): EditableEdgeDetails | null => {
+    if (selection?.family !== 'deployment-relation') return null
+    const relation = runtime.state?.lastValidModel?.$data.deployments.relations[selection.id]
+    if (!relation) return null
+    return {
+      id: selection.id,
+      title: relation.title ?? '',
+      sourceId: deploymentEndpoint(relation.source),
+      targetId: deploymentEndpoint(relation.target),
     }
   }, [runtime.state?.revision, selection])
 
@@ -148,6 +189,82 @@ export function useCanvasEntityEditor(
       setSelection(null)
       setRelationAlternatives([])
       runtime.setFeedback('Связь удалена.')
+      return true
+    }
+    return false
+  }
+
+  const patchSelectedDynamicStep = async (title: string): Promise<boolean> => {
+    const captured = selection
+    if (captured?.family !== 'dynamic-step') return false
+    if (!edgeCaptureIsCurrent(runtime, captured)) return staleEdgeAction(runtime)
+    const result = await runtime.dispatchSemantic({
+      type: 'dynamicStep.patch',
+      input: { viewId: captured.viewId, id: captured.id, patch: { title } },
+    }, 'Не удалось изменить направленный шаг.')
+    if (result?.status === 'applied' && result.command === 'dynamicStep.patch') {
+      const revision = runtime.workspace.current?.state.revision ?? result.revision
+      setSelection({
+        family: 'dynamic-step',
+        viewId: result.viewId,
+        revision,
+        id: result.updatedStepId,
+      })
+      runtime.setFeedback('Название направленного шага обновлено.')
+      return true
+    }
+    return false
+  }
+
+  const removeSelectedDynamicStep = async (): Promise<boolean> => {
+    const captured = selection
+    if (captured?.family !== 'dynamic-step') return false
+    if (!edgeCaptureIsCurrent(runtime, captured)) return staleEdgeAction(runtime)
+    const result = await runtime.dispatchSemantic({
+      type: 'dynamicStep.remove',
+      input: { viewId: captured.viewId, id: captured.id },
+    }, 'Не удалось удалить направленный шаг.')
+    if (result?.status === 'applied' && result.command === 'dynamicStep.remove') {
+      clearSelection()
+      runtime.setFeedback('Направленный шаг удалён.')
+      return true
+    }
+    return false
+  }
+
+  const patchSelectedDeploymentRelation = async (title: string): Promise<boolean> => {
+    const captured = selection
+    if (captured?.family !== 'deployment-relation') return false
+    if (!edgeCaptureIsCurrent(runtime, captured)) return staleEdgeAction(runtime)
+    const result = await runtime.dispatchSemantic({
+      type: 'deploymentRelation.patch',
+      input: { id: captured.id, patch: { title } },
+    }, 'Не удалось изменить связь развёртывания.')
+    if (result?.status === 'applied' && result.command === 'deploymentRelation.patch') {
+      const revision = runtime.workspace.current?.state.revision ?? result.revision
+      setSelection({
+        family: 'deployment-relation',
+        viewId: captured.viewId,
+        revision,
+        id: result.updatedRelationId,
+      })
+      runtime.setFeedback('Название связи развёртывания обновлено.')
+      return true
+    }
+    return false
+  }
+
+  const removeSelectedDeploymentRelation = async (): Promise<boolean> => {
+    const captured = selection
+    if (captured?.family !== 'deployment-relation') return false
+    if (!edgeCaptureIsCurrent(runtime, captured)) return staleEdgeAction(runtime)
+    const result = await runtime.dispatchSemantic({
+      type: 'deploymentRelation.remove',
+      input: { id: captured.id },
+    }, 'Не удалось удалить связь развёртывания.')
+    if (result?.status === 'applied' && result.command === 'deploymentRelation.remove') {
+      clearSelection()
+      runtime.setFeedback('Связь развёртывания удалена.')
       return true
     }
     return false
@@ -278,6 +395,8 @@ export function useCanvasEntityEditor(
     selection,
     relationAlternatives,
     selectedLogicalRelation,
+    selectedDynamicStep,
+    selectedDeploymentRelation,
     pendingCreation,
     inlineTitle,
     selectElement,
@@ -285,6 +404,10 @@ export function useCanvasEntityEditor(
     selectRelationAlternative,
     patchSelectedRelation,
     removeSelectedRelation,
+    patchSelectedDynamicStep,
+    removeSelectedDynamicStep,
+    patchSelectedDeploymentRelation,
+    removeSelectedDeploymentRelation,
     requestCreation,
     createPendingElement,
     createElementAt,
@@ -297,6 +420,21 @@ export function useCanvasEntityEditor(
   }
 }
 
+function edgeCaptureIsCurrent(
+  runtime: Runtime,
+  selection: Extract<CanvasEntityRef, { family: 'dynamic-step' | 'deployment-relation' }>,
+): boolean {
+  const current = runtime.workspace.current?.state
+  return !!current
+    && current.revision === selection.revision
+    && runtime.selectedViewId === selection.viewId
+}
+
+function staleEdgeAction(runtime: Runtime): false {
+  runtime.setCommandError('Рабочее пространство или текущий вид изменились. Выберите связь заново.')
+  return false
+}
+
 function edgeRelationIds(edge: unknown): string[] {
   if (!edge || typeof edge !== 'object' || !('relations' in edge)) return []
   const relations = (edge as { readonly relations?: unknown }).relations
@@ -307,6 +445,36 @@ function edgeId(edge: unknown): string | null {
   if (!edge || typeof edge !== 'object' || !('id' in edge)) return null
   const id = (edge as { readonly id?: unknown }).id
   return typeof id === 'string' ? id : null
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null
+}
+
+function findDynamicEdge(view: unknown, id: string): Record<string, unknown> | null {
+  const candidate = record(view)
+  const edges = candidate?.['edges']
+  if (!Array.isArray(edges)) return null
+  return edges.map(record).find(edge => edge?.['id'] === id) ?? null
+}
+
+function dynamicEndpoint(view: unknown, nodeId: unknown): string {
+  if (typeof nodeId !== 'string') return 'Неизвестная сущность'
+  const candidate = record(view)
+  const nodes = candidate?.['nodes']
+  if (!Array.isArray(nodes)) return nodeId
+  const node = nodes.map(record).find(item => item?.['id'] === nodeId)
+  return typeof node?.['modelRef'] === 'string'
+    ? node['modelRef']
+    : typeof node?.['title'] === 'string'
+    ? node['title']
+    : nodeId
+}
+
+function deploymentEndpoint(reference: unknown): string {
+  if (typeof reference === 'string') return reference
+  const candidate = record(reference)
+  return typeof candidate?.['deployment'] === 'string' ? candidate['deployment'] : 'Неизвестная сущность'
 }
 
 function localEndpoint(reference: { readonly model: string; readonly project?: string }): Fqn {

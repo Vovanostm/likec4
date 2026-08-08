@@ -86,6 +86,16 @@ const defaultDocumentPort: EditorDocumentPort = {
   async createDynamicStep(sources, input) {
     return (await defaultPort()).createDynamicStep(sources, input)
   },
+  async patchDynamicStep(sources, input) {
+    const method = (await defaultPort()).patchDynamicStep
+    if (!method) throw new EditorDocumentError('invalid-operation', 'Dynamic step patch is unavailable')
+    return method(sources, input)
+  },
+  async removeDynamicStep(sources, input) {
+    const method = (await defaultPort()).removeDynamicStep
+    if (!method) throw new EditorDocumentError('invalid-operation', 'Dynamic step removal is unavailable')
+    return method(sources, input)
+  },
   async createDeploymentView(sources, input) {
     return (await defaultPort()).createDeploymentView(sources, input)
   },
@@ -97,6 +107,16 @@ const defaultDocumentPort: EditorDocumentPort = {
   },
   async createDeploymentRelation(sources, input) {
     return (await defaultPort()).createDeploymentRelation(sources, input)
+  },
+  async patchDeploymentRelation(sources, input) {
+    const method = (await defaultPort()).patchDeploymentRelation
+    if (!method) throw new EditorDocumentError('invalid-operation', 'Deployment relation patch is unavailable')
+    return method(sources, input)
+  },
+  async removeDeploymentRelation(sources, input) {
+    const method = (await defaultPort()).removeDeploymentRelation
+    if (!method) throw new EditorDocumentError('invalid-operation', 'Deployment relation removal is unavailable')
+    return method(sources, input)
   },
   async patchElement(sources, input) {
     return (await defaultPort()).patchElement(sources, input)
@@ -506,9 +526,13 @@ export class EditorWorkspace {
         return this.applyCreateView(state, operation.semantic)
       case 'dynamicView.create':
       case 'dynamicStep.create':
+      case 'dynamicStep.patch':
+      case 'dynamicStep.remove':
       case 'deploymentView.create':
       case 'deploymentElement.create':
       case 'deploymentRelation.create':
+      case 'deploymentRelation.patch':
+      case 'deploymentRelation.remove':
         return applyWp06Command({
           state,
           command: operation.semantic,

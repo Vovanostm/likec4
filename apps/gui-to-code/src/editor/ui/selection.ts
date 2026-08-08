@@ -67,9 +67,13 @@ export function selectionAfterResult(
     case 'view.create':
     case 'dynamicView.create':
     case 'dynamicStep.create':
+    case 'dynamicStep.patch':
+    case 'dynamicStep.remove':
     case 'deploymentView.create':
     case 'deploymentElement.create':
     case 'deploymentRelation.create':
+    case 'deploymentRelation.patch':
+    case 'deploymentRelation.remove':
     case 'layout.save':
     case 'layout.reset':
     case 'history.undo':

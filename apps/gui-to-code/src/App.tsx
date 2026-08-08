@@ -124,6 +124,23 @@ export function App() {
     return convert(screen)
   }
 
+  const focusRelationTitle = (): void => {
+    queueMicrotask(() => document.querySelector<HTMLInputElement>('[data-relation-title-input]')?.focus())
+  }
+
+  const removeSelectedCanvasEdge = async (): Promise<boolean> => {
+    switch (canvas.selection?.family) {
+      case 'logical-relation':
+        return canvas.removeSelectedRelation()
+      case 'dynamic-step':
+        return canvas.removeSelectedDynamicStep()
+      case 'deployment-relation':
+        return canvas.removeSelectedDeploymentRelation()
+      default:
+        return false
+    }
+  }
+
   const workspaceColumns = [
     structureOpen ? 'minmax(13rem, 16rem)' : null,
     'minmax(24rem, 1fr)',
@@ -154,10 +171,14 @@ export function App() {
           return
         }
         if ((event.key === 'Delete' || event.key === 'Backspace')
-          && canvas.selection?.family === 'logical-relation'
+          && (canvas.selection?.family === 'logical-relation'
+            || canvas.selection?.family === 'dynamic-step'
+            || canvas.selection?.family === 'deployment-relation')
           && !isEditableTarget(event.target)) {
           event.preventDefault()
-          void canvas.removeSelectedRelation()
+          void removeSelectedCanvasEdge().then(removed => {
+            if (removed) diagramPanel.current?.focus()
+          })
           return
         }
         if (
@@ -173,18 +194,27 @@ export function App() {
         if (event.key === 'Enter'
           && canvas.selection
           && canvas.selection.family !== 'logical-element'
+          && canvas.selection.family !== 'deployment-element'
           && !isEditableTarget(event.target)) {
           event.preventDefault()
           setInspectorOpen(true)
-          queueMicrotask(() => document.querySelector<HTMLElement>('.relation-inspector')?.focus())
+          focusRelationTitle()
           return
         }
         if (event.shiftKey && event.key === 'F10' && !isEditableTarget(event.target)) {
           event.preventDefault()
           setInspectorOpen(true)
-          if (runtime.selectedView?._type === 'dynamic') wp06.activateDynamicStep()
-          else if (runtime.selectedView?._type === 'deployment') wp06.activateDeploymentRelation()
-          else semantic.activateRelationTool()
+          if (canvas.selection
+            && canvas.selection.family !== 'logical-element'
+            && canvas.selection.family !== 'deployment-element') {
+            focusRelationTitle()
+          } else if (runtime.selectedView?._type === 'dynamic') {
+            wp06.activateDynamicStep()
+          } else if (runtime.selectedView?._type === 'deployment') {
+            wp06.activateDeploymentRelation()
+          } else {
+            semantic.activateRelationTool()
+          }
           return
         }
         if (event.key === 'Escape' && wp06.connectionMode) wp06.cancelConnection()
@@ -395,11 +425,41 @@ export function App() {
             <RelationInspector
               selection={canvas.selection}
               relation={canvas.selectedLogicalRelation}
+              dynamicStep={canvas.selectedDynamicStep}
+              deploymentRelation={canvas.selectedDeploymentRelation}
               alternatives={canvas.relationAlternatives}
               busy={runtime.busy}
               onSelectAlternative={canvas.selectRelationAlternative}
-              onPatch={canvas.patchSelectedRelation}
-              onRemove={canvas.removeSelectedRelation} />
+              onPatch={async title => {
+                const saved = await canvas.patchSelectedRelation(title)
+                if (saved) focusRelationTitle()
+                return saved
+              }}
+              onRemove={async () => {
+                const removed = await canvas.removeSelectedRelation()
+                if (removed) diagramPanel.current?.focus()
+                return removed
+              }}
+              onPatchDynamicStep={async title => {
+                const saved = await canvas.patchSelectedDynamicStep(title)
+                if (saved) focusRelationTitle()
+                return saved
+              }}
+              onRemoveDynamicStep={async () => {
+                const removed = await canvas.removeSelectedDynamicStep()
+                if (removed) diagramPanel.current?.focus()
+                return removed
+              }}
+              onPatchDeploymentRelation={async title => {
+                const saved = await canvas.patchSelectedDeploymentRelation(title)
+                if (saved) focusRelationTitle()
+                return saved
+              }}
+              onRemoveDeploymentRelation={async () => {
+                const removed = await canvas.removeSelectedDeploymentRelation()
+                if (removed) diagramPanel.current?.focus()
+                return removed
+              }} />
             <Wp06Controls wp06={wp06} busy={runtime.busy} />
             {(!canvas.selection || canvas.selection.family === 'logical-element' || canvas.selection.family === 'deployment-element') && (
               <ElementInspector element={semantic.selectedElement} availableTags={semantic.availableTags} parents={semantic.parents} disabled={state.compilation.status !== 'valid'} busy={runtime.busy} error={semantic.inspectorError} onPatch={semantic.patchElement} onRename={semantic.renameElement} onMove={semantic.moveElement} onRemove={semantic.inspectRemoval} />

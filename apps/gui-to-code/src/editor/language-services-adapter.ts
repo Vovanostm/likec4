@@ -188,6 +188,24 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
     }
   },
 
+  async patchDynamicStep(sources, input) {
+    try {
+      const { semantics } = await serviceFor(sources)
+      return applyPlan(sources, await semantics.planPatchDynamicStep(input))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async removeDynamicStep(sources, input) {
+    try {
+      const { semantics } = await serviceFor(sources)
+      return applyPlan(sources, await semantics.planRemoveDynamicStep(input))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
   async createDeploymentView(sources, input) {
     try {
       const { semantics } = await serviceFor(sources)
@@ -223,6 +241,24 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
         target: input.targetId,
         ...(input.documentUri ? { documentUri: input.documentUri } : {}),
       }))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async patchDeploymentRelation(sources, input) {
+    try {
+      const { semantics } = await serviceFor(sources)
+      return applyPlan(sources, await semantics.planPatchDeploymentRelation(input))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
+  async removeDeploymentRelation(sources, input) {
+    try {
+      const { semantics } = await serviceFor(sources)
+      return applyPlan(sources, await semantics.planRemoveDeploymentRelation(input))
     } catch (error) {
       return documentError(error)
     }
