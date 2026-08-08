@@ -198,7 +198,8 @@ describe('DynamicDeploymentDocumentEditService', () => {
     if (!view || view._type !== 'dynamic') throw new Error('dynamic view missing')
     const series = view.steps[0]
     if (!series || !('steps' in series)) throw new Error('dynamic series missing')
-    const chainedPath = series.steps[1]!.astPath
+    const chainedPath = series.steps[1]?.astPath
+    if (!chainedPath) throw new Error('dynamic chain segment path missing')
     await expect(createDynamicDeploymentDocumentEditService(likec4).planRemoveDynamicStep({
       viewId: 'flow' as ViewId,
       astPath: chainedPath,
