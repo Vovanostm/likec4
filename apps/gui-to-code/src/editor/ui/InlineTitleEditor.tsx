@@ -44,6 +44,13 @@ export function InlineTitleEditor({
     queueMicrotask(onReturnFocus)
   }
 
+  const submit = (): void => {
+    if (!busy && value.trim()) {
+      submitting.current = true
+      onSave()
+    }
+  }
+
   return (
     <form
       className="inline-title-editor"
@@ -51,10 +58,7 @@ export function InlineTitleEditor({
       style={screenPosition ? { left: screenPosition.x, top: screenPosition.y } : undefined}
       onSubmit={event => {
         event.preventDefault()
-        if (!busy && value.trim()) {
-          submitting.current = true
-          onSave()
-        }
+        submit()
       }}>
       <label>
         <span className="visually-hidden">Название элемента</span>
@@ -72,6 +76,12 @@ export function InlineTitleEditor({
               event.preventDefault()
               event.stopPropagation()
               cancel()
+              return
+            }
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              event.stopPropagation()
+              submit()
             }
           }} />
       </label>
