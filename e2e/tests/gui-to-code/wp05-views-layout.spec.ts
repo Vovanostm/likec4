@@ -1,26 +1,13 @@
 import { expect, test } from '@playwright/test'
 
-const storageResetMarker = 'likec4.gui-to-code.e2e.storage-reset'
-const workspaceDatabaseName = 'likec4-gui-to-code'
-
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear())
   await page.goto('/')
-  await page.evaluate(async ({ marker, databaseName }) => {
-    if (sessionStorage.getItem(marker)) return
-    localStorage.clear()
-    await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.deleteDatabase(databaseName)
-      request.onsuccess = () => resolve()
-      request.onerror = () => reject(request.error ?? new Error('Failed to reset IndexedDB'))
-      request.onblocked = () => reject(new Error('IndexedDB reset was blocked'))
-    })
-    sessionStorage.setItem(marker, 'done')
-  }, { marker: storageResetMarker, databaseName: workspaceDatabaseName })
-  await page.reload()
   await expect(page.getByRole('heading', { name: 'LikeC4: визуальный редактор' })).toBeVisible()
 })
 
 test('creates and selects a scoped static view without changing history on selection', async ({ page }) => {
+  await page.getByRole('button', { name: 'Код', exact: true }).click()
   const source = page.getByLabel('Исходный код LikeC4')
   const viewSelector = page.getByLabel('Текущий вид')
   const revision = page.getByText(/Ревизия проекта:/)
@@ -55,6 +42,7 @@ test('creates and selects a scoped static view without changing history on selec
 })
 
 test('restores a standard manual-layout snapshot after reload and file round trip', async ({ page }, testInfo) => {
+  await page.getByRole('button', { name: 'Код', exact: true }).click()
   const source = page.getByLabel('Исходный код LikeC4')
   const sourceBeforeLayout = await source.inputValue()
   const node = page.locator('.react-flow__node[data-id="customer"]')
@@ -87,7 +75,9 @@ test('restores a standard manual-layout snapshot after reload and file round tri
   await page.reload()
   await expect(page.getByLabel('Текущий вид')).toHaveValue('index')
   await expect(page.getByLabel('Режим раскладки')).toHaveValue('manual')
-  await expect(source).toHaveValue(sourceBeforeLayout)
+  await page.getByRole('button', { name: 'Код', exact: true }).click()
+  const reloadedSource = page.getByLabel('Исходный код LikeC4')
+  await expect(reloadedSource).toHaveValue(sourceBeforeLayout)
 
   const exportButton = page.getByRole('button', { name: 'Экспортировать раскладку' })
   await expect(exportButton).toBeEnabled()
@@ -102,10 +92,10 @@ test('restores a standard manual-layout snapshot after reload and file round tri
   await page.getByRole('button', { name: 'Сбросить раскладку' }).click()
   await expect(page.getByText('Ручная раскладка сброшена.', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Режим раскладки')).toHaveValue('auto')
-  await expect(source).toHaveValue(sourceBeforeLayout)
+  await expect(reloadedSource).toHaveValue(sourceBeforeLayout)
 
   await page.getByLabel('Импортировать раскладку').setInputFiles(snapshotPath)
   await expect(page.getByText('Ручная раскладка импортирована.', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Режим раскладки')).toHaveValue('manual')
-  await expect(source).toHaveValue(sourceBeforeLayout)
+  await expect(reloadedSource).toHaveValue(sourceBeforeLayout)
 })
