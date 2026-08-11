@@ -59,6 +59,7 @@ test('dialog supports keyboard open, initial focus, Escape and focus restoration
 
 test('critical controls expose accessible names and Russian status surfaces', async ({ page }) => {
   await openIsolatedWorkspace(page)
+  await page.getByRole('button', { name: 'Код', exact: true }).click()
 
   await expect(page.getByLabel('Исходный код LikeC4')).toBeAttached()
   await expect(page.getByLabel('Текущий вид')).toBeAttached()

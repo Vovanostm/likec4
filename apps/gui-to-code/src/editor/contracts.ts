@@ -81,6 +81,21 @@ export interface CreateDynamicStepEditInput {
   readonly documentUri?: string
 }
 
+export interface DynamicStepPatch {
+  readonly title?: string
+}
+
+export interface PatchDynamicStepEditInput {
+  readonly viewId: ViewId
+  readonly astPath: string
+  readonly patch: DynamicStepPatch
+}
+
+export interface RemoveDynamicStepEditInput {
+  readonly viewId: ViewId
+  readonly astPath: string
+}
+
 export interface CreateDeploymentViewEditInput {
   readonly id: string
   readonly title?: string
@@ -108,6 +123,19 @@ export interface CreateDeploymentRelationEditInput {
   readonly sourceId: Fqn
   readonly targetId: Fqn
   readonly documentUri?: string
+}
+
+export interface DeploymentRelationPatch {
+  readonly title?: string
+}
+
+export interface PatchDeploymentRelationEditInput {
+  readonly id: RelationId
+  readonly patch: DeploymentRelationPatch
+}
+
+export interface RemoveDeploymentRelationEditInput {
+  readonly id: RelationId
 }
 
 export interface ElementPatch {
@@ -221,10 +249,20 @@ export interface EditorDocumentPort {
   createView(sources: readonly SourceFile[], input: CreateViewEditInput): Promise<readonly SourceFile[]>
   createDynamicView(sources: readonly SourceFile[], input: CreateDynamicViewEditInput): Promise<readonly SourceFile[]>
   createDynamicStep(sources: readonly SourceFile[], input: CreateDynamicStepEditInput): Promise<readonly SourceFile[]>
+  patchDynamicStep?(sources: readonly SourceFile[], input: PatchDynamicStepEditInput): Promise<readonly SourceFile[]>
+  removeDynamicStep?(sources: readonly SourceFile[], input: RemoveDynamicStepEditInput): Promise<readonly SourceFile[]>
   createDeploymentView(sources: readonly SourceFile[], input: CreateDeploymentViewEditInput): Promise<readonly SourceFile[]>
   createDeploymentNode(sources: readonly SourceFile[], input: CreateDeploymentNodeEditInput): Promise<readonly SourceFile[]>
   createDeploymentInstance(sources: readonly SourceFile[], input: CreateDeploymentInstanceEditInput): Promise<readonly SourceFile[]>
   createDeploymentRelation(sources: readonly SourceFile[], input: CreateDeploymentRelationEditInput): Promise<readonly SourceFile[]>
+  patchDeploymentRelation?(
+    sources: readonly SourceFile[],
+    input: PatchDeploymentRelationEditInput,
+  ): Promise<readonly SourceFile[]>
+  removeDeploymentRelation?(
+    sources: readonly SourceFile[],
+    input: RemoveDeploymentRelationEditInput,
+  ): Promise<readonly SourceFile[]>
   patchElement(sources: readonly SourceFile[], input: PatchElementEditInput): Promise<readonly SourceFile[]>
   patchRelation?(sources: readonly SourceFile[], input: PatchRelationEditInput): Promise<readonly SourceFile[]>
   removeRelation?(sources: readonly SourceFile[], input: RemoveRelationEditInput): Promise<readonly SourceFile[]>
@@ -378,6 +416,23 @@ export interface CreateDynamicStepCommand {
   readonly input: CreateDynamicStepEditInput
 }
 
+export interface PatchDynamicStepCommand {
+  readonly type: 'dynamicStep.patch'
+  readonly input: {
+    readonly viewId: ViewId
+    readonly id: string
+    readonly patch: DynamicStepPatch
+  }
+}
+
+export interface RemoveDynamicStepCommand {
+  readonly type: 'dynamicStep.remove'
+  readonly input: {
+    readonly viewId: ViewId
+    readonly id: string
+  }
+}
+
 export interface CreateDeploymentViewCommand {
   readonly type: 'deploymentView.create'
   readonly input: CreateDeploymentViewEditInput
@@ -393,6 +448,21 @@ export interface CreateDeploymentRelationCommand {
   readonly input: CreateDeploymentRelationEditInput
 }
 
+export interface PatchDeploymentRelationCommand {
+  readonly type: 'deploymentRelation.patch'
+  readonly input: {
+    readonly id: RelationId
+    readonly patch: DeploymentRelationPatch
+  }
+}
+
+export interface RemoveDeploymentRelationCommand {
+  readonly type: 'deploymentRelation.remove'
+  readonly input: {
+    readonly id: RelationId
+  }
+}
+
 export type EditorCommand =
   | CreateElementCommand
   | CreateElementAtCommand
@@ -403,9 +473,13 @@ export type EditorCommand =
   | CreateViewCommand
   | CreateDynamicViewCommand
   | CreateDynamicStepCommand
+  | PatchDynamicStepCommand
+  | RemoveDynamicStepCommand
   | CreateDeploymentViewCommand
   | CreateDeploymentElementCommand
   | CreateDeploymentRelationCommand
+  | PatchDeploymentRelationCommand
+  | RemoveDeploymentRelationCommand
   | PatchElementCommand
   | MoveElementCommand
   | RenameElementCommand
@@ -507,11 +581,21 @@ export type CommandIssueCode =
   | 'dynamic-view-not-found'
   | 'dynamic-view-verification-failed'
   | 'dynamic-step-verification-failed'
+  | 'dynamic-step-not-found'
+  | 'dynamic-step-patch-source-edit-failed'
+  | 'dynamic-step-patch-verification-failed'
+  | 'dynamic-step-remove-source-edit-failed'
+  | 'dynamic-step-remove-verification-failed'
   | 'deployment-kind-unsupported'
   | 'deployment-id-collision'
   | 'deployment-view-verification-failed'
   | 'deployment-element-verification-failed'
   | 'deployment-relation-verification-failed'
+  | 'deployment-relation-not-found'
+  | 'deployment-relation-patch-source-edit-failed'
+  | 'deployment-relation-patch-verification-failed'
+  | 'deployment-relation-remove-source-edit-failed'
+  | 'deployment-relation-remove-verification-failed'
   | 'semantic-endpoint-not-found'
   | 'semantic-reference-not-found'
   | 'semantic-operation-invalid'
@@ -604,6 +688,20 @@ export type AppliedCommandResult =
   }
   | {
     readonly status: 'applied'
+    readonly command: 'dynamicStep.patch'
+    readonly revision: Revision
+    readonly updatedStepId: string
+    readonly viewId: ViewId
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'dynamicStep.remove'
+    readonly revision: Revision
+    readonly removedStepId: string
+    readonly viewId: ViewId
+  }
+  | {
+    readonly status: 'applied'
     readonly command: 'deploymentElement.create'
     readonly revision: Revision
     readonly createdDeploymentId: Fqn
@@ -613,6 +711,18 @@ export type AppliedCommandResult =
     readonly command: 'deploymentRelation.create'
     readonly revision: Revision
     readonly createdRelationId: RelationId
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'deploymentRelation.patch'
+    readonly revision: Revision
+    readonly updatedRelationId: RelationId
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'deploymentRelation.remove'
+    readonly revision: Revision
+    readonly removedRelationId: RelationId
   }
   | {
     readonly status: 'applied'

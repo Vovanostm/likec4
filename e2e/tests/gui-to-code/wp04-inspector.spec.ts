@@ -7,6 +7,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('edits, renames and safely removes one selected element with keyboard history', async ({ page }) => {
+  await page.getByRole('button', { name: 'Код', exact: true }).click()
   const source = page.getByLabel('Исходный код LikeC4')
   const treeItem = page.getByRole('button', { name: /Web application.*shop\.web/ })
   await treeItem.click()

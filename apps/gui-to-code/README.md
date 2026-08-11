@@ -9,6 +9,8 @@
 - создание и изменение logical elements;
 - создание направленных logical relations;
 - выбор logical relation непосредственно на ребре, изменение её title и exact source-preserving удаление;
+- выбор dynamic step непосредственно на ребре, изменение его title и exact source-preserving удаление standalone step;
+- выбор deployment relation непосредственно на ребре, изменение её title и exact source-preserving удаление;
 - безопасные patch, rename, move и remove операции с общей историей Undo/Redo;
 - создание элемента double-click по пустому canvas с преобразованием screen coordinate в flow coordinate;
 - создание дочернего элемента внутри scope текущего static view;
@@ -18,7 +20,7 @@
 - ручную раскладку через `.likec4/<view>.likec4.snap`;
 - dynamic views и направленные dynamic steps;
 - deployment views, узлы развёртывания, именованные `instanceOf` и deployment relations;
-- keyboard routes для relation authoring через Shift+F10, Enter, Delete/Backspace, F2 и Escape;
+- keyboard routes для relation authoring/editing через Shift+F10, Enter, Delete/Backspace, F2 и Escape;
 - сворачиваемые structure, inspector и DSL panels; DSL скрыт по умолчанию;
 - автоматическое восстановление последнего подтверждённого рабочего пространства после reload;
 - атомарное сохранение sources, manual-layout snapshots и versioned metadata в IndexedDB;
@@ -39,10 +41,10 @@ Selection, открытые dialogs, focus, connection mode, diagnostics, compil
 | Logical elements | Да, включая scoped create-at | Да, включая inline title | Да | Да | `.c4`, ZIP | `.c4`, ZIP | Да |
 | Logical relations | Да, включая create-and-connect | Title | Через обновление ссылок | Да, exact selected relation | `.c4`, ZIP | `.c4`, ZIP | Да |
 | Static views | Да | Ограниченно | Нет отдельного flow | Через поддержанный remove flow | `.c4`, ZIP | `.c4`, ZIP | Да |
-| Dynamic views/steps | Да | Selection; metadata edit не поддержан | Нет отдельного flow | Отдельный canvas remove не поддержан | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Dynamic views/steps | Да | Title для выбранного шага | Нет отдельного flow | Да для exact standalone step; chain segment fail-closed | `.c4`, ZIP | `.c4`, ZIP | Да |
 | Deployment nodes | Да | Ограниченно | Нет отдельного flow | Через поддержанный remove flow | `.c4`, ZIP | `.c4`, ZIP | Да |
 | Deployment instances | Да, именованные | Ограниченно | Нет отдельного flow | Через поддержанный remove flow | `.c4`, ZIP | `.c4`, ZIP | Да |
-| Deployment relations | Да | Selection; metadata edit не поддержан | Через обновление ссылок | Отдельный canvas remove не поддержан | `.c4`, ZIP | `.c4`, ZIP | Да |
+| Deployment relations | Да | Title для выбранной связи | Через обновление ссылок | Да, exact selected relation | `.c4`, ZIP | `.c4`, ZIP | Да |
 | Manual layout snapshots | Да, через drag/create-at | Drag/reset | Не применимо | Reset | Snapshot, ZIP | Snapshot, ZIP | Да |
 | Config/libraries/styles | Нет отдельного authoring UI | Нет | Нет | Нет | Сохраняются только в пределах фактически принятого source | Через source/ZIP | Нет |
 
@@ -58,7 +60,9 @@ Screen coordinates преобразуются через `XYFlowInstance.screenT
 
 Canvas edge может агрегировать несколько logical relations. Inspector показывает discriminator и редактирует exact selected relation. Identity разрешается по compiled relation ID, directed endpoints и ordinal occurrence; после candidate compile workspace повторно подтверждает exact semantic delta.
 
-Dynamic steps и deployment relations можно выбрать и адресовать с клавиатуры. Их metadata patch/remove остаются явно unsupported, пока отсутствует доказанный source-preserving document owner.
+Dynamic step identity разрешается через parser-owned `astPath`, сохранённый в compiled dynamic edge. Deployment relation identity разрешается через parser-owned `RelationId`, который однозначно отображается обратно в `astPath` owning source document. React хранит только transient selection и captured revision/view; source ranges и source occurrence не являются UI state.
+
+Для dynamic step и deployment relation inspector показывает только реально поддерживаемое поле «Название». Patch/remove проходят через `DynamicDeploymentDocumentEditService`, isolated candidate compile и exact semantic verification. Если один segment является частью `StepSeries` и его удаление потребовало бы переписать соседнюю цепочку, операция отклоняется fail-closed вместо скрытого semantic rewrite.
 
 ## Надёжность и восстановление
 
@@ -122,8 +126,8 @@ Source locations, diagnostics, compiled models, selection, focus, открыты
 - прямая интеграция с desktop filesystem;
 - произвольное multi-project authoring сверх фактически импортируемого workspace;
 - полное authoring-покрытие config, libraries и styles;
-- relation metadata кроме logical relation title;
-- canvas metadata patch/remove для dynamic steps и deployment relations;
+- relation metadata кроме title для logical relations, dynamic steps и deployment relations;
+- удаление одного segment из dynamic `StepSeries`, если для этого требуется структурное переписывание соседних шагов;
 - полная поддержка всего LikeC4 DSL;
 - AI-assisted architecture generation;
 - lossless canonical regeneration любого входного DSL.
@@ -133,7 +137,8 @@ Source locations, diagnostics, compiled models, selection, focus, открыты
 - `EditorWorkspace` владеет sources, layouts, revision, compilation state и history.
 - `src/editor/language-services-adapter.ts` координирует public document planners; React components DSL не строят.
 - `src/editor/relation-source-edits.ts` выполняет exact logical relation title/remove edits и fail-closed отклоняет missing occurrence.
-- `src/editor/use-canvas-entity-editor.ts` владеет только transient selection/menu/inline-edit state.
+- `DynamicDeploymentDocumentEditService` владеет source-preserving create/patch/remove для dynamic steps и deployment relations через AST/CST.
+- `src/editor/use-canvas-entity-editor.ts` владеет только transient selection/menu/inline-edit state и captured revision/view для stale protection.
 - `src/editor/persisted-workspace.ts` задаёт versioned serializable envelope и validation boundary.
 - `src/editor/indexeddb-workspace.ts` реализует atomic IndexedDB port и optimistic revision checks.
 - `src/editor/workspace-bundle.ts` отображает workspace в manifest и обратно, но не компилирует DSL и не становится semantic model.

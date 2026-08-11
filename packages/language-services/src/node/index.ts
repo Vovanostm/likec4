@@ -57,7 +57,13 @@ export {
   type AddDynamicStepInput,
   type AddDynamicViewInput,
   createDynamicDeploymentDocumentEditService,
+  type DeploymentRelationPatch,
   DynamicDeploymentDocumentEditService,
+  type DynamicStepPatch,
+  type PatchDeploymentRelationInput,
+  type PatchDynamicStepInput,
+  type RemoveDeploymentRelationInput,
+  type RemoveDynamicStepInput,
 } from '../common/DynamicDeploymentDocumentEditService'
 
 /**
@@ -73,20 +79,15 @@ export async function fromWorkspace(path: string, options?: FromWorkspaceOptions
   const workspaceUri = withTrailingSlash(folderUri)
 
   const logger = rootLogger.getChild('lang')
-
-  const opts = defu(
-    options,
-    {
-      ...DefaultInitOptions,
-      useFileSystem: true,
-      manualLayouts: true,
-      watch: false,
-    } satisfies CreateLanguageServiceOptions,
-  )
+  const opts = defu(options, {
+    ...DefaultInitOptions,
+    useFileSystem: true,
+    manualLayouts: true,
+    watch: false,
+  } satisfies CreateLanguageServiceOptions)
   configureLogger(opts)
 
   const langium = createLanguageServices(opts)
-
   const workspace = {
     name: basename(workspacePath),
     uri: workspaceUri,
@@ -103,7 +104,6 @@ export async function fromWorkspace(path: string, options?: FromWorkspaceOptions
   await WorkspaceManager.initialized({})
 
   const userDocuments = langium.shared.workspace.LangiumDocuments.userDocuments.toArray()
-
   if (userDocuments.length === 0) {
     logger.error(`no LikeC4 sources found`)
     if (options?.throwIfInvalid) {
@@ -113,7 +113,6 @@ export async function fromWorkspace(path: string, options?: FromWorkspaceOptions
   }
 
   logger.info(`${k.dim('workspace:')} found ${userDocuments.length} source files`)
-
   return handleInitOptions(langium, rootLogger, options)
 }
 
@@ -146,15 +145,12 @@ export async function fromSources(sources: Record<string, string>, options?: Ini
   configureLogger(options)
   const logger = rootLogger.getChild('lang')
   const langium = createLanguageServices(
-    defu(
-      options,
-      {
-        ...DefaultInitOptions,
-        useFileSystem: false,
-        watch: false,
-        manualLayouts: false,
-      } satisfies CreateLanguageServiceOptions,
-    ),
+    defu(options, {
+      ...DefaultInitOptions,
+      useFileSystem: false,
+      watch: false,
+      manualLayouts: false,
+    } satisfies CreateLanguageServiceOptions),
   )
   return await createFromSources(langium, logger, sources, options)
 }
