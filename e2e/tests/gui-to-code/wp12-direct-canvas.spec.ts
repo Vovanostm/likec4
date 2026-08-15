@@ -47,7 +47,7 @@ test('connected canvas creation commits title, relation and position as one Undo
   await title.press('Enter')
   await expect(createMenu).toBeHidden()
 
-  await expect(source).toHaveValue(/title 'Платёжный шлюз'/)
+  await expect(source).toHaveValue(/component component 'Платёжный шлюз'/)
   const after = await source.inputValue()
   expect(after).not.toBe(before)
   expect(relationCount(after)).toBe(beforeRelations + 1)
