@@ -8,19 +8,29 @@ test('connected canvas creation commits title, relation and position as one Undo
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'LikeC4: визуальный редактор' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Код', exact: true }).click()
+  const codeToggle = page.getByRole('button', { name: 'Код', exact: true })
+  await codeToggle.click()
   const source = page.getByRole('textbox', { name: 'Исходный код LikeC4' })
   const before = await source.inputValue()
   const beforeRelations = relationCount(before)
+  await codeToggle.click()
+  await expect(source).toBeHidden()
 
   const pane = page.locator('.react-flow__pane').first()
-  const handle = page.locator('.react-flow__handle.source:visible').first()
+  const handle = page.locator('.react-flow__handle.source[data-nodeid="shop.web"]').first()
   await expect(pane).toBeVisible()
-  await handle.scrollIntoViewIfNeeded()
-  await expect(handle).toBeVisible()
+  await expect(handle).toBeAttached()
 
   const handleBox = await handle.boundingBox()
-  if (!handleBox) throw new Error('Visible canvas source handle has no geometry')
+  if (!handleBox) throw new Error('Web application source handle has no geometry')
+  const viewport = page.viewportSize()
+  if (!viewport
+    || handleBox.x < 0
+    || handleBox.y < 0
+    || handleBox.x + handleBox.width > viewport.width
+    || handleBox.y + handleBox.height > viewport.height) {
+    throw new Error('Web application source handle is outside the interactive viewport')
+  }
 
   const drop = await pane.evaluate(element => {
     const rect = element.getBoundingClientRect()
@@ -59,6 +69,8 @@ test('connected canvas creation commits title, relation and position as one Undo
   await title.press('Enter')
   await expect(createMenu).toBeHidden()
 
+  await codeToggle.click()
+  await expect(source).toBeVisible()
   await expect(source).toHaveValue(/component component 'Платёжный шлюз'/)
   const after = await source.inputValue()
   expect(after).not.toBe(before)
