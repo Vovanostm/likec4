@@ -345,7 +345,7 @@ export function useCanvasEntityEditor(
         input: {
           sourceId: pending.sourceId,
           kind: request.kind,
-          title,
+          ...(title ? { title } : {}),
           viewId: pending.viewId,
           position: pending.position,
         },
@@ -457,7 +457,7 @@ export function useCanvasEntityEditor(
 }
 
 export function edgeSelectionContextIsCurrent(
-  selection: EdgeSelection,
+  selection: { readonly revision: number; readonly viewId: ViewId },
   revision: number,
   viewId: ViewId | null,
 ): boolean {
