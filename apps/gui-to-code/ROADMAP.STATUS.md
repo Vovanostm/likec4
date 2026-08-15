@@ -1,9 +1,9 @@
 # Состояние исполнения roadmap
 
-Дата актуализации: 8 августа 2026  
-Текущая ветка: `feat/gui-to-code-wp11-dynamic-deployment-edge-crud`  
-WP-10 merge commit: `69e7d0b55df300fc1a149eeb3b1fe0aaf2e2cc23`  
-WP-11 delivery PR: #16
+Дата актуализации: 15 августа 2026  
+Текущая ветка: `feat/gui-to-code-wp12-direct-canvas-editing`  
+WP-11 merge commit: `5858553bb7fdeee3a87b5e7ea0e3ca43da59a0e0`  
+WP-12 delivery PR: #17
 
 Этот файл — изменяемое состояние исполнения. Стабильные outcomes и acceptance criteria находятся в `ROADMAP.md`.
 
@@ -11,7 +11,7 @@ WP-11 delivery PR: #16
 
 ```yaml
 # managed-state:v2
-revision: 20
+revision: 21
 contract_review: complete
 active: []
 done:
@@ -27,10 +27,65 @@ done:
   - WP-09
   - WP-10
   - WP-11
+  - WP-12
 ready: []
 planned: []
 blocked: []
 ```
+
+## WP-12 — Production-grade Direct Canvas Editing complete
+
+AI-ready contract: `apps/gui-to-code/AI-READY.WP-12.md`. Delivery PR: #17. Historical WP-11 baseline: `5858553bb7fdeee3a87b5e7ea0e3ca43da59a0e0`. Clean WP-12 implementation baseline after Phase 0 recovery: `c4d42b55a4244d46518865a27ef0cfb57a8d4db9`.
+
+### Baseline recovery
+
+Fresh GUI-to-code CI reproduced the remaining WP-10 acceptance failure. The product did persist the inline title into LikeC4 DSL, but the test assumed inline declaration syntax while the source-preserving patch planner correctly emitted a `title` property block. The failure was classified `STALE_TEST`; the acceptance assertion was updated to verify the actual source-preserving DSL form while retaining exact source and Undo/Redo checks. GUI-to-code run #318 then passed generation, language-services tests/typecheck, GUI typecheck/unit tests, production build/startup, full Playwright acceptance, agent-instruction validation and `git diff --check`.
+
+### Delivered outcome
+
+- existing → existing connection handles retain typed logical, dynamic and deployment authoring through the active compiled view family;
+- connection gestures remain revision/view-bound and fail closed when their captured interaction context becomes stale;
+- logical, dynamic and deployment edge inspectors expose exact title patch/remove with parser/compiler-owned semantic identity;
+- logical edge selections now capture the same revision/view context as dynamic and deployment edges, so stale logical inspector actions cannot commit after workspace/view changes;
+- duplicate same-endpoint logical relations remain independently selectable through their exact relation IDs and discriminator;
+- existing → empty connected creation now collects element kind and initial title before mutation and passes both through the existing `element.createConnected` command;
+- element + initial title + directed relation + standard manual-layout position therefore commit as one `EditorWorkspace` transaction and one history entry;
+- one Undo removes the complete connected-create result; Redo restores its exact semantic and layout state;
+- empty-canvas creation keeps its existing inline-title workflow because it is a separate user interaction, while connected creation no longer creates an extra title-patch history entry;
+- F2/double-click node title editing, keyboard edge actions, editable-control protection, busy-state gating and focus restoration remain on the existing canvas-first paths;
+- `EditorWorkspace` remains the sole mutation/history owner, LikeC4 DSL remains canonical, and no renderer semantic owner, persistence migration, grammar change or new dependency was introduced.
+
+### Review A — architecture and correctness
+
+Verified/fixed findings:
+
+- reused the existing `element.createConnected` command and its source-preserving document planner instead of introducing a composite command batch or second transaction;
+- reused existing title support in `CreateConnectedElementCommand`, preserving candidate compile, exact semantic verification, layout transactionality and one history entry;
+- generalized the existing edge freshness guard so logical/dynamic/deployment inspector actions share the same captured revision/view rule;
+- semantic relation identity remains relation ID / parser-owned identity rather than endpoint-only lookup;
+- dynamic `StepSeries` unsafe segment removal remains fail-closed;
+- rejected/stale operations do not mutate source, revision, history or manual layout.
+
+### Review B — product, reliability and accessibility
+
+Verified/fixed findings:
+
+- connected-create menu uses Russian labels, requires a non-empty initial title, supports Enter submission and Escape cancellation, and disables conflicting submission while busy;
+- kind selection and title entry occur before the atomic connected-create command, so the UI no longer misleadingly reports one operation while requiring a second title mutation;
+- logical stale-edge actions now surface the same Russian retry guidance as the other edge families;
+- keyboard Delete/Backspace protection for editable controls, Enter inspector focus, F2 rename and Escape cancellation remain unchanged;
+- existing responsive canvas/inspector shell and focus behavior are reused rather than introducing another overlay/state owner.
+
+### Verification
+
+Release evidence is GitHub CI only. The final exact HEAD, required workflow run IDs, mergeability and zero unresolved review-thread evidence are maintained in PR #17 because the HEAD changes whenever this status document itself is committed.
+
+### Explicit limitations
+
+- edge metadata editing remains title-only;
+- exact dynamic removal supports standalone `Step`; unsafe `StepSeries` segment rewriting fails closed;
+- connected-create is supported in logical/static element views; dynamic/deployment direct authoring creates their existing relation/step families but does not create a new logical element from an empty drop;
+- selection, focus, menus and captured interaction state remain transient UI state and are not persisted as domain data.
 
 ## WP-11 — Dynamic & Deployment Edge CRUD Parity complete
 
