@@ -14,21 +14,33 @@ test('connected canvas creation commits title, relation and position as one Undo
   const beforeRelations = relationCount(before)
 
   const pane = page.locator('.react-flow__pane').first()
-  const handle = page.locator('.react-flow__handle.source').first()
+  const handle = page.locator('.react-flow__handle.source:visible').first()
   await expect(pane).toBeVisible()
-  await expect(handle).toBeAttached()
+  await handle.scrollIntoViewIfNeeded()
+  await expect(handle).toBeVisible()
 
-  const paneBox = await pane.boundingBox()
   const handleBox = await handle.boundingBox()
-  if (!paneBox || !handleBox) throw new Error('Canvas connection geometry is unavailable')
+  if (!handleBox) throw new Error('Visible canvas source handle has no geometry')
+
+  const drop = await pane.evaluate(element => {
+    const rect = element.getBoundingClientRect()
+    const left = Math.max(rect.left + 24, 0)
+    const right = Math.min(rect.right - 24, window.innerWidth)
+    const top = Math.max(rect.top + 24, 0)
+    const bottom = Math.min(rect.bottom - 24, window.innerHeight)
+
+    for (let y = bottom; y >= top; y -= 24) {
+      for (let x = right; x >= left; x -= 24) {
+        if (document.elementFromPoint(x, y) === element) return { x, y }
+      }
+    }
+    return null
+  })
+  if (!drop) throw new Error('No visible empty canvas point is available for connection drop')
 
   const start = {
     x: handleBox.x + handleBox.width / 2,
     y: handleBox.y + handleBox.height / 2,
-  }
-  const drop = {
-    x: paneBox.x + Math.floor(paneBox.width * 0.78),
-    y: paneBox.y + Math.floor(paneBox.height * 0.72),
   }
 
   await page.mouse.move(start.x, start.y)
