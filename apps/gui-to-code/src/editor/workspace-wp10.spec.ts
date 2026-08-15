@@ -150,7 +150,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
       source: { model: 'shop.frontend' },
       target: { model: result.createdElementId },
     })
-    expect(editor.state.committedSources[0]?.content).toMatch(/component component\s*\{\s*title 'Payment module'/)
+    expect(editor.state.committedSources[0]?.content).toMatch(/component component 'Payment module'/)
     expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 420, y: 240 })
     expect(editor.state.history.past).toHaveLength(1)
 
