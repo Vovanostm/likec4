@@ -5,7 +5,7 @@ import type { useWorkspaceRuntime } from './use-workspace-runtime'
 
 export type CanvasEntityRef =
   | { readonly family: 'logical-element'; readonly id: Fqn }
-  | { readonly family: 'logical-relation'; readonly id: RelationId }
+  | { readonly family: 'logical-relation'; readonly viewId: ViewId; readonly revision: number; readonly id: RelationId }
   | { readonly family: 'dynamic-step'; readonly viewId: ViewId; readonly revision: number; readonly id: string }
   | { readonly family: 'deployment-element'; readonly id: Fqn }
   | { readonly family: 'deployment-relation'; readonly viewId: ViewId; readonly revision: number; readonly id: RelationId }
@@ -15,6 +15,11 @@ export interface EditableEdgeDetails {
   readonly title: string
   readonly sourceId: string
   readonly targetId: string
+}
+
+export interface CanvasCreationRequest {
+  readonly kind: ElementKind
+  readonly title?: string
 }
 
 interface PendingCanvasCreation {
@@ -32,6 +37,9 @@ interface InlineTitleEdit {
 }
 
 type Runtime = ReturnType<typeof useWorkspaceRuntime>
+type EdgeSelection = Extract<CanvasEntityRef, {
+  family: 'logical-relation' | 'dynamic-step' | 'deployment-relation'
+}>
 
 export function useCanvasEntityEditor(
   runtime: Runtime,
@@ -92,7 +100,12 @@ export function useCanvasEntityEditor(
         return
       }
       onElementSelected(null)
-      setSelection({ family: 'logical-relation', id: logical[0]! })
+      setSelection({
+        family: 'logical-relation',
+        viewId: view.id,
+        revision: state.revision,
+        id: logical[0]!,
+      })
       setRelationAlternatives(logical)
       return
     }
@@ -123,8 +136,9 @@ export function useCanvasEntityEditor(
   }
 
   const selectRelationAlternative = (id: RelationId): void => {
-    if (!relationAlternatives.includes(id)) return
-    setSelection({ family: 'logical-relation', id })
+    const captured = selection
+    if (captured?.family !== 'logical-relation' || !relationAlternatives.includes(id)) return
+    setSelection({ ...captured, id })
   }
 
   const selectedLogicalRelation = useMemo((): EditableEdgeDetails | null => {
@@ -165,14 +179,22 @@ export function useCanvasEntityEditor(
   }, [runtime.state?.revision, selection])
 
   const patchSelectedRelation = async (title: string): Promise<boolean> => {
-    if (selection?.family !== 'logical-relation') return false
+    const captured = selection
+    if (captured?.family !== 'logical-relation') return false
+    if (!edgeCaptureIsCurrent(runtime, captured)) return staleEdgeAction(runtime)
     const result = await runtime.dispatchSemantic({
       type: 'relation.patch',
-      input: { id: selection.id, patch: { title } },
+      input: { id: captured.id, patch: { title } },
     }, 'Не удалось изменить связь.')
     if (result?.status === 'applied' && result.command === 'relation.patch') {
-      setSelection({ family: 'logical-relation', id: result.updatedRelationId })
-      setRelationAlternatives(current => current.map(id => id === selection.id ? result.updatedRelationId : id))
+      const revision = runtime.workspace.current?.state.revision ?? result.revision
+      setSelection({
+        family: 'logical-relation',
+        viewId: captured.viewId,
+        revision,
+        id: result.updatedRelationId,
+      })
+      setRelationAlternatives(current => current.map(id => id === captured.id ? result.updatedRelationId : id))
       runtime.setFeedback('Название связи обновлено.')
       return true
     }
@@ -180,10 +202,12 @@ export function useCanvasEntityEditor(
   }
 
   const removeSelectedRelation = async (): Promise<boolean> => {
-    if (selection?.family !== 'logical-relation') return false
+    const captured = selection
+    if (captured?.family !== 'logical-relation') return false
+    if (!edgeCaptureIsCurrent(runtime, captured)) return staleEdgeAction(runtime)
     const result = await runtime.dispatchSemantic({
       type: 'relation.remove',
-      input: { id: selection.id },
+      input: { id: captured.id },
     }, 'Не удалось удалить связь.')
     if (result?.status === 'applied' && result.command === 'relation.remove') {
       setSelection(null)
@@ -299,7 +323,10 @@ export function useCanvasEntityEditor(
     if (captured) setPendingCreation(captured)
   }
 
-  const executeCreation = async (pending: PendingCanvasCreation, kind: ElementKind): Promise<boolean> => {
+  const executeCreation = async (
+    pending: PendingCanvasCreation,
+    request: CanvasCreationRequest,
+  ): Promise<boolean> => {
     const state = runtime.state
     if (!state) return false
     if (state.revision !== pending.revision || runtime.selectedViewId !== pending.viewId) {
@@ -307,12 +334,18 @@ export function useCanvasEntityEditor(
       runtime.setCommandError('Рабочее пространство или текущий вид изменились. Повторите создание.')
       return false
     }
+    const title = request.title?.trim()
+    if (pending.sourceId && !title) {
+      runtime.setCommandError('Введите название нового элемента.')
+      return false
+    }
     const result = await runtime.dispatchSemantic(pending.sourceId
       ? {
         type: 'element.createConnected',
         input: {
           sourceId: pending.sourceId,
-          kind,
+          kind: request.kind,
+          title,
           viewId: pending.viewId,
           position: pending.position,
         },
@@ -320,7 +353,7 @@ export function useCanvasEntityEditor(
       : {
         type: 'element.createAt',
         input: {
-          kind,
+          kind: request.kind,
           viewId: pending.viewId,
           position: pending.position,
         },
@@ -330,22 +363,25 @@ export function useCanvasEntityEditor(
       setPendingCreation(null)
       runtime.setLayoutMode('manual')
       onElementCreated(result.createdElementId)
-      const element = runtime.workspace.current?.state.lastValidModel?.$data.elements[result.createdElementId]
-      setInlineTitle({
-        id: result.createdElementId,
-        value: element?.title ?? result.createdElementId,
-        screenPosition: pending.screenPosition,
-      })
-      runtime.setFeedback(pending.sourceId
-        ? 'Элемент, связь и позиция созданы одной операцией.'
-        : 'Элемент создан в выбранной позиции.')
+      if (pending.sourceId) {
+        setInlineTitle(null)
+        runtime.setFeedback('Элемент, название, связь и позиция созданы одной операцией.')
+      } else {
+        const element = runtime.workspace.current?.state.lastValidModel?.$data.elements[result.createdElementId]
+        setInlineTitle({
+          id: result.createdElementId,
+          value: element?.title ?? result.createdElementId,
+          screenPosition: pending.screenPosition,
+        })
+        runtime.setFeedback('Элемент создан в выбранной позиции.')
+      }
       return true
     }
     return false
   }
 
-  const createPendingElement = async (kind: ElementKind): Promise<boolean> => {
-    return pendingCreation ? executeCreation(pendingCreation, kind) : false
+  const createPendingElement = async (request: CanvasCreationRequest): Promise<boolean> => {
+    return pendingCreation ? executeCreation(pendingCreation, request) : false
   }
 
   const createElementAt = async (
@@ -354,7 +390,7 @@ export function useCanvasEntityEditor(
     screenPosition: CanvasPosition,
   ): Promise<boolean> => {
     const pending = captureCreation(position, screenPosition)
-    return pending ? executeCreation(pending, kind) : false
+    return pending ? executeCreation(pending, { kind }) : false
   }
 
   const startInlineTitle = (id: Fqn, screenPosition: CanvasPosition | null = null): void => {
@@ -420,14 +456,17 @@ export function useCanvasEntityEditor(
   }
 }
 
-function edgeCaptureIsCurrent(
-  runtime: Runtime,
-  selection: Extract<CanvasEntityRef, { family: 'dynamic-step' | 'deployment-relation' }>,
+export function edgeSelectionContextIsCurrent(
+  selection: EdgeSelection,
+  revision: number,
+  viewId: ViewId | null,
 ): boolean {
+  return selection.revision === revision && selection.viewId === viewId
+}
+
+function edgeCaptureIsCurrent(runtime: Runtime, selection: EdgeSelection): boolean {
   const current = runtime.workspace.current?.state
-  return !!current
-    && current.revision === selection.revision
-    && runtime.selectedViewId === selection.viewId
+  return !!current && edgeSelectionContextIsCurrent(selection, current.revision, runtime.selectedViewId)
 }
 
 function staleEdgeAction(runtime: Runtime): false {
