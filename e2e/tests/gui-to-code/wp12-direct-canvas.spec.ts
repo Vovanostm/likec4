@@ -34,10 +34,10 @@ test('connected canvas creation commits title, relation and position as one Undo
 
   const drop = await pane.evaluate(element => {
     const rect = element.getBoundingClientRect()
-    const left = Math.max(rect.left + 24, 0)
-    const right = Math.min(rect.right - 24, window.innerWidth)
-    const top = Math.max(rect.top + 24, 0)
-    const bottom = Math.min(rect.bottom - 24, window.innerHeight)
+    const left = Math.max(rect.left + 24, 24)
+    const right = Math.min(rect.right - 24, window.innerWidth - 24)
+    const top = Math.max(rect.top + 24, 24)
+    const bottom = Math.min(rect.bottom - 24, window.innerHeight - 24)
     const blocked = Array.from(document.querySelectorAll(
       '.react-flow__node, .react-flow__controls, .react-flow__attribution',
     )).map(candidate => candidate.getBoundingClientRect())
