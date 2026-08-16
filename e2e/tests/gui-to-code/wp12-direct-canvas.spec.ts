@@ -41,7 +41,10 @@ test('connected canvas creation commits title, relation and position as one Undo
 
     for (let y = bottom; y >= top; y -= 24) {
       for (let x = right; x >= left; x -= 24) {
-        if (document.elementFromPoint(x, y) === element) return { x, y }
+        const hit = document.elementFromPoint(x, y)
+        if (!hit || !element.contains(hit)) continue
+        if (hit.closest('.react-flow__node, .react-flow__handle, .react-flow__controls, .react-flow__attribution')) continue
+        return { x, y }
       }
     }
     return null
