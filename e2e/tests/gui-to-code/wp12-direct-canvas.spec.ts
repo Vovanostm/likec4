@@ -62,10 +62,10 @@ test('connected canvas creation commits title, relation and position as one Undo
     y: handleBox.y + handleBox.height / 2,
   }
 
-  // Dispatch the pointer sequence at the actual React Flow handle instead of relying
-  // on pixel hit-testing. In headless CI the small handle can be geometrically visible
-  // while another painted layer wins the mouse hit-test, so a raw page.mouse gesture
-  // intermittently starts a pane drag rather than a connection.
+  // Start the connection on the exact React Flow handle so painted overlays cannot
+  // steal the initial hit-test in headless CI. Continue with real browser mouse
+  // events because React Flow installs the move/up listeners outside the handle.
+  await page.mouse.move(start.x, start.y)
   await handle.dispatchEvent('pointerdown', {
     pointerId: 1,
     pointerType: 'mouse',
@@ -75,24 +75,8 @@ test('connected canvas creation commits title, relation and position as one Undo
     clientX: start.x,
     clientY: start.y,
   })
-  await pane.dispatchEvent('pointermove', {
-    pointerId: 1,
-    pointerType: 'mouse',
-    isPrimary: true,
-    button: 0,
-    buttons: 1,
-    clientX: drop.x,
-    clientY: drop.y,
-  })
-  await pane.dispatchEvent('pointerup', {
-    pointerId: 1,
-    pointerType: 'mouse',
-    isPrimary: true,
-    button: 0,
-    buttons: 0,
-    clientX: drop.x,
-    clientY: drop.y,
-  })
+  await page.mouse.move(drop.x, drop.y, { steps: 12 })
+  await page.mouse.up()
 
   const createMenu = page.getByRole('region', { name: 'Создать элемент на холсте' })
   await expect(createMenu).toBeVisible()
