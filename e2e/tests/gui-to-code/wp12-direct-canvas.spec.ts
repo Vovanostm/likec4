@@ -100,9 +100,9 @@ test('connected canvas creation commits title, relation and position as one Undo
 
   const undo = page.getByRole('button', { name: 'Отменить последнее изменение' })
   await undo.click()
-  await expect(source).toHaveValue(before)
+  await expect.poll(async () => await source.inputValue()).toBe(before)
 
   const redo = page.getByRole('button', { name: 'Повторить отменённое изменение' })
   await redo.click()
-  await expect(source).toHaveValue(after)
+  await expect.poll(async () => await source.inputValue()).toBe(after)
 })
