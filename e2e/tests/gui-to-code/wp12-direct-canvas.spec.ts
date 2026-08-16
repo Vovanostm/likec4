@@ -91,7 +91,9 @@ test('connected canvas creation commits title, relation and position as one Undo
 
   await codeToggle.click()
   await expect(source).toBeVisible()
-  await expect(source).toHaveValue(/component component 'Платёжный шлюз'/)
+  await expect.poll(
+    async () => await source.inputValue(),
+  ).toContain("component component 'Платёжный шлюз'")
   const after = await source.inputValue()
   expect(after).not.toBe(before)
   expect(relationCount(after)).toBe(beforeRelations + 1)
