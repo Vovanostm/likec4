@@ -85,9 +85,10 @@ export function CanvasCreateMenu({
               disabled={busy}
               onChange={event => setTitle(event.target.value)}
               onKeyDown={event => {
-                if (event.key === 'Enter' && selectedKind && title.trim() && !busy) {
+                const currentTitle = event.currentTarget.value.trim()
+                if (event.key === 'Enter' && selectedKind && currentTitle && !busy) {
                   event.preventDefault()
-                  onCreate({ kind: selectedKind, title: title.trim() })
+                  onCreate({ kind: selectedKind, title: currentTitle })
                 }
               }} />
           </label>
