@@ -38,13 +38,19 @@ test('connected canvas creation commits title, relation and position as one Undo
     const right = Math.min(rect.right - 24, window.innerWidth)
     const top = Math.max(rect.top + 24, 0)
     const bottom = Math.min(rect.bottom - 24, window.innerHeight)
+    const blocked = Array.from(document.querySelectorAll(
+      '.react-flow__node, .react-flow__controls, .react-flow__attribution',
+    )).map(candidate => candidate.getBoundingClientRect())
 
     for (let y = bottom; y >= top; y -= 24) {
       for (let x = right; x >= left; x -= 24) {
-        const hit = document.elementFromPoint(x, y)
-        if (!hit || !element.contains(hit)) continue
-        if (hit.closest('.react-flow__node, .react-flow__handle, .react-flow__controls, .react-flow__attribution')) continue
-        return { x, y }
+        const overlapsInteractiveUi = blocked.some(box => (
+          x >= box.left - 12
+          && x <= box.right + 12
+          && y >= box.top - 12
+          && y <= box.bottom + 12
+        ))
+        if (!overlapsInteractiveUi) return { x, y }
       }
     }
     return null
