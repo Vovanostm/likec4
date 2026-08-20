@@ -62,24 +62,11 @@ test('connected canvas creation commits title, relation and position as one Undo
     y: handleBox.y + handleBox.height / 2,
   }
 
-  // Start the connection on the exact React Flow handle so painted overlays cannot
-  // steal the initial hit-test in headless CI. The event must cross the diagram's
-  // shadow boundary so the outer capture handler records the gesture snapshot.
-  // Continue with real browser mouse events because React Flow installs move/up
-  // listeners outside the handle.
+  // Keep the complete drag in one native browser pointer session. React Flow relies
+  // on the active pointer/button state across down, move and up, and the outer
+  // capture handler must observe the same trusted pointerdown through Shadow DOM.
   await page.mouse.move(start.x, start.y)
-  await handle.dispatchEvent('pointerdown', {
-    pointerId: 1,
-    pointerType: 'mouse',
-    isPrimary: true,
-    button: 0,
-    buttons: 1,
-    clientX: start.x,
-    clientY: start.y,
-    bubbles: true,
-    composed: true,
-    cancelable: true,
-  })
+  await page.mouse.down()
   await page.mouse.move(drop.x, drop.y, { steps: 12 })
   await page.mouse.up()
 
