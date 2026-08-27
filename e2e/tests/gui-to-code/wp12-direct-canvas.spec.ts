@@ -17,19 +17,19 @@ test('connected canvas creation commits title, relation and position as one Undo
   await expect(source).toBeHidden()
 
   const pane = page.locator('.react-flow__pane').first()
-  const handle = page.locator('.react-flow__handle.source[data-nodeid="shop.web"]').first()
+  const handle = page.locator('.likec4-authoring-handle.source[data-nodeid="shop.web"]').first()
   await expect(pane).toBeVisible()
-  await expect(handle).toBeAttached()
+  await expect(handle).toBeVisible()
 
   const handleBox = await handle.boundingBox()
-  if (!handleBox) throw new Error('Web application source handle has no geometry')
+  if (!handleBox) throw new Error('Web application authoring handle has no geometry')
   const viewport = page.viewportSize()
   if (!viewport
     || handleBox.x < 0
     || handleBox.y < 0
     || handleBox.x + handleBox.width > viewport.width
     || handleBox.y + handleBox.height > viewport.height) {
-    throw new Error('Web application source handle is outside the interactive viewport')
+    throw new Error('Web application authoring handle is outside the interactive viewport')
   }
 
   const drop = await pane.evaluate(element => {
@@ -62,9 +62,8 @@ test('connected canvas creation commits title, relation and position as one Undo
     y: handleBox.y + handleBox.height / 2,
   }
 
-  // Keep the complete drag in one native browser pointer session. React Flow relies
-  // on the active pointer/button state across down, move and up, and the outer
-  // capture handler must observe the same trusted pointerdown through Shadow DOM.
+  // Exercise the same visible authoring handle and trusted pointer sequence that a
+  // user uses. The hidden centered XYFlow handles are routing infrastructure only.
   await page.mouse.move(start.x, start.y)
   await page.mouse.down()
   await page.mouse.move(drop.x, drop.y, { steps: 12 })
