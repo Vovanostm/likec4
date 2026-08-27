@@ -108,7 +108,7 @@ export function ElementNode(props: Types.NodeProps<'element'>) {
       {enableElementDetails && <ElementDetailsButtonWithHandler {...props} />}
       {!enableReadOnly && <ElementToolbar {...props} />}
       {enableNotes && <NodeNotes {...props} />}
-      <DefaultHandles direction={props.data.viewLayoutDir} />
+      <DefaultHandles direction={props.data.viewLayoutDir} authoring={!enableReadOnly} />
     </ElementNodeContainer>
   )
 }
@@ -126,7 +126,7 @@ export function DeploymentNode(props: Types.NodeProps<'deployment'>) {
       {enableElementDetails && <ElementDetailsButtonWithHandler {...props} />}
       {!enableReadOnly && <DeploymentElementToolbar {...props} />}
       {enableNotes && <NodeNotes {...props} />}
-      <DefaultHandles direction={props.data.viewLayoutDir} />
+      <DefaultHandles direction={props.data.viewLayoutDir} authoring={!enableReadOnly} />
     </ElementNodeContainer>
   )
 }
@@ -155,7 +155,7 @@ export function CompoundElementNode(props: Types.NodeProps<'compound-element'>) 
       <CompoundActions {...props} />
       {enableElementDetails && <CompoundDetailsButtonWithHandler {...props} />}
       {!enableReadOnly && <CompoundElementToolbar {...props} />}
-      <DefaultHandles direction={props.data.viewLayoutDir} />
+      <DefaultHandles direction={props.data.viewLayoutDir} authoring={!enableReadOnly} />
     </CompoundNodeContainer>
   )
 }
@@ -173,7 +173,7 @@ export function CompoundDeploymentNode(props: Types.NodeProps<'compound-deployme
       <CompoundActions {...props} />
       {enableElementDetails && <CompoundDetailsButtonWithHandler {...props} />}
       {!enableReadOnly && <CompoundDeploymentToolbar {...props} />}
-      <DefaultHandles direction={props.data.viewLayoutDir} />
+      <DefaultHandles direction={props.data.viewLayoutDir} authoring={!enableReadOnly} />
     </CompoundNodeContainer>
   )
 }
