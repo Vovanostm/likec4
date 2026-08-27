@@ -19,6 +19,7 @@ test('connected canvas creation commits title, relation and position as one Undo
   const pane = page.locator('.react-flow__pane').first()
   const handle = page.locator('.likec4-authoring-handle.source[data-nodeid="shop.web"]').first()
   await expect(pane).toBeVisible()
+  await handle.scrollIntoViewIfNeeded()
   await expect(handle).toBeVisible()
 
   const handleBox = await handle.boundingBox()
@@ -36,25 +37,37 @@ test('connected canvas creation commits title, relation and position as one Undo
     throw new Error('Web application authoring handle center is outside the interactive viewport')
   }
 
+  const handleReceivesPointer = await handle.evaluate(element => {
+    const rect = element.getBoundingClientRect()
+    const root = element.getRootNode() as Node & {
+      elementFromPoint?: (x: number, y: number) => Element | null
+    }
+    const target = root.elementFromPoint?.(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    )
+    return target === element || element.contains(target)
+  })
+  if (!handleReceivesPointer) {
+    throw new Error('Web application authoring handle is not the active pointer hit target')
+  }
+
   const drop = await pane.evaluate(element => {
     const rect = element.getBoundingClientRect()
-    const left = Math.max(rect.left + 24, 24)
-    const right = Math.min(rect.right - 24, window.innerWidth - 24)
-    const top = Math.max(rect.top + 24, 24)
-    const bottom = Math.min(rect.bottom - 24, window.innerHeight - 24)
-    const blocked = Array.from(document.querySelectorAll(
-      '.react-flow__node, .react-flow__controls, .react-flow__attribution',
-    )).map(candidate => candidate.getBoundingClientRect())
+    const left = Math.max(rect.left + 32, 32)
+    const right = Math.min(rect.right - 32, window.innerWidth - 32)
+    const top = Math.max(rect.top + 32, 32)
+    const bottom = Math.min(rect.bottom - 32, window.innerHeight - 32)
+    const root = element.getRootNode() as Node & {
+      elementFromPoint?: (x: number, y: number) => Element | null
+    }
 
     for (let y = bottom; y >= top; y -= 24) {
       for (let x = right; x >= left; x -= 24) {
-        const overlapsInteractiveUi = blocked.some(box => (
-          x >= box.left - 12
-          && x <= box.right + 12
-          && y >= box.top - 12
-          && y <= box.bottom + 12
-        ))
-        if (!overlapsInteractiveUi) return { x, y }
+        const target = root.elementFromPoint?.(x, y)
+        if (target === element || target?.closest('.react-flow__pane') === element) {
+          return { x, y }
+        }
       }
     }
     return null
