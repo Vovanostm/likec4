@@ -23,13 +23,17 @@ test('connected canvas creation commits title, relation and position as one Undo
 
   const handleBox = await handle.boundingBox()
   if (!handleBox) throw new Error('Web application authoring handle has no geometry')
+  const start = {
+    x: handleBox.x + handleBox.width / 2,
+    y: handleBox.y + handleBox.height / 2,
+  }
   const viewport = page.viewportSize()
   if (!viewport
-    || handleBox.x < 0
-    || handleBox.y < 0
-    || handleBox.x + handleBox.width > viewport.width
-    || handleBox.y + handleBox.height > viewport.height) {
-    throw new Error('Web application authoring handle is outside the interactive viewport')
+    || start.x < 0
+    || start.y < 0
+    || start.x >= viewport.width
+    || start.y >= viewport.height) {
+    throw new Error('Web application authoring handle center is outside the interactive viewport')
   }
 
   const drop = await pane.evaluate(element => {
@@ -56,11 +60,6 @@ test('connected canvas creation commits title, relation and position as one Undo
     return null
   })
   if (!drop) throw new Error('No visible empty canvas point is available for connection drop')
-
-  const start = {
-    x: handleBox.x + handleBox.width / 2,
-    y: handleBox.y + handleBox.height / 2,
-  }
 
   // Exercise the same visible authoring handle and trusted pointer sequence that a
   // user uses. The hidden centered XYFlow handles are routing infrastructure only.
