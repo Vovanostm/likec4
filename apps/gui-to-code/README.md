@@ -14,13 +14,14 @@
 - безопасные patch, rename, move и remove операции с общей историей Undo/Redo;
 - создание элемента double-click по пустому canvas с преобразованием screen coordinate в flow coordinate;
 - создание дочернего элемента внутри scope текущего static view;
-- атомарное создание element + directed relation + standard manual-layout position при отпускании connection handle на пустом canvas;
+- атомарное создание element + initial title + directed relation + standard manual-layout position при отпускании connection handle на пустом canvas;
 - inline-редактирование display title по double-click или F2;
 - создание и выбор static views;
 - ручную раскладку через `.likec4/<view>.likec4.snap`;
 - dynamic views и направленные dynamic steps;
 - deployment views, узлы развёртывания, именованные `instanceOf` и deployment relations;
 - keyboard routes для relation authoring/editing через Shift+F10, Enter, Delete/Backspace, F2 и Escape;
+- revision/view-bound canvas interactions для logical, dynamic и deployment edges с fail-closed stale handling;
 - сворачиваемые structure, inspector и DSL panels; DSL скрыт по умолчанию;
 - автоматическое восстановление последнего подтверждённого рабочего пространства после reload;
 - атомарное сохранение sources, manual-layout snapshots и versioned metadata в IndexedDB;
@@ -58,7 +59,11 @@ Screen coordinates преобразуются через `XYFlowInstance.screenT
 
 Для static view с `viewOf` новый canvas element создаётся как child этого scope. Например, создание `component` в `view ... of shop` даёт FQN `shop.component`, поэтому элемент действительно входит в active view.
 
+При connection existing → empty редактор сначала собирает тип и initial title нового элемента. Затем один `element.createConnected` передаёт element, title, relation и drop position в `EditorWorkspace`. Успешная операция создаёт один history entry: один Undo удаляет весь результат, а Redo восстанавливает его целиком. Если relation/compile/verification отклонены, source, revision, history и manual layout не меняются.
+
 Canvas edge может агрегировать несколько logical relations. Inspector показывает discriminator и редактирует exact selected relation. Identity разрешается по compiled relation ID, directed endpoints и ordinal occurrence; после candidate compile workspace повторно подтверждает exact semantic delta.
+
+Logical, dynamic и deployment edge selection привязаны к captured `viewId` и workspace revision. Patch/remove выполняются только если captured context всё ещё совпадает с текущим workspace; после view/revision change stale action отклоняется с русским сообщением и без semantic mutation.
 
 Dynamic step identity разрешается через parser-owned `astPath`, сохранённый в compiled dynamic edge. Deployment relation identity разрешается через parser-owned `RelationId`, который однозначно отображается обратно в `astPath` owning source document. React хранит только transient selection и captured revision/view; source ranges и source occurrence не являются UI state.
 
@@ -79,7 +84,7 @@ Dynamic step identity разрешается через parser-owned `astPath`, 
 → revision-guarded IndexedDB save
 ```
 
-`element.createConnected` является dedicated domain command. Generic batch `EditorCommand[]` не используется. Element, relation и placement либо подтверждаются и фиксируются вместе, либо не изменяют source, layout, revision и history.
+`element.createConnected` является dedicated domain command. Generic batch `EditorCommand[]` не используется. Element, initial title, relation и placement либо подтверждаются и фиксируются вместе, либо не изменяют source, layout, revision и history.
 
 Импорт выполняется как replacement transaction:
 
@@ -128,6 +133,7 @@ Source locations, diagnostics, compiled models, selection, focus, открыты
 - полное authoring-покрытие config, libraries и styles;
 - relation metadata кроме title для logical relations, dynamic steps и deployment relations;
 - удаление одного segment из dynamic `StepSeries`, если для этого требуется структурное переписывание соседних шагов;
+- создание нового logical element через empty-drop из dynamic/deployment view;
 - полная поддержка всего LikeC4 DSL;
 - AI-assisted architecture generation;
 - lossless canonical regeneration любого входного DSL.

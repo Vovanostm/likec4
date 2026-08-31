@@ -116,7 +116,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
     expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 320, y: 180 })
   })
 
-  it('creates scoped element, directed sibling relation and placement in one transaction', async () => {
+  it('creates scoped element with initial title, directed sibling relation and placement in one transaction', async () => {
     const editor = await workspace()
     const viewId = 'index' as ViewId
 
@@ -128,6 +128,7 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
         input: {
           sourceId: 'shop.frontend' as Fqn,
           kind: componentKind,
+          title: 'Payment module',
           viewId,
           position: { x: 420, y: 240 },
         },
@@ -144,18 +145,24 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
       viewId,
     })
     if (result.command !== 'element.createConnected') throw new Error(`Expected createConnected, got ${result.command}`)
-    expect(editor.state.lastValidModel?.$data.elements[result.createdElementId]).toBeDefined()
+    expect(editor.state.lastValidModel?.$data.elements[result.createdElementId]).toMatchObject({ title: 'Payment module' })
     expect(editor.state.lastValidModel?.$data.relations[result.createdRelationId]).toMatchObject({
       source: { model: 'shop.frontend' },
       target: { model: result.createdElementId },
     })
+    expect(editor.state.committedSources[0]?.content).toMatch(/component component 'Payment module'/)
     expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 420, y: 240 })
     expect(editor.state.history.past).toHaveLength(1)
 
     await editor.undo(1)
     expect(editor.state.committedSources[0]?.content).toBe(source)
     expect(editor.state.manualLayouts[viewId]).toBeUndefined()
+    expect(editor.state.lastValidModel?.$data.elements[result.createdElementId]).toBeUndefined()
+    expect(editor.state.lastValidModel?.$data.relations[result.createdRelationId]).toBeUndefined()
+
     await editor.redo(2)
+    expect(editor.state.lastValidModel?.$data.elements[result.createdElementId]).toMatchObject({ title: 'Payment module' })
+    expect(editor.state.lastValidModel?.$data.relations[result.createdRelationId]).toBeDefined()
     expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 420, y: 240 })
   })
 

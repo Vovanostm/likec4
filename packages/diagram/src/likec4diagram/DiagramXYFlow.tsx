@@ -268,8 +268,8 @@ export function LikeC4DiagramXYFlow({
         const screenPosition = pointerScreenPosition(event)
         if (!screenPosition) return
         const sourceId = modelFqn(connectionState.fromNode)
-        const droppedOnPane = event.target instanceof Element
-          && !!event.target.closest('.react-flow__pane')
+        const dropTarget = pointerTargetAt(event.target, screenPosition)
+        const droppedOnPane = !!dropTarget?.closest('.react-flow__pane')
         onCanvasConnectionEnd({
           sourceId,
           outcome: resolveCanvasConnectionOutcome(
@@ -360,6 +360,17 @@ function modelFqn(node: { readonly data?: unknown } | null | undefined): Fqn | n
   if (!data || typeof data !== 'object' || !('modelFqn' in data)) return null
   const value = (data as { readonly modelFqn?: unknown }).modelFqn
   return typeof value === 'string' ? value as Fqn : null
+}
+
+function pointerTargetAt(
+  eventTarget: EventTarget | null,
+  screenPosition: { readonly x: number; readonly y: number },
+): Element | null {
+  if (!(eventTarget instanceof Element)) return null
+  const root = eventTarget.getRootNode() as Node & {
+    elementFromPoint?: (x: number, y: number) => Element | null
+  }
+  return root.elementFromPoint?.(screenPosition.x, screenPosition.y) ?? eventTarget
 }
 
 const Controls = ({ padding }: { padding: ViewPaddings }) => (

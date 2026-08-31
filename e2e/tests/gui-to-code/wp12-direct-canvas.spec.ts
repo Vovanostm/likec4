@@ -1,0 +1,110 @@
+import { expect, test } from '@playwright/test'
+
+function relationCount(source: string): number {
+  return source.match(/->/g)?.length ?? 0
+}
+
+test('connected canvas creation commits title, relation and position as one Undo/Redo action', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'LikeC4: визуальный редактор' })).toBeVisible()
+
+  const codeToggle = page.getByRole('button', { name: 'Код', exact: true })
+  await codeToggle.click()
+  const source = page.getByRole('textbox', { name: 'Исходный код LikeC4' })
+  const before = await source.inputValue()
+  const beforeRelations = relationCount(before)
+  await codeToggle.click()
+  await expect(source).toBeHidden()
+
+  const pane = page.locator('.react-flow__pane').first()
+  const handle = page.locator('.likec4-authoring-handle.source[data-nodeid="shop.web"]').first()
+  await expect(pane).toBeVisible()
+  await expect(handle).toBeVisible()
+
+  const handleBox = await handle.boundingBox()
+  if (!handleBox) throw new Error('Web application authoring handle has no geometry')
+  const start = {
+    x: handleBox.x + handleBox.width / 2,
+    y: handleBox.y + handleBox.height / 2,
+  }
+  const viewport = page.viewportSize()
+  if (!viewport
+    || handleBox.x < 0
+    || handleBox.y < 0
+    || handleBox.x + handleBox.width > viewport.width
+    || handleBox.y + handleBox.height > viewport.height) {
+    throw new Error('Web application authoring handle is not fully inside the interactive viewport')
+  }
+
+  const handleReceivesPointer = await handle.evaluate(element => {
+    const rect = element.getBoundingClientRect()
+    const root = element.getRootNode() as Node & {
+      elementFromPoint?: (x: number, y: number) => Element | null
+    }
+    const target = root.elementFromPoint?.(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    ) ?? null
+    return target === element || element.contains(target)
+  })
+  if (!handleReceivesPointer) {
+    throw new Error('Web application authoring handle is not the active pointer hit target')
+  }
+
+  const drop = await pane.evaluate(element => {
+    const rect = element.getBoundingClientRect()
+    const left = Math.max(rect.left + 32, 32)
+    const right = Math.min(rect.right - 32, window.innerWidth - 32)
+    const top = Math.max(rect.top + 32, 32)
+    const bottom = Math.min(rect.bottom - 32, window.innerHeight - 32)
+    const root = element.getRootNode() as Node & {
+      elementFromPoint?: (x: number, y: number) => Element | null
+    }
+
+    for (let y = bottom; y >= top; y -= 24) {
+      for (let x = right; x >= left; x -= 24) {
+        const target = root.elementFromPoint?.(x, y) ?? null
+        if (target === element || target?.closest('.react-flow__pane') === element) {
+          return { x, y }
+        }
+      }
+    }
+    return null
+  })
+  if (!drop) throw new Error('No visible empty canvas point is available for connection drop')
+
+  // Exercise the same visible authoring handle and trusted pointer sequence that a
+  // user uses. The hidden centered XYFlow handles are routing infrastructure only.
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(drop.x, drop.y, { steps: 12 })
+  await page.mouse.up()
+
+  const createMenu = page.getByRole('region', { name: 'Создать элемент на холсте' })
+  await expect(createMenu).toBeVisible()
+  await expect(createMenu.getByRole('heading', { name: 'Создать и связать' })).toBeVisible()
+  await createMenu.getByRole('button', { name: 'Компонент', exact: true }).click()
+
+  const title = createMenu.getByRole('textbox', { name: 'Название нового элемента' })
+  await expect(title).toBeFocused()
+  await title.fill('Платёжный шлюз')
+  await title.press('Enter')
+  await expect(createMenu).toBeHidden()
+
+  await codeToggle.click()
+  await expect(source).toBeVisible()
+  await expect.poll(
+    async () => await source.inputValue(),
+  ).toContain("component component 'Платёжный шлюз'")
+  const after = await source.inputValue()
+  expect(after).not.toBe(before)
+  expect(relationCount(after)).toBe(beforeRelations + 1)
+
+  const undo = page.getByRole('button', { name: 'Отменить последнее изменение' })
+  await undo.click()
+  await expect.poll(async () => await source.inputValue()).toBe(before)
+
+  const redo = page.getByRole('button', { name: 'Повторить отменённое изменение' })
+  await redo.click()
+  await expect.poll(async () => await source.inputValue()).toBe(after)
+})
