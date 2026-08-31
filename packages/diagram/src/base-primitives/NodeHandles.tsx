@@ -9,16 +9,15 @@ const authoringHandleStyle: CSSProperties = {
   background: 'var(--mantine-color-blue-5)',
   border: '2px solid var(--mantine-color-body)',
   cursor: 'crosshair',
-  pointerEvents: 'all',
   zIndex: 30,
 }
 
 /**
  * XYFlow requires centered hidden handles to route rendered edges. Editable
  * diagrams additionally expose separate side handles for direct connection
- * gestures. Their position is intentionally independent from layout direction:
- * routing handles may sit on viewport-adjacent top/bottom edges, while authoring
- * handles must remain practical pointer targets for canvas editing.
+ * gestures. Their position is intentionally independent from layout direction.
+ * Authoring handles stay mounted so XYFlow measures them during node setup;
+ * read-only mode only hides and disables them.
  */
 export function DefaultHandles({
   direction = 'TB',
@@ -54,6 +53,13 @@ export function DefaultHandles({
       nonexhaustive(direction)
     }
   }
+
+  const authoringStyle: CSSProperties = {
+    ...authoringHandleStyle,
+    visibility: authoring ? 'visible' : 'hidden',
+    pointerEvents: authoring ? 'all' : 'none',
+  }
+
   return (
     <>
       <Handle
@@ -64,22 +70,24 @@ export function DefaultHandles({
         type={'target'}
         position={targetPosition}
         className="likec4-node-handle-center" />
-      {authoring && (
-        <>
-          <Handle
-            id="likec4-authoring-source"
-            type={'source'}
-            position={Position.Right}
-            className="likec4-authoring-handle"
-            style={authoringHandleStyle} />
-          <Handle
-            id="likec4-authoring-target"
-            type={'target'}
-            position={Position.Left}
-            className="likec4-authoring-handle"
-            style={authoringHandleStyle} />
-        </>
-      )}
+      <Handle
+        id="likec4-authoring-source"
+        type={'source'}
+        position={Position.Right}
+        className="likec4-authoring-handle"
+        isConnectable={authoring}
+        isConnectableStart={authoring}
+        isConnectableEnd={authoring}
+        style={authoringStyle} />
+      <Handle
+        id="likec4-authoring-target"
+        type={'target'}
+        position={Position.Left}
+        className="likec4-authoring-handle"
+        isConnectable={authoring}
+        isConnectableStart={authoring}
+        isConnectableEnd={authoring}
+        style={authoringStyle} />
     </>
   )
 }
