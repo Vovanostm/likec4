@@ -15,8 +15,10 @@ const authoringHandleStyle: CSSProperties = {
 
 /**
  * XYFlow requires centered hidden handles to route rendered edges. Editable
- * diagrams additionally expose separate edge-positioned handles for direct
- * connection gestures so authoring never depends on the routing handles.
+ * diagrams additionally expose separate side handles for direct connection
+ * gestures. Their position is intentionally independent from layout direction:
+ * routing handles may sit on viewport-adjacent top/bottom edges, while authoring
+ * handles must remain practical pointer targets for canvas editing.
  */
 export function DefaultHandles({
   direction = 'TB',
@@ -67,13 +69,13 @@ export function DefaultHandles({
           <Handle
             id="likec4-authoring-source"
             type={'source'}
-            position={sourcePosition}
+            position={Position.Right}
             className="likec4-authoring-handle"
             style={authoringHandleStyle} />
           <Handle
             id="likec4-authoring-target"
             type={'target'}
-            position={targetPosition}
+            position={Position.Left}
             className="likec4-authoring-handle"
             style={authoringHandleStyle} />
         </>
