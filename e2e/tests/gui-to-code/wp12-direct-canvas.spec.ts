@@ -19,7 +19,6 @@ test('connected canvas creation commits title, relation and position as one Undo
   const pane = page.locator('.react-flow__pane').first()
   const handle = page.locator('.likec4-authoring-handle.source[data-nodeid="shop.web"]').first()
   await expect(pane).toBeVisible()
-  await handle.scrollIntoViewIfNeeded()
   await expect(handle).toBeVisible()
 
   const handleBox = await handle.boundingBox()
@@ -30,11 +29,11 @@ test('connected canvas creation commits title, relation and position as one Undo
   }
   const viewport = page.viewportSize()
   if (!viewport
-    || start.x < 0
-    || start.y < 0
-    || start.x >= viewport.width
-    || start.y >= viewport.height) {
-    throw new Error('Web application authoring handle center is outside the interactive viewport')
+    || handleBox.x < 0
+    || handleBox.y < 0
+    || handleBox.x + handleBox.width > viewport.width
+    || handleBox.y + handleBox.height > viewport.height) {
+    throw new Error('Web application authoring handle is not fully inside the interactive viewport')
   }
 
   const handleReceivesPointer = await handle.evaluate(element => {
@@ -45,7 +44,7 @@ test('connected canvas creation commits title, relation and position as one Undo
     const target = root.elementFromPoint?.(
       rect.left + rect.width / 2,
       rect.top + rect.height / 2,
-    )
+    ) ?? null
     return target === element || element.contains(target)
   })
   if (!handleReceivesPointer) {
@@ -64,7 +63,7 @@ test('connected canvas creation commits title, relation and position as one Undo
 
     for (let y = bottom; y >= top; y -= 24) {
       for (let x = right; x >= left; x -= 24) {
-        const target = root.elementFromPoint?.(x, y)
+        const target = root.elementFromPoint?.(x, y) ?? null
         if (target === element || target?.closest('.react-flow__pane') === element) {
           return { x, y }
         }
