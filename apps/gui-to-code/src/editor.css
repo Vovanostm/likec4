@@ -98,6 +98,27 @@
   width: 4.5rem;
 }
 
+.canvas-context-menu {
+  position: fixed;
+  z-index: 100;
+  display: grid;
+  min-width: 13rem;
+  max-width: min(20rem, calc(100vw - 1.5rem));
+  max-height: min(26rem, calc(100vh - 1.5rem));
+  overflow: auto;
+  gap: 0.2rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border-color, #c8c8c8);
+  border-radius: 0.5rem;
+  background: var(--panel-background, Canvas);
+  box-shadow: 0 0.6rem 1.8rem rgb(0 0 0 / 22%);
+}
+
+.canvas-context-menu button {
+  width: 100%;
+  text-align: start;
+}
+
 @media (max-width: 720px) {
   .professional-canvas-toolbar {
     align-items: stretch;
@@ -113,6 +134,14 @@
     min-width: 0;
     max-height: 50vh;
     grid-template-columns: 1fr;
+  }
+
+  .canvas-context-menu {
+    inset-inline: 0.75rem !important;
+    inset-block-start: auto !important;
+    inset-block-end: 0.75rem;
+    width: auto;
+    max-width: none;
   }
 }
 
