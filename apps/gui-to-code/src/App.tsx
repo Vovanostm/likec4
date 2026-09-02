@@ -12,6 +12,8 @@ import { downloadSource } from './editor/file-downloads'
 import { useCanvasEntityEditor } from './editor/use-canvas-entity-editor'
 import { useDurableWorkspace } from './editor/use-durable-workspace'
 import { useProfessionalCanvas } from './editor/use-professional-canvas'
+import { CanvasContextMenu } from './editor/ui/CanvasContextMenu'
+import type { CanvasContextMenuKind } from './editor/ui/CanvasContextMenu'
 import { CanvasCreateMenu } from './editor/ui/CanvasCreateMenu'
 import { ElementInspector } from './editor/ui/ElementInspector'
 import { InlineTitleEditor } from './editor/ui/InlineTitleEditor'
@@ -33,6 +35,12 @@ interface Point {
   readonly y: number
 }
 
+interface ContextMenuState {
+  readonly kind: CanvasContextMenuKind
+  readonly screenPosition: Point
+  readonly flowPosition?: Point
+}
+
 export function App() {
   const runtime = useWorkspaceRuntime()
   const durable = useDurableWorkspace(runtime)
@@ -46,6 +54,7 @@ export function App() {
   const [structureOpen, setStructureOpen] = useState(true)
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [codeOpen, setCodeOpen] = useState(false)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const canvas = useCanvasEntityEditor(
     runtime,
     id => semantic.selectElement(id, false),
@@ -77,6 +86,7 @@ export function App() {
     : null
 
   const beginConnectionGesture = (): void => {
+    setContextMenu(null)
     connectionGesture.current = connectionContext
       ? captureConnectionGesture(connectionContext)
       : null
@@ -121,6 +131,11 @@ export function App() {
     return convert(screen)
   }
 
+  const keyboardMenuPoint = (): Point => {
+    const bounds = diagramPanel.current?.getBoundingClientRect()
+    return bounds ? { x: bounds.left + 32, y: bounds.top + 88 } : { x: 32, y: 88 }
+  }
+
   const focusRelationTitle = (): void => {
     queueMicrotask(() => document.querySelector<HTMLInputElement>('[data-relation-title-input]')?.focus())
   }
@@ -153,6 +168,12 @@ export function App() {
           event.preventDefault()
           professional.selectAll()
           runtime.setFeedback('Все элементы текущего вида выделены.')
+          return
+        }
+        if (event.key === 'Escape' && contextMenu) {
+          event.preventDefault()
+          setContextMenu(null)
+          diagramPanel.current?.focus()
           return
         }
         if (event.key === 'Escape' && canvas.inlineTitle) {
@@ -210,18 +231,15 @@ export function App() {
         }
         if (event.shiftKey && event.key === 'F10' && !isEditableTarget(event.target)) {
           event.preventDefault()
-          setInspectorOpen(true)
-          if (canvas.selection
+          const screenPosition = keyboardMenuPoint()
+          const edgeSelected = !!canvas.selection
             && canvas.selection.family !== 'logical-element'
-            && canvas.selection.family !== 'deployment-element') {
-            focusRelationTitle()
-          } else if (runtime.selectedView?._type === 'dynamic') {
-            wp06.activateDynamicStep()
-          } else if (runtime.selectedView?._type === 'deployment') {
-            wp06.activateDeploymentRelation()
-          } else {
-            semantic.activateRelationTool()
-          }
+            && canvas.selection.family !== 'deployment-element'
+          setContextMenu({
+            kind: edgeSelected ? 'edge' : semantic.selection ? 'node' : 'canvas',
+            screenPosition,
+            ...(!edgeSelected && !semantic.selection ? { flowPosition: flowPoint(screenPosition) ?? undefined } : {}),
+          })
           return
         }
         if (event.key === 'Escape' && wp06.connectionMode) wp06.cancelConnection()
@@ -349,9 +367,29 @@ export function App() {
                         canvas.startInlineTitle(node.modelRef as Fqn, overlayPoint({ x: event.clientX, y: event.clientY }))
                       }
                     }}
+                    onNodeContextMenu={(node, event) => {
+                      event.preventDefault()
+                      if (node.modelRef) canvas.selectElement(node.modelRef as Fqn)
+                      setContextMenu({ kind: 'node', screenPosition: { x: event.clientX, y: event.clientY } })
+                    }}
                     onEdgeClick={edge => {
                       canvas.selectEdge(edge)
                       setInspectorOpen(true)
+                    }}
+                    onEdgeContextMenu={(edge, event) => {
+                      event.preventDefault()
+                      canvas.selectEdge(edge)
+                      setContextMenu({ kind: 'edge', screenPosition: { x: event.clientX, y: event.clientY } })
+                    }}
+                    onCanvasContextMenu={event => {
+                      event.preventDefault()
+                      const screenPosition = { x: event.clientX, y: event.clientY }
+                      const position = flowPoint(screenPosition)
+                      setContextMenu({
+                        kind: 'canvas',
+                        screenPosition,
+                        ...(position ? { flowPosition: position } : {}),
+                      })
                     }}
                     onConnect={connectionHandler}
                     onCanvasConnectionEnd={canvasAuthoringEnabled
@@ -377,6 +415,7 @@ export function App() {
                       }
                       : null}
                     onCanvasClick={event => {
+                      setContextMenu(null)
                       const screen = { x: event.clientX, y: event.clientY }
                       const position = flowPoint(screen)
                       if (!position) return
@@ -402,6 +441,62 @@ export function App() {
                 </LikeC4ModelProvider>
               </LikeC4EditorProvider>
             : <p className="empty">В проекте нет подходящего вида для отображения.</p>}
+
+          {contextMenu && (
+            <CanvasContextMenu
+              kind={contextMenu.kind}
+              x={contextMenu.screenPosition.x}
+              y={contextMenu.screenPosition.y}
+              canRemoveNode={!!semantic.selection}
+              hasManualLayout={runtime.hasManualLayout}
+              onClose={() => {
+                setContextMenu(null)
+                diagramPanel.current?.focus()
+              }}
+              onEdit={() => {
+                setContextMenu(null)
+                setInspectorOpen(true)
+                if (contextMenu.kind === 'edge') focusRelationTitle()
+              }}
+              onRenameNode={() => {
+                setContextMenu(null)
+                if (semantic.selection) canvas.startInlineTitle(semantic.selection.id, overlayPoint(contextMenu.screenPosition))
+              }}
+              onConnectNode={() => {
+                setContextMenu(null)
+                semantic.activateRelationTool()
+              }}
+              onRemoveNode={() => {
+                setContextMenu(null)
+                void semantic.inspectRemoval()
+              }}
+              onRemoveEdge={() => {
+                setContextMenu(null)
+                void removeSelectedCanvasEdge()
+              }}
+              onCreateElement={() => {
+                const position = contextMenu.flowPosition ?? flowPoint(contextMenu.screenPosition)
+                setContextMenu(null)
+                if (position) canvas.requestCreation(position, overlayPoint(contextMenu.screenPosition))
+              }}
+              onSelectAll={() => {
+                setContextMenu(null)
+                professional.selectAll()
+              }}
+              onAutoLayout={() => {
+                setContextMenu(null)
+                runtime.setLayoutMode('auto')
+                runtime.setFeedback('Показана автоматическая раскладка.')
+              }}
+              onResetLayout={() => {
+                setContextMenu(null)
+                void runtime.resetLayout()
+              }}
+              onFitView={() => {
+                setContextMenu(null)
+                void professional.fitView()
+              }} />
+          )}
 
           {canvas.pendingCreation && (
             <CanvasCreateMenu
