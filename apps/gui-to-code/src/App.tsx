@@ -1,4 +1,4 @@
-import type { ElementKind, Fqn } from '@likec4/core/types'
+import type { Fqn } from '@likec4/core/types'
 import { LikeC4EditorProvider, LikeC4ModelProvider, ReactLikeC4 } from '@likec4/diagram'
 import type { CSSProperties } from 'react'
 import { useEffect, useRef, useState } from 'react'
@@ -11,9 +11,13 @@ import type { ConnectionGestureSnapshot } from './editor/connection-gesture'
 import { downloadSource } from './editor/file-downloads'
 import { useCanvasEntityEditor } from './editor/use-canvas-entity-editor'
 import { useDurableWorkspace } from './editor/use-durable-workspace'
+import { useProfessionalCanvas } from './editor/use-professional-canvas'
+import { CanvasContextMenu } from './editor/ui/CanvasContextMenu'
+import type { CanvasContextMenuKind } from './editor/ui/CanvasContextMenu'
 import { CanvasCreateMenu } from './editor/ui/CanvasCreateMenu'
 import { ElementInspector } from './editor/ui/ElementInspector'
 import { InlineTitleEditor } from './editor/ui/InlineTitleEditor'
+import { ProfessionalCanvasToolbar } from './editor/ui/ProfessionalCanvasToolbar'
 import { RelationInspector } from './editor/ui/RelationInspector'
 import { RemoveElementConfirmation } from './editor/ui/RemoveElementConfirmation'
 import { StructureTree } from './editor/ui/StructureTree'
@@ -26,15 +30,15 @@ import './editor.css'
 
 export { downloadSource }
 
-const createKinds = [
-  ['actor' as ElementKind, 'Актор'],
-  ['system' as ElementKind, 'Система'],
-  ['component' as ElementKind, 'Компонент'],
-] as const
-
 interface Point {
   readonly x: number
   readonly y: number
+}
+
+interface ContextMenuState {
+  readonly kind: CanvasContextMenuKind
+  readonly screenPosition: Point
+  readonly flowPosition?: Point
 }
 
 export function App() {
@@ -42,6 +46,7 @@ export function App() {
   const durable = useDurableWorkspace(runtime)
   const semantic = useSemanticEditor(runtime)
   const wp06 = useWp06Runtime(runtime)
+  const professional = useProfessionalCanvas(runtime)
   const state = runtime.state
   const connectionGesture = useRef<ConnectionGestureSnapshot | null>(null)
   const diagramPanel = useRef<HTMLElement | null>(null)
@@ -49,6 +54,7 @@ export function App() {
   const [structureOpen, setStructureOpen] = useState(true)
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [codeOpen, setCodeOpen] = useState(false)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const canvas = useCanvasEntityEditor(
     runtime,
     id => semantic.selectElement(id, false),
@@ -80,6 +86,7 @@ export function App() {
     : null
 
   const beginConnectionGesture = (): void => {
+    setContextMenu(null)
     connectionGesture.current = connectionContext
       ? captureConnectionGesture(connectionContext)
       : null
@@ -124,6 +131,11 @@ export function App() {
     return convert(screen)
   }
 
+  const keyboardMenuPoint = (): Point => {
+    const bounds = diagramPanel.current?.getBoundingClientRect()
+    return bounds ? { x: bounds.left + 32, y: bounds.top + 88 } : { x: 32, y: 88 }
+  }
+
   const focusRelationTitle = (): void => {
     queueMicrotask(() => document.querySelector<HTMLInputElement>('[data-relation-title-input]')?.focus())
   }
@@ -152,6 +164,18 @@ export function App() {
     <main
       className="editor-shell"
       onKeyDown={event => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && !isEditableTarget(event.target)) {
+          event.preventDefault()
+          professional.selectAll()
+          runtime.setFeedback('Все элементы текущего вида выделены.')
+          return
+        }
+        if (event.key === 'Escape' && contextMenu) {
+          event.preventDefault()
+          setContextMenu(null)
+          diagramPanel.current?.focus()
+          return
+        }
         if (event.key === 'Escape' && canvas.inlineTitle) {
           event.preventDefault()
           canvas.cancelInlineTitle()
@@ -167,8 +191,12 @@ export function App() {
         if (event.key === 'Escape' && canvas.selection && canvas.selection.family !== 'logical-element') {
           event.preventDefault()
           canvas.clearSelection()
+          professional.clearVisualSelection()
           diagramPanel.current?.focus()
           return
+        }
+        if (event.key === 'Escape' && !isEditableTarget(event.target)) {
+          professional.clearVisualSelection()
         }
         if ((event.key === 'Delete' || event.key === 'Backspace')
           && (canvas.selection?.family === 'logical-relation'
@@ -203,18 +231,15 @@ export function App() {
         }
         if (event.shiftKey && event.key === 'F10' && !isEditableTarget(event.target)) {
           event.preventDefault()
-          setInspectorOpen(true)
-          if (canvas.selection
+          const screenPosition = keyboardMenuPoint()
+          const edgeSelected = !!canvas.selection
             && canvas.selection.family !== 'logical-element'
-            && canvas.selection.family !== 'deployment-element') {
-            focusRelationTitle()
-          } else if (runtime.selectedView?._type === 'dynamic') {
-            wp06.activateDynamicStep()
-          } else if (runtime.selectedView?._type === 'deployment') {
-            wp06.activateDeploymentRelation()
-          } else {
-            semantic.activateRelationTool()
-          }
+            && canvas.selection.family !== 'deployment-element'
+          setContextMenu({
+            kind: edgeSelected ? 'edge' : semantic.selection ? 'node' : 'canvas',
+            screenPosition,
+            ...(!edgeSelected && !semantic.selection ? { flowPosition: flowPoint(screenPosition) ?? undefined } : {}),
+          })
           return
         }
         if (event.key === 'Escape' && wp06.connectionMode) wp06.cancelConnection()
@@ -287,11 +312,22 @@ export function App() {
           onPointerDownCapture={beginConnectionGesture}>
           <header>
             <h2>Диаграмма</h2>
-            <div className="actions" aria-label="Инструменты диаграммы">
-              {createKinds.map(([kind, label]) => {
-                const unavailable = !semantic.availableKinds.has(kind)
-                return <button key={kind} type="button" aria-label={`Создать: ${label}`} aria-pressed={semantic.activeKind === kind} disabled={semantic.canvasDisabled || unavailable} title={unavailable ? 'Этот тип элемента недоступен в текущей спецификации.' : undefined} onClick={() => semantic.activateCreateTool(kind)}>{label}</button>
-              })}
+            <ProfessionalCanvasToolbar
+              availableKinds={semantic.availableKinds}
+              activeKind={semantic.activeKind}
+              busy={semantic.canvasDisabled}
+              gridVisible={professional.gridVisible}
+              snapEnabled={professional.snapEnabled}
+              gridStep={professional.gridStep}
+              onCreate={semantic.activateCreateTool}
+              onLayout={action => void professional.applyLayout(action)}
+              onSelectAll={professional.selectAll}
+              onFitSelection={() => void professional.fitSelection()}
+              onFitView={() => void professional.fitView()}
+              onGridVisibleChange={professional.setGridVisible}
+              onSnapEnabledChange={professional.setSnapEnabled}
+              onGridStepChange={professional.setGridStep} />
+            <div className="actions" aria-label="Инструменты связей">
               <button type="button" aria-label="Связать элементы" aria-pressed={semantic.relationActive} disabled={semantic.canvasDisabled || semantic.elements.length < 2} onClick={semantic.activateRelationTool}>Связать</button>
               <button type="button" aria-label="Добавить направленный шаг" aria-pressed={wp06.connectionMode === 'dynamic-step'} disabled={runtime.busy || wp06.selectedViewType !== 'dynamic' || wp06.logicalElements.length < 2} onClick={wp06.activateDynamicStep}>Добавить шаг</button>
               <button type="button" aria-label="Создать связь развёртывания" aria-pressed={wp06.connectionMode === 'deployment-relation'} disabled={runtime.busy || wp06.selectedViewType !== 'deployment' || wp06.deploymentElements.length < 2} onClick={wp06.activateDeploymentRelation}>Связь развёртывания</button>
@@ -307,11 +343,20 @@ export function App() {
                     layoutType={runtime.layoutMode}
                     className="diagram"
                     nodesSelectable
+                    background={professional.gridVisible ? 'lines' : 'transparent'}
+                    reactFlowProps={{
+                      snapToGrid: professional.snapEnabled,
+                      snapGrid: [professional.gridStep, professional.gridStep],
+                      selectionKeyCode: 'Shift',
+                      multiSelectionKeyCode: ['Meta', 'Control'],
+                      selectNodesOnDrag: false,
+                    }}
                     enableCompareWithLatest
                     onLayoutTypeChange={runtime.setLayoutMode}
                     onInitialized={({ diagram, xyflow }) => {
                       diagram.toggleFeature('ReadOnly', !canvasAuthoringEnabled)
                       semantic.diagramApi.current = diagram
+                      professional.attachXYFlow(xyflow)
                       screenToFlowPosition.current = position => xyflow.screenToFlowPosition(position)
                     }}
                     onNodeClick={node => {
@@ -322,9 +367,29 @@ export function App() {
                         canvas.startInlineTitle(node.modelRef as Fqn, overlayPoint({ x: event.clientX, y: event.clientY }))
                       }
                     }}
+                    onNodeContextMenu={(node, event) => {
+                      event.preventDefault()
+                      if (node.modelRef) canvas.selectElement(node.modelRef as Fqn)
+                      setContextMenu({ kind: 'node', screenPosition: { x: event.clientX, y: event.clientY } })
+                    }}
                     onEdgeClick={edge => {
                       canvas.selectEdge(edge)
                       setInspectorOpen(true)
+                    }}
+                    onEdgeContextMenu={(edge, event) => {
+                      event.preventDefault()
+                      canvas.selectEdge(edge)
+                      setContextMenu({ kind: 'edge', screenPosition: { x: event.clientX, y: event.clientY } })
+                    }}
+                    onCanvasContextMenu={event => {
+                      event.preventDefault()
+                      const screenPosition = { x: event.clientX, y: event.clientY }
+                      const position = flowPoint(screenPosition)
+                      setContextMenu({
+                        kind: 'canvas',
+                        screenPosition,
+                        ...(position ? { flowPosition: position } : {}),
+                      })
                     }}
                     onConnect={connectionHandler}
                     onCanvasConnectionEnd={canvasAuthoringEnabled
@@ -350,6 +415,7 @@ export function App() {
                       }
                       : null}
                     onCanvasClick={event => {
+                      setContextMenu(null)
                       const screen = { x: event.clientX, y: event.clientY }
                       const position = flowPoint(screen)
                       if (!position) return
@@ -363,6 +429,7 @@ export function App() {
                         })
                         return
                       }
+                      professional.clearVisualSelection()
                       canvas.clearSelection()
                     }}
                     onCanvasDblClick={event => {
@@ -374,6 +441,62 @@ export function App() {
                 </LikeC4ModelProvider>
               </LikeC4EditorProvider>
             : <p className="empty">В проекте нет подходящего вида для отображения.</p>}
+
+          {contextMenu && (
+            <CanvasContextMenu
+              kind={contextMenu.kind}
+              x={contextMenu.screenPosition.x}
+              y={contextMenu.screenPosition.y}
+              canRemoveNode={!!semantic.selection}
+              hasManualLayout={runtime.hasManualLayout}
+              onClose={() => {
+                setContextMenu(null)
+                diagramPanel.current?.focus()
+              }}
+              onEdit={() => {
+                setContextMenu(null)
+                setInspectorOpen(true)
+                if (contextMenu.kind === 'edge') focusRelationTitle()
+              }}
+              onRenameNode={() => {
+                setContextMenu(null)
+                if (semantic.selection) canvas.startInlineTitle(semantic.selection.id, overlayPoint(contextMenu.screenPosition))
+              }}
+              onConnectNode={() => {
+                setContextMenu(null)
+                semantic.activateRelationTool()
+              }}
+              onRemoveNode={() => {
+                setContextMenu(null)
+                void semantic.inspectRemoval()
+              }}
+              onRemoveEdge={() => {
+                setContextMenu(null)
+                void removeSelectedCanvasEdge()
+              }}
+              onCreateElement={() => {
+                const position = contextMenu.flowPosition ?? flowPoint(contextMenu.screenPosition)
+                setContextMenu(null)
+                if (position) canvas.requestCreation(position, overlayPoint(contextMenu.screenPosition))
+              }}
+              onSelectAll={() => {
+                setContextMenu(null)
+                professional.selectAll()
+              }}
+              onAutoLayout={() => {
+                setContextMenu(null)
+                runtime.setLayoutMode('auto')
+                runtime.setFeedback('Показана автоматическая раскладка.')
+              }}
+              onResetLayout={() => {
+                setContextMenu(null)
+                void runtime.resetLayout()
+              }}
+              onFitView={() => {
+                setContextMenu(null)
+                void professional.fitView()
+              }} />
+          )}
 
           {canvas.pendingCreation && (
             <CanvasCreateMenu
@@ -483,5 +606,5 @@ export function App() {
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && !!target.closest('input, textarea, select, [contenteditable="true"]')
+  return target instanceof HTMLElement && !!target.closest('input, textarea, select, [contenteditable="true"], .monaco-editor')
 }
