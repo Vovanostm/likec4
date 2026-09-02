@@ -25,8 +25,8 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   const [snapEnabled, setSnapEnabled] = useState(false)
   const [gridStep, setGridStepState] = useState(16)
 
-  const attachXYFlow = (instance: XYFlowPort): void => {
-    xyflow.current = instance
+  const attachXYFlow = (instance: unknown): void => {
+    xyflow.current = instance as XYFlowPort
   }
 
   const selectedNodes = (): readonly CanvasNode[] => xyflow.current?.getNodes().filter(node => node.selected) ?? []
