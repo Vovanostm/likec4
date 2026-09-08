@@ -153,20 +153,20 @@ export function captureCanvasClipboard(
   }
   if (selectedModelIds.size === 0) return null
 
-  const elements = [...selectedModelIds]
+  const elements: ClipboardElement[] = [...selectedModelIds]
     .sort((left, right) => depth(left) - depth(right) || left.localeCompare(right))
     .map(id => {
       const element = state.lastValidModel!.$data.elements[id]!
       return {
         id,
-        kind: element.kind,
+        kind: element.kind as ElementKind,
         title: element.title,
         description: typeof element.description === 'string' ? element.description : null,
         technology: element.technology ?? null,
         tags: element.tags ? [...element.tags] : [],
         parentId: parentId(id),
         position: positions.get(id) ?? { x: 0, y: 0 },
-      } satisfies ClipboardElement
+      }
     })
 
   const relations = Object.entries(state.lastValidModel?.$data.relations ?? {})
