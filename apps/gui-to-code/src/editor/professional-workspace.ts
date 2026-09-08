@@ -40,6 +40,8 @@ interface MutableSnapshot {
 
 type ManualLayouts = Readonly<Record<ViewId, ViewManualLayoutSnapshot>>
 
+type VerifiedRelation = readonly [RelationId, unknown]
+
 export interface ProfessionalWorkspaceContext {
   readonly state: EditorWorkspaceState
   readonly sourceEdits?: ProfessionalSourceEditPort
@@ -102,7 +104,7 @@ function exactRelations(
   state: EditorWorkspaceState,
   model: NonNullable<CompileResult['model']>,
   plan: PasteSubgraphPlan,
-): readonly [RelationId, unknown][] | null {
+): readonly VerifiedRelation[] | null {
   const before = state.lastValidModel?.$data.relations ?? {}
   const after = model.$data.relations
   const beforeIds = new Set(Object.keys(before))
@@ -113,7 +115,7 @@ function exactRelations(
     `${localEndpoint(relation.source)}→${localEndpoint(relation.target)}`).sort()
   const expected = plan.relations.map(relation => `${relation.sourceId}→${relation.targetId}`).sort()
   if (actual.length !== expected.length || actual.some((value, index) => value !== expected[index])) return null
-  return added as readonly [RelationId, unknown][]
+  return added.map(([id, relation]) => [id as RelationId, relation] as const)
 }
 
 function cloneLayouts(layouts: ManualLayouts): Record<ViewId, ViewManualLayoutSnapshot> {
