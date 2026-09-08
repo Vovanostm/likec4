@@ -9,6 +9,7 @@ import type { DocumentEditErrorCode } from '@likec4/language-services/browser'
 import type { SourceFile } from './contracts'
 import { EditorDocumentError } from './contracts'
 import type { PasteSubgraphPlan } from './professional-clipboard'
+import { patchLogicalRelationTitle } from './relation-source-edits'
 
 interface ApplicableEditPlan {
   readonly baseRevisions: Readonly<Record<string, string>>
@@ -99,6 +100,7 @@ export const professionalSourceEditPort: ProfessionalSourceEditPort = {
         }
       }
 
+      const occurrences = new Map<string, number>()
       for (const relation of plan.relations) {
         const documents = await documentsFor(candidate)
         candidate = applyPlan(candidate, await documents.planAddRelation({
@@ -106,6 +108,17 @@ export const professionalSourceEditPort: ProfessionalSourceEditPort = {
           target: relation.targetId,
           documentUri: plan.documentUri,
         }))
+        const key = `${relation.sourceId}\u0000${relation.targetId}`
+        const occurrence = occurrences.get(key) ?? 0
+        occurrences.set(key, occurrence + 1)
+        if (relation.title) {
+          candidate = patchLogicalRelationTitle(candidate, {
+            sourceId: relation.sourceId,
+            targetId: relation.targetId,
+            occurrence,
+            documentUri: plan.documentUri,
+          }, relation.title)
+        }
       }
       return candidate
     } catch (error) {
