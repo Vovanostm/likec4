@@ -1,9 +1,14 @@
 import type { Fqn, ViewId, ViewManualLayoutSnapshot } from '@likec4/core/types'
 import { describe, expect, it, vi } from 'vitest'
-import type { CompileResult, EditorWorkspaceState, SourceFile } from './contracts'
+import type { CompileResult, EditorWorkspaceState, RemovalDependencyReport, SourceFile } from './contracts'
 import type { CanvasClipboard, PasteSubgraphPlan } from './professional-clipboard'
+import type { MultiRemovalInspection } from './professional-removal'
 import type { ProfessionalSourceEditPort } from './professional-source-edits'
-import { applyPasteSubgraph } from './professional-workspace'
+import {
+  applyPasteSubgraph,
+  applyRemoveSubgraph,
+  inspectMultiRemoval,
+} from './professional-workspace'
 
 const viewId = 'index' as ViewId
 const documentUri = 'file:///workspace/model.c4'
@@ -76,10 +81,23 @@ const clipboard: CanvasClipboard = {
   relations: [{ id: 'r1' as never, sourceId: 'A' as Fqn, targetId: 'B' as Fqn, title: 'calls' }],
 }
 
+function report(target: Fqn, dependencies: RemovalDependencyReport['dependencies'] = []): RemovalDependencyReport {
+  return { target, revision: `dependencies:${target}`, dependencies }
+}
+
+const removalInspection: MultiRemovalInspection = {
+  revision: 3,
+  roots: ['A' as Fqn, 'B' as Fqn],
+  reports: [report('A' as Fqn), report('B' as Fqn)],
+}
+
 function sourceEdits(): ProfessionalSourceEditPort {
   return {
     async createSubgraph(_sources: readonly SourceFile[], _plan: PasteSubgraphPlan) {
       return [{ uri: 'model.c4', content: 'after' }]
+    },
+    async removeSubgraph() {
+      return [{ uri: 'model.c4', content: 'removed' }]
     },
   }
 }
@@ -95,7 +113,7 @@ function successCompiler(): (revision: number, sources: readonly SourceFile[]) =
   })
 }
 
-describe('professional workspace transaction', () => {
+describe('professional workspace paste transaction', () => {
   it('commits the complete semantic and layout delta exactly once', async () => {
     const state = stateFixture()
     const commitCandidate = vi.fn()
@@ -129,7 +147,7 @@ describe('professional workspace transaction', () => {
     const commitCandidate = vi.fn()
     const result = await applyPasteSubgraph({
       state,
-      sourceEdits: { createSubgraph },
+      sourceEdits: { ...sourceEdits(), createSubgraph },
       compileCandidate,
       commitCandidate,
       isCurrent: () => true,
@@ -198,6 +216,120 @@ describe('professional workspace transaction', () => {
     }, { clipboard, viewId, documentUri }, state.revision)
 
     expect(result).toMatchObject({ status: 'rejected', issues: [{ code: 'clipboard-verification-failed' }] })
+    expect(commitCandidate).not.toHaveBeenCalled()
+  })
+})
+
+describe('professional workspace multi-removal transaction', () => {
+  it('inspects every normalized root against one immutable workspace snapshot', async () => {
+    const state = stateFixture()
+    const inspectElementRemoval = vi.fn(async (_sources: readonly SourceFile[], id: Fqn) => report(id))
+    const result = await inspectMultiRemoval({
+      state,
+      inspectElementRemoval,
+      isCurrent: () => true,
+      currentRevision: () => state.revision,
+    }, ['B' as Fqn, 'A' as Fqn, 'A' as Fqn], state.revision)
+
+    expect(result).toMatchObject({
+      status: 'ready',
+      inspection: { revision: 3, roots: ['A', 'B'] },
+    })
+    expect(inspectElementRemoval).toHaveBeenCalledTimes(2)
+    expect(inspectElementRemoval.mock.calls.every(([sources]) => sources === state.committedSources)).toBe(true)
+  })
+
+  it('rejects stale inspection before dependency work', async () => {
+    const state = stateFixture()
+    const inspectElementRemoval = vi.fn(async (_sources: readonly SourceFile[], id: Fqn) => report(id))
+    const result = await inspectMultiRemoval({
+      state,
+      inspectElementRemoval,
+      isCurrent: () => true,
+      currentRevision: () => state.revision,
+    }, ['A' as Fqn, 'B' as Fqn], state.revision - 1)
+
+    expect(result).toEqual({ status: 'conflict', revision: 3 })
+    expect(inspectElementRemoval).not.toHaveBeenCalled()
+  })
+
+  it('commits two-root removal and reconciled layout exactly once', async () => {
+    const state = stateFixture()
+    const commitCandidate = vi.fn()
+    const result = await applyRemoveSubgraph({
+      state,
+      sourceEdits: sourceEdits(),
+      compileCandidate: async revision => ({
+        revision,
+        diagnostics: [],
+        model: compiled([]) as never,
+      }),
+      commitCandidate,
+      isCurrent: () => true,
+      currentRevision: () => state.revision,
+    }, removalInspection, state.revision)
+
+    expect(result).toMatchObject({
+      status: 'applied',
+      command: 'subgraph.remove',
+      revision: 4,
+      removedElementIds: ['A', 'B'],
+    })
+    expect(commitCandidate).toHaveBeenCalledTimes(1)
+    const [revision, sources, , layouts] = commitCandidate.mock.calls[0]!
+    expect(revision).toBe(4)
+    expect(sources).toEqual([{ uri: 'model.c4', content: 'removed' }])
+    expect((layouts as Record<ViewId, ViewManualLayoutSnapshot>)[viewId]?.nodes).toHaveLength(0)
+  })
+
+  it('rejects unsupported dependency without source mutation or compile', async () => {
+    const state = stateFixture()
+    const removeSubgraph = vi.fn(sourceEdits().removeSubgraph!)
+    const compileCandidate = vi.fn(async (revision: number) => ({ revision, diagnostics: [], model: compiled([]) as never }))
+    const commitCandidate = vi.fn()
+    const unsupported: MultiRemovalInspection = {
+      revision: 3,
+      roots: ['A' as Fqn],
+      reports: [report('A' as Fqn, [{
+        id: 'unsupported:A',
+        kind: 'semantic-reference',
+        uri: 'model.c4',
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        removal: 'unsupported',
+      }])],
+    }
+    const result = await applyRemoveSubgraph({
+      state,
+      sourceEdits: { ...sourceEdits(), removeSubgraph },
+      compileCandidate,
+      commitCandidate,
+      isCurrent: () => true,
+      currentRevision: () => state.revision,
+    }, unsupported, state.revision)
+
+    expect(result).toMatchObject({ status: 'rejected', issues: [{ code: 'removal-unsupported' }] })
+    expect(removeSubgraph).not.toHaveBeenCalled()
+    expect(compileCandidate).not.toHaveBeenCalled()
+    expect(commitCandidate).not.toHaveBeenCalled()
+  })
+
+  it('rejects unexpected element delta without committing', async () => {
+    const state = stateFixture()
+    const commitCandidate = vi.fn()
+    const result = await applyRemoveSubgraph({
+      state,
+      sourceEdits: sourceEdits(),
+      compileCandidate: async revision => ({
+        revision,
+        diagnostics: [],
+        model: compiled(['B']) as never,
+      }),
+      commitCandidate,
+      isCurrent: () => true,
+      currentRevision: () => state.revision,
+    }, removalInspection, state.revision)
+
+    expect(result).toMatchObject({ status: 'rejected', issues: [{ code: 'removal-verification-failed' }] })
     expect(commitCandidate).not.toHaveBeenCalled()
   })
 })
