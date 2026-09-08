@@ -164,7 +164,23 @@ export function App() {
     <main
       className="editor-shell"
       onKeyDown={event => {
-        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && !isEditableTarget(event.target)) {
+        const modifier = event.metaKey || event.ctrlKey
+        if (modifier && event.key.toLowerCase() === 'c' && !isEditableTarget(event.target)) {
+          event.preventDefault()
+          professional.copySelection()
+          return
+        }
+        if (modifier && event.key.toLowerCase() === 'v' && !isEditableTarget(event.target)) {
+          event.preventDefault()
+          void professional.pasteClipboard()
+          return
+        }
+        if (modifier && event.key.toLowerCase() === 'd' && !isEditableTarget(event.target)) {
+          event.preventDefault()
+          void professional.duplicateSelection()
+          return
+        }
+        if (modifier && event.key.toLowerCase() === 'a' && !isEditableTarget(event.target)) {
           event.preventDefault()
           professional.selectAll()
           runtime.setFeedback('Все элементы текущего вида выделены.')
@@ -375,6 +391,7 @@ export function App() {
                     }}
                     onNodeContextMenu={(node, event) => {
                       event.preventDefault()
+                      professional.ensureNodeSelected(node.id)
                       if (node.modelRef) canvas.selectElement(node.modelRef as Fqn)
                       setContextMenu({ kind: 'node', screenPosition: { x: event.clientX, y: event.clientY } })
                     }}
@@ -454,6 +471,8 @@ export function App() {
               x={contextMenu.screenPosition.x}
               y={contextMenu.screenPosition.y}
               canRemoveNode={!!semantic.selection}
+              canCopy={professional.selectedNodeIds().size > 0}
+              canPaste={professional.hasClipboard}
               hasManualLayout={runtime.hasManualLayout}
               onClose={() => {
                 setContextMenu(null)
@@ -471,6 +490,19 @@ export function App() {
               onConnectNode={() => {
                 setContextMenu(null)
                 semantic.activateRelationTool()
+              }}
+              onCopy={() => {
+                setContextMenu(null)
+                professional.copySelection()
+                diagramPanel.current?.focus()
+              }}
+              onPaste={() => {
+                setContextMenu(null)
+                void professional.pasteClipboard().then(() => diagramPanel.current?.focus())
+              }}
+              onDuplicate={() => {
+                setContextMenu(null)
+                void professional.duplicateSelection().then(() => diagramPanel.current?.focus())
               }}
               onRemoveNode={() => {
                 setContextMenu(null)
