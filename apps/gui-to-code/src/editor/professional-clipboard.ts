@@ -22,6 +22,7 @@ export interface ClipboardRelation {
   readonly id: RelationId
   readonly sourceId: Fqn
   readonly targetId: Fqn
+  readonly title: string | null
 }
 
 export interface CanvasClipboard {
@@ -55,6 +56,7 @@ export interface PlannedSubgraphElement {
 export interface PlannedSubgraphRelation {
   readonly sourceId: Fqn
   readonly targetId: Fqn
+  readonly title: string | null
 }
 
 export interface PasteSubgraphPlan {
@@ -174,7 +176,12 @@ export function captureCanvasClipboard(
       const sourceId = localEndpoint(relation.source) as Fqn
       const targetId = localEndpoint(relation.target) as Fqn
       return selectedModelIds.has(sourceId) && selectedModelIds.has(targetId)
-        ? [{ id: id as RelationId, sourceId, targetId } satisfies ClipboardRelation]
+        ? [{
+          id: id as RelationId,
+          sourceId,
+          targetId,
+          title: typeof relation.title === 'string' ? relation.title : null,
+        } satisfies ClipboardRelation]
         : []
     })
 
@@ -276,6 +283,7 @@ export function planSubgraphPaste(
   const relations = clipboard.relations.map(relation => ({
     sourceId: mapping.get(relation.sourceId)!,
     targetId: mapping.get(relation.targetId)!,
+    title: relation.title,
   }))
 
   return {
