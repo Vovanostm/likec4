@@ -145,15 +145,15 @@ export function captureCanvasClipboard(
   const selectedModelIds = new Set<Fqn>()
   const positions = new Map<Fqn, CanvasPosition>()
   for (const node of layout.nodes as readonly LayoutNode[]) {
-    if (!selectedNodeIds.has(node.id)) continue
     const modelId = (node.modelRef ?? node.id) as Fqn
+    if (!selectedNodeIds.has(node.id) && !selectedNodeIds.has(modelId)) continue
     if (!state.lastValidModel?.$data.elements[modelId]) continue
     selectedModelIds.add(modelId)
     positions.set(modelId, { x: node.x, y: node.y })
   }
   if (selectedModelIds.size === 0) return null
 
-  const elements: ClipboardElement[] = [...selectedModelIds]
+  const elements = [...selectedModelIds]
     .sort((left, right) => depth(left) - depth(right) || left.localeCompare(right))
     .map(id => {
       const element = state.lastValidModel!.$data.elements[id]!
@@ -166,7 +166,7 @@ export function captureCanvasClipboard(
         tags: element.tags ? [...element.tags] : [],
         parentId: parentId(id),
         position: positions.get(id) ?? { x: 0, y: 0 },
-      }
+      } satisfies ClipboardElement
     })
 
   const relations = Object.entries(state.lastValidModel?.$data.relations ?? {})
