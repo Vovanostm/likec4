@@ -235,10 +235,11 @@ export function App() {
           const edgeSelected = !!canvas.selection
             && canvas.selection.family !== 'logical-element'
             && canvas.selection.family !== 'deployment-element'
+          const flowPosition = !edgeSelected && !semantic.selection ? flowPoint(screenPosition) : null
           setContextMenu({
             kind: edgeSelected ? 'edge' : semantic.selection ? 'node' : 'canvas',
             screenPosition,
-            ...(!edgeSelected && !semantic.selection ? { flowPosition: flowPoint(screenPosition) ?? undefined } : {}),
+            ...(flowPosition ? { flowPosition } : {}),
           })
           return
         }
