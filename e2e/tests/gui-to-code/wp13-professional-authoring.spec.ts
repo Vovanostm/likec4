@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 
-async function sourceEditor(page: Parameters<typeof test>[0] extends never ? never : any) {
+async function sourceEditor(page: Page) {
   const toggle = page.getByRole('button', { name: 'Код', exact: true })
   await toggle.click()
   const source = page.getByRole('textbox', { name: 'Исходный код LikeC4' })
@@ -8,7 +9,7 @@ async function sourceEditor(page: Parameters<typeof test>[0] extends never ? nev
   return { toggle, source }
 }
 
-async function selectWebApplication(page: Parameters<typeof test>[0] extends never ? never : any) {
+async function selectWebApplication(page: Page) {
   const node = page.locator('.react-flow__node').filter({ hasText: 'Web application' }).first()
   await expect(node).toBeVisible()
   await node.click()
