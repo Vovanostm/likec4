@@ -39,7 +39,6 @@ interface MutableSnapshot {
 }
 
 type ManualLayouts = Readonly<Record<ViewId, ViewManualLayoutSnapshot>>
-
 type VerifiedRelation = readonly [RelationId, unknown]
 
 export interface ProfessionalWorkspaceContext {
@@ -100,6 +99,15 @@ function exactElementsVerified(
   })
 }
 
+function relationSignature(relation: {
+  readonly source: { readonly model: string; readonly project?: string }
+  readonly target: { readonly model: string; readonly project?: string }
+  readonly title?: unknown
+}): string {
+  const title = typeof relation.title === 'string' ? relation.title : ''
+  return `${localEndpoint(relation.source)}→${localEndpoint(relation.target)}\u0000${title}`
+}
+
 function exactRelations(
   state: EditorWorkspaceState,
   model: NonNullable<CompileResult['model']>,
@@ -111,9 +119,9 @@ function exactRelations(
   const added = Object.entries(after).filter(([id]) => !beforeIds.has(id))
   if (Object.keys(after).length !== Object.keys(before).length + plan.relations.length) return null
   if (added.length !== plan.relations.length) return null
-  const actual = added.map(([, relation]) =>
-    `${localEndpoint(relation.source)}→${localEndpoint(relation.target)}`).sort()
-  const expected = plan.relations.map(relation => `${relation.sourceId}→${relation.targetId}`).sort()
+  const actual = added.map(([, relation]) => relationSignature(relation)).sort()
+  const expected = plan.relations.map(relation =>
+    `${relation.sourceId}→${relation.targetId}\u0000${relation.title ?? ''}`).sort()
   if (actual.length !== expected.length || actual.some((value, index) => value !== expected[index])) return null
   return added.map(([id, relation]) => [id as RelationId, relation] as const)
 }
@@ -197,7 +205,7 @@ export async function applyPasteSubgraph(
     }
     const relations = exactRelations(state, compilation.model, plan)
     if (!relations) {
-      return rejected(state, 'clipboard-verification-failed', 'Не удалось подтвердить точный набор внутренних связей.')
+      return rejected(state, 'clipboard-verification-failed', 'Не удалось подтвердить точный набор внутренних связей и их названия.')
     }
     const layouts = positionedLayouts(state, compilation.model, plan)
     if (!layouts) {
