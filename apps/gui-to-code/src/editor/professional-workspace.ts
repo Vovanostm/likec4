@@ -1,5 +1,5 @@
 import type { Fqn, RelationId, ViewId, ViewManualLayoutSnapshot } from '@likec4/core/types'
-import type { CompileResult, EditorWorkspaceState, SourceFile } from './contracts'
+import type { CompileResult, EditorWorkspaceState, RemovalDependencyReport, SourceFile } from './contracts'
 import type {
   PasteSubgraphInput,
   PasteSubgraphPlan,
@@ -7,6 +7,17 @@ import type {
   ProfessionalCommandIssue,
 } from './professional-clipboard'
 import { planSubgraphPaste } from './professional-clipboard'
+import type {
+  MultiRemovalInspection,
+  MultiRemovalInspectionResult,
+  ProfessionalRemovalIssue,
+  RemoveSubgraphResult,
+} from './professional-removal'
+import {
+  inspectionHasUnsupportedDependencies,
+  normalizeRemovalRoots,
+  removalElementIds,
+} from './professional-removal'
 import type { ProfessionalSourceEditPort } from './professional-source-edits'
 import { professionalSourceEditPort } from './professional-source-edits'
 
@@ -55,16 +66,38 @@ export interface ProfessionalWorkspaceContext {
   readonly currentRevision: () => number
 }
 
-function issue(code: ProfessionalCommandIssue['code'], message: string): ProfessionalCommandIssue {
+export interface ProfessionalRemovalInspectionContext {
+  readonly state: EditorWorkspaceState
+  readonly inspectElementRemoval: (
+    sources: readonly SourceFile[],
+    id: Fqn,
+  ) => Promise<RemovalDependencyReport>
+  readonly isCurrent: () => boolean
+  readonly currentRevision: () => number
+}
+
+function clipboardIssue(code: ProfessionalCommandIssue['code'], message: string): ProfessionalCommandIssue {
   return { code, message }
 }
 
-function rejected(
+function removalIssue(code: ProfessionalRemovalIssue['code'], message: string): ProfessionalRemovalIssue {
+  return { code, message }
+}
+
+function clipboardRejected(
   state: EditorWorkspaceState,
   code: ProfessionalCommandIssue['code'],
   message: string,
 ): PasteSubgraphResult {
-  return { status: 'rejected', revision: state.revision, issues: [issue(code, message)] }
+  return { status: 'rejected', revision: state.revision, issues: [clipboardIssue(code, message)] }
+}
+
+function removalRejected(
+  state: EditorWorkspaceState,
+  code: ProfessionalRemovalIssue['code'],
+  message: string,
+): RemoveSubgraphResult {
+  return { status: 'rejected', revision: state.revision, issues: [removalIssue(code, message)] }
 }
 
 function localEndpoint(reference: { readonly model: string; readonly project?: string }): string {
@@ -143,6 +176,27 @@ function boundsFromNodes(nodes: readonly MutableSnapshotNode[]) {
   return { x, y, width: right - x, height: bottom - y }
 }
 
+function overlayPersistedLayout(
+  autoView: unknown,
+  previous: ViewManualLayoutSnapshot,
+): ViewManualLayoutSnapshot {
+  const snapshot = structuredClone(autoView) as MutableSnapshot
+  const persisted = previous as unknown as MutableSnapshot
+  const previousNodes = new Map(persisted.nodes.map(node => [node.id, node]))
+  const previousEdges = new Map(persisted.edges.map(edge => [edge.id, edge]))
+  snapshot.nodes = snapshot.nodes.map(node => {
+    const old = previousNodes.get(node.id)
+    return old
+      ? { ...node, x: old.x, y: old.y, width: old.width, height: old.height, children: [...node.children] }
+      : node
+  })
+  snapshot.edges = snapshot.edges.map(edge => previousEdges.has(edge.id)
+    ? structuredClone(previousEdges.get(edge.id)!)
+    : edge)
+  snapshot.bounds = boundsFromNodes(snapshot.nodes)
+  return snapshot as unknown as ViewManualLayoutSnapshot
+}
+
 function positionedLayouts(
   state: EditorWorkspaceState,
   model: NonNullable<CompileResult['model']>,
@@ -178,6 +232,141 @@ function positionedLayouts(
   return next
 }
 
+function reconciledLayoutsAfterRemoval(
+  state: EditorWorkspaceState,
+  model: NonNullable<CompileResult['model']>,
+): Record<ViewId, ViewManualLayoutSnapshot> {
+  const next = {} as Record<ViewId, ViewManualLayoutSnapshot>
+  for (const [rawViewId, previous] of Object.entries(state.manualLayouts)) {
+    const viewId = rawViewId as ViewId
+    const autoView = model.$data.views[viewId]
+    if (!autoView) continue
+    next[viewId] = overlayPersistedLayout(autoView, previous)
+  }
+  return next
+}
+
+function exactRemovalVerified(
+  state: EditorWorkspaceState,
+  model: NonNullable<CompileResult['model']>,
+  inspection: MultiRemovalInspection,
+): readonly Fqn[] | null {
+  const removed = removalElementIds(state, inspection.roots)
+  if (removed.length === 0) return null
+  const removedSet = new Set<string>(removed)
+  const before = Object.keys(state.lastValidModel?.$data.elements ?? {}).sort()
+  const expected = before.filter(id => !removedSet.has(id))
+  const actual = Object.keys(model.$data.elements).sort()
+  return expected.length === actual.length && expected.every((id, index) => id === actual[index])
+    ? removed
+    : null
+}
+
+export async function inspectMultiRemoval(
+  context: ProfessionalRemovalInspectionContext,
+  ids: readonly Fqn[],
+  expectedRevision: number,
+): Promise<MultiRemovalInspectionResult> {
+  const { state } = context
+  if (expectedRevision !== state.revision) return { status: 'conflict', revision: state.revision }
+  if (state.compilation.status !== 'valid' || !state.lastValidModel) {
+    return {
+      status: 'rejected',
+      revision: state.revision,
+      issues: [removalIssue('workspace-invalid', 'Изменение отклонено: исправьте ошибки в коде проекта.')],
+    }
+  }
+  const roots = normalizeRemovalRoots(ids)
+  if (roots.length === 0) {
+    return {
+      status: 'rejected',
+      revision: state.revision,
+      issues: [removalIssue('removal-empty', 'Нет выбранных элементов для удаления.')],
+    }
+  }
+  const missing = roots.find(root => !state.lastValidModel?.$data.elements[root])
+  if (missing) {
+    return {
+      status: 'rejected',
+      revision: state.revision,
+      issues: [removalIssue('removal-element-missing', `Элемент ${missing} больше не существует.`)],
+    }
+  }
+
+  try {
+    const reports: RemovalDependencyReport[] = []
+    for (const root of roots) {
+      const report = await context.inspectElementRemoval(state.committedSources, root)
+      if (report.target !== root) {
+        return {
+          status: 'rejected',
+          revision: state.revision,
+          issues: [removalIssue('removal-inspection-failed', 'Отчёт удаления не соответствует выбранному элементу.')],
+        }
+      }
+      reports.push(report)
+    }
+    if (!context.isCurrent()) return { status: 'conflict', revision: context.currentRevision() }
+    const inspection: MultiRemovalInspection = { revision: state.revision, roots, reports }
+    return { status: 'ready', revision: state.revision, inspection }
+  } catch (_error) {
+    return {
+      status: 'rejected',
+      revision: state.revision,
+      issues: [removalIssue('removal-inspection-failed', 'Не удалось безопасно проверить зависимости выбранных элементов.')],
+    }
+  }
+}
+
+export async function applyRemoveSubgraph(
+  context: ProfessionalWorkspaceContext,
+  inspection: MultiRemovalInspection,
+  expectedRevision: number,
+): Promise<RemoveSubgraphResult> {
+  const { state } = context
+  if (expectedRevision !== state.revision || inspection.revision !== state.revision) {
+    return { status: 'conflict', revision: state.revision }
+  }
+  if (state.compilation.status !== 'valid' || !state.lastValidModel) {
+    return removalRejected(state, 'workspace-invalid', 'Изменение отклонено: исправьте ошибки в коде проекта.')
+  }
+  if (inspection.roots.length === 0 || inspection.reports.length !== inspection.roots.length) {
+    return removalRejected(state, 'removal-empty', 'Подтверждение удаления не содержит актуального набора элементов.')
+  }
+  if (inspectionHasUnsupportedDependencies(inspection)) {
+    return removalRejected(state, 'removal-unsupported', 'Некоторые зависимости нельзя удалить безопасно.')
+  }
+  const sourceEdits = context.sourceEdits ?? professionalSourceEditPort
+  if (!sourceEdits.removeSubgraph) {
+    return removalRejected(state, 'removal-source-edit-failed', 'Source layer не поддерживает атомарное удаление набора элементов.')
+  }
+
+  try {
+    const candidateSources = await sourceEdits.removeSubgraph(state.committedSources, inspection)
+    const revision = state.revision + 1
+    const compilation = await context.compileCandidate(revision, candidateSources)
+    if (!compilation.model) {
+      return removalRejected(state, 'removal-compile-rejected', 'Удаление отклонено: candidate model не компилируется.')
+    }
+    const removedElementIds = exactRemovalVerified(state, compilation.model, inspection)
+    if (!removedElementIds) {
+      return removalRejected(state, 'removal-verification-failed', 'Не удалось подтвердить точный набор удалённых элементов.')
+    }
+    const layouts = reconciledLayoutsAfterRemoval(state, compilation.model)
+    if (!context.isCurrent()) return { status: 'conflict', revision: context.currentRevision() }
+
+    context.commitCandidate(revision, candidateSources, compilation.model, layouts)
+    return {
+      status: 'applied',
+      command: 'subgraph.remove',
+      revision,
+      removedElementIds,
+    }
+  } catch (_error) {
+    return removalRejected(state, 'removal-source-edit-failed', 'Не удалось построить source-preserving план удаления.')
+  }
+}
+
 export async function applyPasteSubgraph(
   context: ProfessionalWorkspaceContext,
   input: PasteSubgraphInput,
@@ -186,7 +375,7 @@ export async function applyPasteSubgraph(
   const { state } = context
   if (expectedRevision !== state.revision) return { status: 'conflict', revision: state.revision }
   if (state.compilation.status !== 'valid' || !state.lastValidModel) {
-    return rejected(state, 'workspace-invalid', 'Изменение отклонено: исправьте ошибки в коде проекта.')
+    return clipboardRejected(state, 'workspace-invalid', 'Изменение отклонено: исправьте ошибки в коде проекта.')
   }
 
   const plan = planSubgraphPaste(state, input)
@@ -198,18 +387,18 @@ export async function applyPasteSubgraph(
     const revision = state.revision + 1
     const compilation = await context.compileCandidate(revision, candidateSources)
     if (!compilation.model) {
-      return rejected(state, 'clipboard-compile-rejected', 'Вставка отклонена: candidate model не компилируется.')
+      return clipboardRejected(state, 'clipboard-compile-rejected', 'Вставка отклонена: candidate model не компилируется.')
     }
     if (!exactElementsVerified(state, compilation.model, plan)) {
-      return rejected(state, 'clipboard-verification-failed', 'Не удалось подтвердить точный набор созданных элементов.')
+      return clipboardRejected(state, 'clipboard-verification-failed', 'Не удалось подтвердить точный набор созданных элементов.')
     }
     const relations = exactRelations(state, compilation.model, plan)
     if (!relations) {
-      return rejected(state, 'clipboard-verification-failed', 'Не удалось подтвердить точный набор внутренних связей и их названия.')
+      return clipboardRejected(state, 'clipboard-verification-failed', 'Не удалось подтвердить точный набор внутренних связей и их названия.')
     }
     const layouts = positionedLayouts(state, compilation.model, plan)
     if (!layouts) {
-      return rejected(state, 'clipboard-layout-failed', 'Созданные элементы не удалось безопасно разместить в текущем виде.')
+      return clipboardRejected(state, 'clipboard-layout-failed', 'Созданные элементы не удалось безопасно разместить в текущем виде.')
     }
     if (!context.isCurrent()) return { status: 'conflict', revision: context.currentRevision() }
 
@@ -223,6 +412,6 @@ export async function applyPasteSubgraph(
       createdRelationIds: relations.map(([id]) => id),
     }
   } catch (_error) {
-    return rejected(state, 'clipboard-source-edit-failed', 'Не удалось построить source-preserving план вставки.')
+    return clipboardRejected(state, 'clipboard-source-edit-failed', 'Не удалось построить source-preserving план вставки.')
   }
 }
