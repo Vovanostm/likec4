@@ -231,13 +231,18 @@ export function App() {
         }
         if (event.shiftKey && event.key === 'F10' && !isEditableTarget(event.target)) {
           event.preventDefault()
-          const screenPosition = keyboardMenuPoint()
           const edgeSelected = !!canvas.selection
             && canvas.selection.family !== 'logical-element'
             && canvas.selection.family !== 'deployment-element'
-          const flowPosition = !edgeSelected && !semantic.selection ? flowPoint(screenPosition) : null
+          if (edgeSelected) {
+            setInspectorOpen(true)
+            focusRelationTitle()
+            return
+          }
+          const screenPosition = keyboardMenuPoint()
+          const flowPosition = !semantic.selection ? flowPoint(screenPosition) : null
           setContextMenu({
-            kind: edgeSelected ? 'edge' : semantic.selection ? 'node' : 'canvas',
+            kind: semantic.selection ? 'node' : 'canvas',
             screenPosition,
             ...(flowPosition ? { flowPosition } : {}),
           })
