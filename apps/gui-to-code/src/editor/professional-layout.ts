@@ -86,14 +86,13 @@ export function transformSelectedNodes(
     }
   }
 
-  const next = structuredClone(snapshot) as ViewManualLayoutSnapshot
-  for (const node of next.nodes as Array<SnapshotNode & { x: number; y: number }>) {
-    const update = updates.get(node.id)
-    if (!update) continue
-    node.x = update.x
-    node.y = update.y
+  return {
+    ...snapshot,
+    nodes: snapshot.nodes.map(node => {
+      const update = updates.get(node.id)
+      return update ? { ...node, x: update.x, y: update.y } : node
+    }),
   }
-  return next
 }
 
 export function snapGridStep(value: number): number {
