@@ -1,8 +1,10 @@
 import type { ViewId, ViewManualLayoutSnapshot } from '@likec4/core/types'
 import { useRef, useState } from 'react'
+import type { CanvasClipboard } from './professional-clipboard'
+import { captureCanvasClipboard, refreshClipboardRevision } from './professional-clipboard'
 import type { MultiNodeLayoutAction } from './professional-layout'
 import { snapGridStep, transformSelectedNodes } from './professional-layout'
-import type { useWorkspaceRuntime } from './use-workspace-runtime'
+import { workspaceDocumentUri, type useWorkspaceRuntime } from './use-workspace-runtime'
 
 type WorkspaceRuntime = ReturnType<typeof useWorkspaceRuntime>
 
@@ -21,6 +23,8 @@ interface XYFlowPort {
 export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   const xyflow = useRef<XYFlowPort | null>(null)
   const sequence = useRef(0)
+  const pasteSequence = useRef(0)
+  const [clipboard, setClipboard] = useState<CanvasClipboard | null>(null)
   const [gridVisible, setGridVisible] = useState(false)
   const [snapEnabled, setSnapEnabled] = useState(false)
   const [gridStep, setGridStepState] = useState(16)
@@ -34,6 +38,12 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   const selectedNodeIds = (): ReadonlySet<string> => new Set(
     selectedNodes().map(node => node.data.id ?? node.id),
   )
+
+  const ensureNodeSelected = (nodeId: string): void => {
+    const nodes = xyflow.current?.getNodes() ?? []
+    if (nodes.some(node => node.id === nodeId && node.selected)) return
+    xyflow.current?.setNodes(current => current.map(node => ({ ...node, selected: node.id === nodeId })))
+  }
 
   const selectAll = (): void => {
     xyflow.current?.setNodes(nodes => nodes.map(node => ({ ...node, selected: true })))
@@ -55,6 +65,84 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
     }
     await xyflow.current?.fitView({ nodes, padding: 0.25, duration: 250 })
     return true
+  }
+
+  const captureSelection = (): CanvasClipboard | null => {
+    const current = runtime.workspace.current
+    const viewId = runtime.selectedViewId
+    if (!current || !viewId || current.state.compilation.status !== 'valid') return null
+    return captureCanvasClipboard(current.state, viewId, selectedNodeIds())
+  }
+
+  const copySelection = (): boolean => {
+    const captured = captureSelection()
+    if (!captured) {
+      runtime.setFeedback('Сначала выделите логические элементы в статическом виде.')
+      return false
+    }
+    setClipboard(captured)
+    pasteSequence.current = 0
+    runtime.setCommandError(null)
+    runtime.setFeedback(captured.elements.length === 1
+      ? 'Элемент скопирован.'
+      : `Скопировано элементов: ${captured.elements.length}.`)
+    return true
+  }
+
+  const paste = async (captured: CanvasClipboard, feedback: string): Promise<boolean> => {
+    const current = runtime.workspace.current
+    const viewId = runtime.selectedViewId
+    if (!current || !viewId || runtime.busy || current.state.compilation.status !== 'valid') return false
+
+    const pasteIndex = pasteSequence.current + 1
+    runtime.setBusy(true)
+    runtime.setCommandError(null)
+    try {
+      const result = await current.pasteSubgraph({
+        clipboard: captured,
+        viewId,
+        documentUri: workspaceDocumentUri,
+        offset: { x: 24 * pasteIndex, y: 24 * pasteIndex },
+      }, current.state.revision)
+      runtime.refresh()
+      if (result.status === 'conflict') {
+        runtime.setCommandError('Проект изменился. Повторите действие на актуальной версии.')
+        return false
+      }
+      if (result.status === 'rejected') {
+        runtime.setCommandError(result.issues[0]?.message ?? 'Не удалось вставить элементы.')
+        return false
+      }
+      setClipboard(refreshClipboardRevision(captured, result.revision))
+      pasteSequence.current = pasteIndex
+      runtime.setLayoutMode('manual')
+      runtime.setFeedback(feedback)
+      return true
+    } finally {
+      runtime.setBusy(false)
+    }
+  }
+
+  const pasteClipboard = async (): Promise<boolean> => {
+    if (!clipboard) {
+      runtime.setFeedback('Буфер элементов пуст.')
+      return false
+    }
+    return paste(clipboard, clipboard.elements.length === 1
+      ? 'Элемент вставлен.'
+      : `Вставлено элементов: ${clipboard.elements.length}.`)
+  }
+
+  const duplicateSelection = async (): Promise<boolean> => {
+    const captured = captureSelection()
+    if (!captured) {
+      runtime.setFeedback('Сначала выделите логические элементы в статическом виде.')
+      return false
+    }
+    pasteSequence.current = 0
+    return paste(captured, captured.elements.length === 1
+      ? 'Элемент продублирован.'
+      : `Продублировано элементов: ${captured.elements.length}.`)
   }
 
   const applyLayout = async (action: MultiNodeLayoutAction): Promise<boolean> => {
@@ -112,10 +200,15 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   return {
     attachXYFlow,
     selectedNodeIds,
+    ensureNodeSelected,
     selectAll,
     clearVisualSelection,
     fitView,
     fitSelection,
+    copySelection,
+    pasteClipboard,
+    duplicateSelection,
+    hasClipboard: clipboard !== null,
     applyLayout,
     gridVisible,
     snapEnabled,
