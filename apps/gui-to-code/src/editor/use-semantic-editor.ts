@@ -46,7 +46,7 @@ export interface SemanticEditorRuntime {
   readonly relationTarget: string
   readonly inspectorError: string | null
   readonly removalReport: RemovalDependencyReport | null
-  readonly availableKinds: ReadonlySet<string>
+  readonly availableKinds: ReadonlySet<ElementKind>
   readonly availableTags: readonly string[]
   readonly elements: readonly { readonly id: Fqn; readonly title: string }[]
   readonly selectedElement: SemanticElementSelection | null
@@ -326,7 +326,9 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
   }
 
   const state = runtime.state
-  const availableKinds = new Set(Object.keys(state?.lastValidModel?.$data.specification.elements ?? {}))
+  const availableKinds = new Set<ElementKind>(
+    Object.keys(state?.lastValidModel?.$data.specification.elements ?? {}) as ElementKind[],
+  )
   const availableTags = Object.keys(state?.lastValidModel?.$data.specification.tags ?? {}).sort()
   const elements = Object.values(state?.lastValidModel?.$data.elements ?? {})
     .map(element => ({ id: element.id as Fqn, title: element.title }))
