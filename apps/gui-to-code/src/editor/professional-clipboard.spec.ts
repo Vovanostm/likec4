@@ -35,7 +35,7 @@ function stateFixture(): EditorWorkspaceState {
         'A.child': { id: 'A.child', kind: 'component', title: 'Child', tags: [] },
       },
       relations: {
-        r1: { id: 'r1', source: { model: 'A' }, target: { model: 'B' } },
+        r1: { id: 'r1', source: { model: 'A' }, target: { model: 'B' }, title: 'A to B' },
         r2: { id: 'r2', source: { model: 'B' }, target: { model: 'C' } },
         r3: { id: 'r3', source: { model: 'A.child' }, target: { model: 'B' } },
       },
@@ -67,6 +67,7 @@ describe('professional clipboard', () => {
       id: 'r1' as RelationId,
       sourceId: 'A' as Fqn,
       targetId: 'B' as Fqn,
+      title: 'A to B',
     }])
     expect(state.revision).toBe(7)
     expect(state.history.past).toHaveLength(0)
@@ -112,7 +113,7 @@ describe('professional clipboard', () => {
         position: { x: 234, y: 144 },
       },
     ])
-    expect(plan.relations).toEqual([{ sourceId: 'A2', targetId: 'B2' }])
+    expect(plan.relations).toEqual([{ sourceId: 'A2', targetId: 'B2', title: 'A to B' }])
   })
 
   it('remaps copied nesting without applying the root offset twice to child-local geometry', () => {
