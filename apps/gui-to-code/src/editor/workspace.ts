@@ -23,6 +23,8 @@ import type {
   WorkspaceDocumentSnapshot,
 } from './contracts'
 import { EditorDocumentError } from './contracts'
+import type { PasteSubgraphInput, PasteSubgraphResult } from './professional-clipboard'
+import { applyPasteSubgraph } from './professional-workspace'
 import { applyWp06Command } from './wp06-workspace'
 
 const supportedKinds = new Set<ElementKind>(['actor', 'system', 'component'] as ElementKind[])
@@ -459,6 +461,20 @@ export class EditorWorkspace {
 
   inspectElementRemoval(id: Fqn, expectedRevision: number): Promise<RemovalInspectionResult> {
     return this.enqueue(() => this.applyRemovalInspection(id, expectedRevision))
+  }
+
+  pasteSubgraph(input: PasteSubgraphInput, expectedRevision: number): Promise<PasteSubgraphResult> {
+    return this.enqueue(() => {
+      const state = this.current
+      return applyPasteSubgraph({
+        state,
+        compileCandidate: (revision, sources) => this.compileCandidate(revision, sources),
+        commitCandidate: (revision, sources, model, layouts) =>
+          this.commitCandidate(state, revision, sources, model, layouts),
+        isCurrent: () => this.isCurrent(state),
+        currentRevision: () => this.current.revision,
+      }, input, expectedRevision)
+    })
   }
 
   private enqueue<T>(action: () => Promise<T>): Promise<T> {
