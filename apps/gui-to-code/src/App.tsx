@@ -20,6 +20,7 @@ import { InlineTitleEditor } from './editor/ui/InlineTitleEditor'
 import { ProfessionalCanvasToolbar } from './editor/ui/ProfessionalCanvasToolbar'
 import { RelationInspector } from './editor/ui/RelationInspector'
 import { RemoveElementConfirmation } from './editor/ui/RemoveElementConfirmation'
+import { RemoveSelectionConfirmation } from './editor/ui/RemoveSelectionConfirmation'
 import { StructureTree } from './editor/ui/StructureTree'
 import { ViewToolbar } from './editor/ui/ViewToolbar'
 import { Wp06Controls } from './editor/ui/Wp06Controls'
@@ -224,6 +225,19 @@ export function App() {
             if (removed) diagramPanel.current?.focus()
           })
           return
+        }
+        if ((event.key === 'Delete' || event.key === 'Backspace') && !isEditableTarget(event.target)) {
+          const selectedNodes = professional.selectedNodeIds().size
+          if (selectedNodes > 1) {
+            event.preventDefault()
+            void professional.inspectSelectedRemoval()
+            return
+          }
+          if (selectedNodes === 1 && semantic.selection && (!canvas.selection || canvas.selection.family === 'logical-element')) {
+            event.preventDefault()
+            void semantic.inspectRemoval()
+            return
+          }
         }
         if (
           event.key === 'F2'
@@ -506,7 +520,11 @@ export function App() {
               }}
               onRemoveNode={() => {
                 setContextMenu(null)
-                void semantic.inspectRemoval()
+                if (professional.selectedNodeIds().size > 1) {
+                  void professional.inspectSelectedRemoval()
+                } else {
+                  void semantic.inspectRemoval()
+                }
               }}
               onRemoveEdge={() => {
                 setContextMenu(null)
@@ -638,6 +656,15 @@ export function App() {
         )}
       </section>
 
+      {professional.removalInspection && (
+        <RemoveSelectionConfirmation
+          inspection={professional.removalInspection}
+          busy={runtime.busy}
+          onCancel={professional.closeSelectedRemoval}
+          onConfirm={async () => {
+            await professional.confirmSelectedRemoval()
+          }} />
+      )}
       {semantic.removalReport && <RemoveElementConfirmation report={semantic.removalReport} busy={runtime.busy} onCancel={semantic.closeRemoval} onConfirm={semantic.confirmRemoval} />}
     </main>
   )
