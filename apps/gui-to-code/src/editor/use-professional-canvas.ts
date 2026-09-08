@@ -1,9 +1,10 @@
-import type { ViewId, ViewManualLayoutSnapshot } from '@likec4/core/types'
+import type { Fqn, ViewId, ViewManualLayoutSnapshot } from '@likec4/core/types'
 import { useRef, useState } from 'react'
 import type { CanvasClipboard } from './professional-clipboard'
 import { captureCanvasClipboard, refreshClipboardRevision } from './professional-clipboard'
 import type { MultiNodeLayoutAction } from './professional-layout'
 import { snapGridStep, transformSelectedNodes } from './professional-layout'
+import type { MultiRemovalInspection } from './professional-removal'
 import { workspaceDocumentUri, type useWorkspaceRuntime } from './use-workspace-runtime'
 
 type WorkspaceRuntime = ReturnType<typeof useWorkspaceRuntime>
@@ -25,6 +26,7 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   const sequence = useRef(0)
   const pasteSequence = useRef(0)
   const [clipboard, setClipboard] = useState<CanvasClipboard | null>(null)
+  const [removalInspection, setRemovalInspection] = useState<MultiRemovalInspection | null>(null)
   const [gridVisible, setGridVisible] = useState(false)
   const [snapEnabled, setSnapEnabled] = useState(false)
   const [gridStep, setGridStepState] = useState(16)
@@ -145,6 +147,64 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
       : `Продублировано элементов: ${captured.elements.length}.`)
   }
 
+  const inspectSelectedRemoval = async (): Promise<boolean> => {
+    const current = runtime.workspace.current
+    const captured = captureSelection()
+    if (!current || !captured || captured.elements.length < 2 || runtime.busy) {
+      runtime.setFeedback('Для группового удаления выделите не менее двух логических элементов в статическом виде.')
+      return false
+    }
+    runtime.setBusy(true)
+    runtime.setCommandError(null)
+    try {
+      const result = await current.inspectSubgraphRemoval(
+        captured.elements.map(element => element.id as Fqn),
+        current.state.revision,
+      )
+      if (result.status === 'conflict') {
+        runtime.setCommandError('Проект изменился. Повторите удаление на актуальной версии.')
+        return false
+      }
+      if (result.status === 'rejected') {
+        runtime.setCommandError(result.issues[0]?.message ?? 'Не удалось проверить групповое удаление.')
+        return false
+      }
+      setRemovalInspection(result.inspection)
+      runtime.setFeedback(null)
+      return true
+    } finally {
+      runtime.setBusy(false)
+    }
+  }
+
+  const confirmSelectedRemoval = async (): Promise<boolean> => {
+    const current = runtime.workspace.current
+    if (!current || !removalInspection || runtime.busy) return false
+    runtime.setBusy(true)
+    runtime.setCommandError(null)
+    try {
+      const result = await current.removeSubgraph(removalInspection, current.state.revision)
+      runtime.refresh()
+      if (result.status === 'conflict') {
+        runtime.setCommandError('Проект изменился. Проверьте зависимости и подтвердите удаление снова.')
+        setRemovalInspection(null)
+        return false
+      }
+      if (result.status === 'rejected') {
+        runtime.setCommandError(result.issues[0]?.message ?? 'Не удалось удалить выбранные элементы.')
+        return false
+      }
+      setRemovalInspection(null)
+      clearVisualSelection()
+      runtime.setFeedback(`Удалено элементов: ${result.removedElementIds.length}.`)
+      return true
+    } finally {
+      runtime.setBusy(false)
+    }
+  }
+
+  const closeSelectedRemoval = (): void => setRemovalInspection(null)
+
   const applyLayout = async (action: MultiNodeLayoutAction): Promise<boolean> => {
     const current = runtime.workspace.current
     const viewId = runtime.selectedViewId
@@ -209,6 +269,10 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
     pasteClipboard,
     duplicateSelection,
     hasClipboard: clipboard !== null,
+    removalInspection,
+    inspectSelectedRemoval,
+    confirmSelectedRemoval,
+    closeSelectedRemoval,
     applyLayout,
     gridVisible,
     snapEnabled,
