@@ -12,12 +12,12 @@ test('multi-selection removal is atomic and one Undo restores it', async ({ page
   await codeToggle.click()
 
   const web = page.locator('.react-flow__node').filter({ hasText: 'Web application' }).first()
-  const api = page.locator('.react-flow__node').filter({ hasText: 'API' }).first()
+  const customer = page.locator('.react-flow__node').filter({ hasText: 'Customer' }).first()
   await expect(web).toBeVisible()
-  await expect(api).toBeVisible()
+  await expect(customer).toBeVisible()
   await web.click()
   await page.keyboard.down('Control')
-  await api.click()
+  await customer.click()
   await page.keyboard.up('Control')
   await expect(page.locator('.react-flow__node.selected')).toHaveCount(2)
 
@@ -27,14 +27,14 @@ test('multi-selection removal is atomic and one Undo restores it', async ({ page
   const dialog = page.getByRole('dialog', { name: 'Удалить выбранные элементы?' })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByText('shop.web', { exact: true })).toBeVisible()
-  await expect(dialog.getByText('shop.api', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('customer', { exact: true })).toBeVisible()
   await dialog.getByRole('button', { name: 'Удалить выбранные' }).click()
   await expect(page.getByText(/Удалено элементов: 2\./)).toBeVisible()
 
   await codeToggle.click()
   await expect(source).toBeVisible()
   await expect.poll(async () => await source.inputValue()).not.toContain("web = component 'Web application'")
-  expect(await source.inputValue()).not.toContain("api = component 'API'")
+  expect(await source.inputValue()).not.toContain("customer = actor 'Customer'")
 
   await page.getByRole('button', { name: 'Отменить последнее изменение' }).click()
   await expect.poll(async () => await source.inputValue()).toBe(before)
