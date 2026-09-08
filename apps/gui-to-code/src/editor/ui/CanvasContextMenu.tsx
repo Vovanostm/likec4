@@ -7,11 +7,16 @@ export interface CanvasContextMenuProps {
   readonly x: number
   readonly y: number
   readonly canRemoveNode: boolean
+  readonly canCopy: boolean
+  readonly canPaste: boolean
   readonly hasManualLayout: boolean
   readonly onClose: () => void
   readonly onEdit: () => void
   readonly onRenameNode: () => void
   readonly onConnectNode: () => void
+  readonly onCopy: () => void
+  readonly onPaste: () => void
+  readonly onDuplicate: () => void
   readonly onRemoveNode: () => void
   readonly onRemoveEdge: () => void
   readonly onCreateElement: () => void
@@ -26,11 +31,16 @@ export function CanvasContextMenu({
   x,
   y,
   canRemoveNode,
+  canCopy,
+  canPaste,
   hasManualLayout,
   onClose,
   onEdit,
   onRenameNode,
   onConnectNode,
+  onCopy,
+  onPaste,
+  onDuplicate,
   onRemoveNode,
   onRemoveEdge,
   onCreateElement,
@@ -62,6 +72,8 @@ export function CanvasContextMenu({
         <button role="menuitem" type="button" onClick={onEdit}>Редактировать</button>
         <button role="menuitem" type="button" onClick={onRenameNode}>Переименовать</button>
         <button role="menuitem" type="button" onClick={onConnectNode}>Создать связь</button>
+        <button role="menuitem" type="button" disabled={!canCopy} onClick={onCopy}>Копировать</button>
+        <button role="menuitem" type="button" disabled={!canCopy} onClick={onDuplicate}>Дублировать</button>
         <button role="menuitem" type="button" disabled={!canRemoveNode} onClick={onRemoveNode}>Удалить</button>
       </>}
       {kind === 'edge' && <>
@@ -70,6 +82,7 @@ export function CanvasContextMenu({
       </>}
       {kind === 'canvas' && <>
         <button role="menuitem" type="button" onClick={onCreateElement}>Создать элемент</button>
+        <button role="menuitem" type="button" disabled={!canPaste} onClick={onPaste}>Вставить</button>
         <button role="menuitem" type="button" onClick={onSelectAll}>Выделить всё</button>
         <button role="menuitem" type="button" onClick={onAutoLayout}>Автоматическая раскладка</button>
         <button role="menuitem" type="button" disabled={!hasManualLayout} onClick={onResetLayout}>Сбросить ручную раскладку</button>
