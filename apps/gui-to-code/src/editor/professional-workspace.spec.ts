@@ -28,7 +28,7 @@ function view(nodes: readonly string[]) {
   }
 }
 
-function compiled(elements: readonly string[], relations: readonly [string, string, string][] = []) {
+function compiled(elements: readonly string[], relations: readonly [string, string, string, string?][] = []) {
   return {
     $data: {
       specification: { elements: { system: {} }, tags: {} },
@@ -38,10 +38,11 @@ function compiled(elements: readonly string[], relations: readonly [string, stri
         title: id === 'A2' ? 'A' : id === 'B2' ? 'B' : id,
         tags: [],
       }])),
-      relations: Object.fromEntries(relations.map(([id, source, target]) => [id, {
+      relations: Object.fromEntries(relations.map(([id, source, target, title]) => [id, {
         id,
         source: { model: source },
         target: { model: target },
+        ...(title ? { title } : {}),
       }])),
       views: { index: view(elements) },
       deployments: { elements: {}, relations: {} },
@@ -50,7 +51,7 @@ function compiled(elements: readonly string[], relations: readonly [string, stri
 }
 
 function stateFixture(): EditorWorkspaceState {
-  const model = compiled(['A', 'B'], [['r1', 'A', 'B']])
+  const model = compiled(['A', 'B'], [['r1', 'A', 'B', 'calls']])
   return {
     version: 2,
     projectId: 'fixture',
@@ -72,7 +73,7 @@ const clipboard: CanvasClipboard = {
     { id: 'A' as Fqn, kind: 'system' as never, title: 'A', description: null, technology: null, tags: [], parentId: null, position: { x: 10, y: 20 } },
     { id: 'B' as Fqn, kind: 'system' as never, title: 'B', description: null, technology: null, tags: [], parentId: null, position: { x: 210, y: 120 } },
   ],
-  relations: [{ id: 'r1' as never, sourceId: 'A' as Fqn, targetId: 'B' as Fqn }],
+  relations: [{ id: 'r1' as never, sourceId: 'A' as Fqn, targetId: 'B' as Fqn, title: 'calls' }],
 }
 
 function sourceEdits(): ProfessionalSourceEditPort {
@@ -88,8 +89,8 @@ function successCompiler(): (revision: number, sources: readonly SourceFile[]) =
     revision,
     diagnostics: [],
     model: compiled(['A', 'B', 'A2', 'B2'], [
-      ['r1', 'A', 'B'],
-      ['r2', 'A2', 'B2'],
+      ['r1', 'A', 'B', 'calls'],
+      ['r2', 'A2', 'B2', 'calls'],
     ]) as never,
   })
 }
@@ -167,6 +168,29 @@ describe('professional workspace transaction', () => {
         revision,
         diagnostics: [],
         model: compiled(['A', 'B', 'A2', 'B2', 'unexpected']) as never,
+      }),
+      commitCandidate,
+      isCurrent: () => true,
+      currentRevision: () => state.revision,
+    }, { clipboard, viewId, documentUri }, state.revision)
+
+    expect(result).toMatchObject({ status: 'rejected', issues: [{ code: 'clipboard-verification-failed' }] })
+    expect(commitCandidate).not.toHaveBeenCalled()
+  })
+
+  it('rejects a pasted relation whose title was not preserved', async () => {
+    const state = stateFixture()
+    const commitCandidate = vi.fn()
+    const result = await applyPasteSubgraph({
+      state,
+      sourceEdits: sourceEdits(),
+      compileCandidate: async revision => ({
+        revision,
+        diagnostics: [],
+        model: compiled(['A', 'B', 'A2', 'B2'], [
+          ['r1', 'A', 'B', 'calls'],
+          ['r2', 'A2', 'B2'],
+        ]) as never,
       }),
       commitCandidate,
       isCurrent: () => true,
