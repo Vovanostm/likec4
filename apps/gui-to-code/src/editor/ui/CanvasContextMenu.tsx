@@ -50,6 +50,7 @@ export function CanvasContextMenu({
   onFitView,
 }: CanvasContextMenuProps) {
   const menu = useRef<HTMLDivElement | null>(null)
+  const nodeClipboardReady = kind === 'node' || canCopy
 
   useEffect(() => {
     menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
@@ -72,8 +73,8 @@ export function CanvasContextMenu({
         <button role="menuitem" type="button" onClick={onEdit}>Редактировать</button>
         <button role="menuitem" type="button" onClick={onRenameNode}>Переименовать</button>
         <button role="menuitem" type="button" onClick={onConnectNode}>Создать связь</button>
-        <button role="menuitem" type="button" disabled={!canCopy} onClick={onCopy}>Копировать</button>
-        <button role="menuitem" type="button" disabled={!canCopy} onClick={onDuplicate}>Дублировать</button>
+        <button role="menuitem" type="button" disabled={!nodeClipboardReady} onClick={onCopy}>Копировать</button>
+        <button role="menuitem" type="button" disabled={!nodeClipboardReady} onClick={onDuplicate}>Дублировать</button>
         <button role="menuitem" type="button" disabled={!canRemoveNode} onClick={onRemoveNode}>Удалить</button>
       </>}
       {kind === 'edge' && <>
