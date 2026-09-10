@@ -41,7 +41,7 @@ function plannerDocumentUri(uri: string): string {
   return uri.startsWith(virtualPrefix) ? uri : `${virtualPrefix}${uri.replace(/^\/+/, '')}`
 }
 
-function localElementId(id: Fqn): Fqn {
+function localElementId(id: string): Fqn {
   const separator = id.lastIndexOf('.')
   return (separator < 0 ? id : id.slice(separator + 1)) as Fqn
 }
