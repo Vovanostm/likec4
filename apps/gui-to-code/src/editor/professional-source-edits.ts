@@ -41,6 +41,11 @@ function plannerDocumentUri(uri: string): string {
   return uri.startsWith(virtualPrefix) ? uri : `${virtualPrefix}${uri.replace(/^\/+/, '')}`
 }
 
+function localElementId(id: Fqn): Fqn {
+  const separator = id.lastIndexOf('.')
+  return (separator < 0 ? id : id.slice(separator + 1)) as Fqn
+}
+
 function applyPlan(sources: readonly SourceFile[], plan: ApplicableEditPlan): readonly SourceFile[] {
   const byKey = new Map(sources.map(source => [source.uri, source]))
   for (const uri of Object.keys(plan.baseRevisions)) {
@@ -159,9 +164,10 @@ export const professionalSourceEditPort: ProfessionalSourceEditPort = {
       let candidate = sources
       const documentUri = plannerDocumentUri(plan.documentUri)
       for (const element of plan.elements) {
+        const stagedId = localElementId(element.id)
         let documents = await documentsFor(candidate)
         candidate = applyPlan(candidate, await documents.planAddElement({
-          id: element.id,
+          id: stagedId,
           kind: element.kind,
           title: element.title,
           documentUri,
@@ -175,7 +181,7 @@ export const professionalSourceEditPort: ProfessionalSourceEditPort = {
         if (Object.keys(patch).length > 0) {
           documents = await documentsFor(candidate)
           candidate = applyPlan(candidate, await documents.planPatchElement({
-            target: element.id as Fqn,
+            target: stagedId,
             patch,
           }))
         }
@@ -183,7 +189,7 @@ export const professionalSourceEditPort: ProfessionalSourceEditPort = {
         if (element.parentId) {
           documents = await documentsFor(candidate)
           candidate = applyPlan(candidate, await documents.planMoveElement({
-            target: element.id as Fqn,
+            target: stagedId,
             parent: element.parentId,
           }))
         }
