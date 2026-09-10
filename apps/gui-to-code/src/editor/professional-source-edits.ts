@@ -31,9 +31,14 @@ export interface ProfessionalSourceEditPort {
   removeSubgraph?(sources: readonly SourceFile[], inspection: MultiRemovalInspection): Promise<readonly SourceFile[]>
 }
 
+const virtualPrefix = 'virtual:/workspace/'
+
 function sourceKey(uri: string): string {
-  const virtualPrefix = 'virtual:/workspace/'
   return uri.startsWith(virtualPrefix) ? uri.slice(virtualPrefix.length) : uri
+}
+
+function plannerDocumentUri(uri: string): string {
+  return uri.startsWith(virtualPrefix) ? uri : `${virtualPrefix}${uri.replace(/^\/+/, '')}`
 }
 
 function applyPlan(sources: readonly SourceFile[], plan: ApplicableEditPlan): readonly SourceFile[] {
@@ -152,13 +157,14 @@ export const professionalSourceEditPort: ProfessionalSourceEditPort = {
   async createSubgraph(sources, plan) {
     try {
       let candidate = sources
+      const documentUri = plannerDocumentUri(plan.documentUri)
       for (const element of plan.elements) {
         let documents = await documentsFor(candidate)
         candidate = applyPlan(candidate, await documents.planAddElement({
           id: element.id,
           kind: element.kind,
           title: element.title,
-          documentUri: plan.documentUri,
+          documentUri,
         }))
 
         const patch = {
@@ -189,7 +195,7 @@ export const professionalSourceEditPort: ProfessionalSourceEditPort = {
         candidate = applyPlan(candidate, await documents.planAddRelation({
           source: relation.sourceId,
           target: relation.targetId,
-          documentUri: plan.documentUri,
+          documentUri,
         }))
         const key = `${relation.sourceId}\u0000${relation.targetId}`
         const occurrence = occurrences.get(key) ?? 0
