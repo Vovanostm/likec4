@@ -62,7 +62,7 @@ describe('EditorWorkspace specification-defined kinds', () => {
       revision: 1,
       createdElementId: 'worker',
     })
-    expect(workspace.state.lastValidModel?.$data.elements.worker).toMatchObject({
+    expect(workspace.state.lastValidModel?.$data.elements['worker' as Fqn]).toMatchObject({
       kind: serviceKind,
       title: 'Worker',
     })
