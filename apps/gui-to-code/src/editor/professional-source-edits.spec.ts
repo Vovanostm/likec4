@@ -35,7 +35,7 @@ describe('professional clipboard source planning', () => {
       [{ uri: 'model.c4', content: starterSource }],
       plan,
     )
-    expect(candidate[0]?.content).toContain("web2 = component 'Web application'")
+    expect(candidate[0]?.content).toContain("component web2 'Web application'")
     expect(candidate[0]?.content).toContain("web = component 'Web application'")
   })
 })
