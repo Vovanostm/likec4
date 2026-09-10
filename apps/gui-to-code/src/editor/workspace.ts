@@ -36,7 +36,6 @@ import {
 } from './professional-workspace'
 import { applyWp06Command } from './wp06-workspace'
 
-const supportedKinds = new Set<ElementKind>(['actor', 'system', 'component'] as ElementKind[])
 type CompiledElements = NonNullable<CompileResult['model']>['$data']['elements']
 type CompiledRelations = NonNullable<CompileResult['model']>['$data']['relations']
 type ManualLayouts = Readonly<Record<ViewId, ViewManualLayoutSnapshot>>
@@ -1226,7 +1225,7 @@ export class EditorWorkspace {
   }
 
   private validateCreateKind(state: EditorWorkspaceState, kind: ElementKind): CommandResult | null {
-    if (supportedKinds.has(kind) && availableKinds(state).has(kind)) return null
+    if (availableKinds(state).has(kind)) return null
     return {
       status: 'rejected',
       revision: state.revision,
