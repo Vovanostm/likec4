@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { MouseEvent, PointerEvent, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 export type CanvasContextMenuKind = 'node' | 'edge' | 'canvas'
@@ -27,7 +28,37 @@ export interface CanvasContextMenuProps {
   readonly onFitView: () => void
 }
 
+interface MenuItemProps {
+  readonly children: ReactNode
+  readonly disabled?: boolean
+  readonly onActivate: () => void
+}
+
 const viewportMargin = 12
+
+function MenuItem({ children, disabled = false, onActivate }: MenuItemProps) {
+  const handlePointerDown = (event: PointerEvent<HTMLButtonElement>): void => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    onActivate()
+  }
+
+  const handleClick = (event: MouseEvent<HTMLButtonElement>): void => {
+    if (event.detail === 0) onActivate()
+  }
+
+  return (
+    <button
+      role="menuitem"
+      type="button"
+      disabled={disabled}
+      onPointerDown={handlePointerDown}
+      onClick={handleClick}>
+      {children}
+    </button>
+  )
+}
 
 export function CanvasContextMenu({
   kind,
@@ -93,24 +124,24 @@ export function CanvasContextMenu({
         }
       }}>
       {kind === 'node' && <>
-        <button role="menuitem" type="button" onClick={onEdit}>Редактировать</button>
-        <button role="menuitem" type="button" onClick={onRenameNode}>Переименовать</button>
-        <button role="menuitem" type="button" onClick={onConnectNode}>Создать связь</button>
-        <button role="menuitem" type="button" disabled={!nodeClipboardReady} onClick={onCopy}>Копировать</button>
-        <button role="menuitem" type="button" disabled={!nodeClipboardReady} onClick={onDuplicate}>Дублировать</button>
-        <button role="menuitem" type="button" disabled={!canRemoveNode} onClick={onRemoveNode}>Удалить</button>
+        <MenuItem onActivate={onEdit}>Редактировать</MenuItem>
+        <MenuItem onActivate={onRenameNode}>Переименовать</MenuItem>
+        <MenuItem onActivate={onConnectNode}>Создать связь</MenuItem>
+        <MenuItem disabled={!nodeClipboardReady} onActivate={onCopy}>Копировать</MenuItem>
+        <MenuItem disabled={!nodeClipboardReady} onActivate={onDuplicate}>Дублировать</MenuItem>
+        <MenuItem disabled={!canRemoveNode} onActivate={onRemoveNode}>Удалить</MenuItem>
       </>}
       {kind === 'edge' && <>
-        <button role="menuitem" type="button" onClick={onEdit}>Редактировать</button>
-        <button role="menuitem" type="button" onClick={onRemoveEdge}>Удалить</button>
+        <MenuItem onActivate={onEdit}>Редактировать</MenuItem>
+        <MenuItem onActivate={onRemoveEdge}>Удалить</MenuItem>
       </>}
       {kind === 'canvas' && <>
-        <button role="menuitem" type="button" onClick={onCreateElement}>Создать элемент</button>
-        <button role="menuitem" type="button" disabled={!canPaste} onClick={onPaste}>Вставить</button>
-        <button role="menuitem" type="button" onClick={onSelectAll}>Выделить всё</button>
-        <button role="menuitem" type="button" onClick={onAutoLayout}>Автоматическая раскладка</button>
-        <button role="menuitem" type="button" disabled={!hasManualLayout} onClick={onResetLayout}>Сбросить ручную раскладку</button>
-        <button role="menuitem" type="button" onClick={onFitView}>Показать весь вид</button>
+        <MenuItem onActivate={onCreateElement}>Создать элемент</MenuItem>
+        <MenuItem disabled={!canPaste} onActivate={onPaste}>Вставить</MenuItem>
+        <MenuItem onActivate={onSelectAll}>Выделить всё</MenuItem>
+        <MenuItem onActivate={onAutoLayout}>Автоматическая раскладка</MenuItem>
+        <MenuItem disabled={!hasManualLayout} onActivate={onResetLayout}>Сбросить ручную раскладку</MenuItem>
+        <MenuItem onActivate={onFitView}>Показать весь вид</MenuItem>
       </>}
     </div>,
     document.body,
