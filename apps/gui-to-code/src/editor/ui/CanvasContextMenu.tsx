@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 export type CanvasContextMenuKind = 'node' | 'edge' | 'canvas'
 
@@ -78,7 +79,7 @@ export function CanvasContextMenu({
     menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
   }, [kind])
 
-  return (
+  return createPortal(
     <div
       ref={menu}
       className="canvas-context-menu"
@@ -111,6 +112,7 @@ export function CanvasContextMenu({
         <button role="menuitem" type="button" disabled={!hasManualLayout} onClick={onResetLayout}>Сбросить ручную раскладку</button>
         <button role="menuitem" type="button" onClick={onFitView}>Показать весь вид</button>
       </>}
-    </div>
+    </div>,
+    document.body,
   )
 }
