@@ -23,6 +23,8 @@ interface XYFlowPort {
 
 export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   const xyflow = useRef<XYFlowPort | null>(null)
+  const runtimeRef = useRef(runtime)
+  runtimeRef.current = runtime
   const sequence = useRef(0)
   const pasteSequence = useRef(0)
   const [clipboard, setClipboard] = useState<CanvasClipboard | null>(null)
@@ -62,7 +64,7 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   const fitSelection = async (): Promise<boolean> => {
     const nodes = selectedNodes()
     if (nodes.length === 0) {
-      runtime.setFeedback('Сначала выделите элементы на холсте.')
+      runtimeRef.current.setFeedback('Сначала выделите элементы на холсте.')
       return false
     }
     await xyflow.current?.fitView({ nodes, padding: 0.25, duration: 250 })
@@ -70,35 +72,45 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   }
 
   const captureSelection = (): CanvasClipboard | null => {
-    const current = runtime.workspace.current
-    const viewId = runtime.selectedViewId
+    const activeRuntime = runtimeRef.current
+    const current = activeRuntime.workspace.current
+    const viewId = activeRuntime.selectedViewId
     if (!current || !viewId || current.state.compilation.status !== 'valid') return null
     return captureCanvasClipboard(current.state, viewId, selectedNodeIds())
+  }
+
+  const waitForRuntimeIdle = async (): Promise<boolean> => {
+    const deadline = Date.now() + 2_000
+    while (runtimeRef.current.busy && Date.now() < deadline) {
+      await new Promise<void>(resolve => setTimeout(resolve, 20))
+    }
+    return !runtimeRef.current.busy
   }
 
   const copySelection = (): boolean => {
     const captured = captureSelection()
     if (!captured) {
-      runtime.setFeedback('Сначала выделите логические элементы в статическом виде.')
+      runtimeRef.current.setFeedback('Сначала выделите логические элементы в статическом виде.')
       return false
     }
     setClipboard(captured)
     pasteSequence.current = 0
-    runtime.setCommandError(null)
-    runtime.setFeedback(captured.elements.length === 1
+    runtimeRef.current.setCommandError(null)
+    runtimeRef.current.setFeedback(captured.elements.length === 1
       ? 'Элемент скопирован.'
       : `Скопировано элементов: ${captured.elements.length}.`)
     return true
   }
 
   const paste = async (captured: CanvasClipboard, feedback: string): Promise<boolean> => {
-    const current = runtime.workspace.current
-    const viewId = runtime.selectedViewId
-    if (!current || !viewId || runtime.busy || current.state.compilation.status !== 'valid') return false
+    const activeRuntime = runtimeRef.current
+    const current = activeRuntime.workspace.current
+    const viewId = activeRuntime.selectedViewId
+    if (!current || !viewId || activeRuntime.busy || current.state.compilation.status !== 'valid') return false
 
     const pasteIndex = pasteSequence.current + 1
-    runtime.setBusy(true)
-    runtime.setCommandError(null)
+    activeRuntime.setBusy(true)
+    activeRuntime.setCommandError(null)
     try {
       const result = await current.pasteSubgraph({
         clipboard: captured,
@@ -106,28 +118,28 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
         documentUri: workspaceDocumentUri,
         offset: { x: 24 * pasteIndex, y: 24 * pasteIndex },
       }, current.state.revision)
-      runtime.refresh()
+      activeRuntime.refresh()
       if (result.status === 'conflict') {
-        runtime.setCommandError('Проект изменился. Повторите действие на актуальной версии.')
+        activeRuntime.setCommandError('Проект изменился. Повторите действие на актуальной версии.')
         return false
       }
       if (result.status === 'rejected') {
-        runtime.setCommandError(result.issues[0]?.message ?? 'Не удалось вставить элементы.')
+        activeRuntime.setCommandError(result.issues[0]?.message ?? 'Не удалось вставить элементы.')
         return false
       }
       setClipboard(refreshClipboardRevision(captured, result.revision))
       pasteSequence.current = pasteIndex
-      runtime.setLayoutMode('manual')
-      runtime.setFeedback(feedback)
+      activeRuntime.setLayoutMode('manual')
+      activeRuntime.setFeedback(feedback)
       return true
     } finally {
-      runtime.setBusy(false)
+      activeRuntime.setBusy(false)
     }
   }
 
   const pasteClipboard = async (): Promise<boolean> => {
     if (!clipboard) {
-      runtime.setFeedback('Буфер элементов пуст.')
+      runtimeRef.current.setFeedback('Буфер элементов пуст.')
       return false
     }
     return paste(clipboard, clipboard.elements.length === 1
@@ -136,9 +148,13 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   }
 
   const duplicateSelection = async (): Promise<boolean> => {
+    if (!await waitForRuntimeIdle()) {
+      runtimeRef.current.setFeedback('Дождитесь завершения текущей операции и повторите дублирование.')
+      return false
+    }
     const captured = captureSelection()
     if (!captured) {
-      runtime.setFeedback('Сначала выделите логические элементы в статическом виде.')
+      runtimeRef.current.setFeedback('Сначала выделите логические элементы в статическом виде.')
       return false
     }
     pasteSequence.current = 0
@@ -148,72 +164,73 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   }
 
   const inspectSelectedRemoval = async (): Promise<boolean> => {
-    const current = runtime.workspace.current
+    const current = runtimeRef.current.workspace.current
     const captured = captureSelection()
-    if (!current || !captured || captured.elements.length < 2 || runtime.busy) {
-      runtime.setFeedback('Для группового удаления выделите не менее двух логических элементов в статическом виде.')
+    if (!current || !captured || captured.elements.length < 2 || runtimeRef.current.busy) {
+      runtimeRef.current.setFeedback('Для группового удаления выделите не менее двух логических элементов в статическом виде.')
       return false
     }
-    runtime.setBusy(true)
-    runtime.setCommandError(null)
+    runtimeRef.current.setBusy(true)
+    runtimeRef.current.setCommandError(null)
     try {
       const result = await current.inspectSubgraphRemoval(
         captured.elements.map(element => element.id as Fqn),
         current.state.revision,
       )
       if (result.status === 'conflict') {
-        runtime.setCommandError('Проект изменился. Повторите удаление на актуальной версии.')
+        runtimeRef.current.setCommandError('Проект изменился. Повторите удаление на актуальной версии.')
         return false
       }
       if (result.status === 'rejected') {
-        runtime.setCommandError(result.issues[0]?.message ?? 'Не удалось проверить групповое удаление.')
+        runtimeRef.current.setCommandError(result.issues[0]?.message ?? 'Не удалось проверить групповое удаление.')
         return false
       }
       setRemovalInspection(result.inspection)
-      runtime.setFeedback(null)
+      runtimeRef.current.setFeedback(null)
       return true
     } finally {
-      runtime.setBusy(false)
+      runtimeRef.current.setBusy(false)
     }
   }
 
   const confirmSelectedRemoval = async (): Promise<boolean> => {
-    const current = runtime.workspace.current
-    if (!current || !removalInspection || runtime.busy) return false
-    runtime.setBusy(true)
-    runtime.setCommandError(null)
+    const current = runtimeRef.current.workspace.current
+    if (!current || !removalInspection || runtimeRef.current.busy) return false
+    runtimeRef.current.setBusy(true)
+    runtimeRef.current.setCommandError(null)
     try {
       const result = await current.removeSubgraph(removalInspection, current.state.revision)
-      runtime.refresh()
+      runtimeRef.current.refresh()
       if (result.status === 'conflict') {
-        runtime.setCommandError('Проект изменился. Проверьте зависимости и подтвердите удаление снова.')
+        runtimeRef.current.setCommandError('Проект изменился. Проверьте зависимости и подтвердите удаление снова.')
         setRemovalInspection(null)
         return false
       }
       if (result.status === 'rejected') {
-        runtime.setCommandError(result.issues[0]?.message ?? 'Не удалось удалить выбранные элементы.')
+        runtimeRef.current.setCommandError(result.issues[0]?.message ?? 'Не удалось удалить выбранные элементы.')
         return false
       }
       setRemovalInspection(null)
       clearVisualSelection()
-      runtime.setFeedback(`Удалено элементов: ${result.removedElementIds.length}.`)
+      runtimeRef.current.setFeedback(`Удалено элементов: ${result.removedElementIds.length}.`)
       return true
     } finally {
-      runtime.setBusy(false)
+      runtimeRef.current.setBusy(false)
     }
   }
 
   const closeSelectedRemoval = (): void => setRemovalInspection(null)
 
   const applyLayout = async (action: MultiNodeLayoutAction): Promise<boolean> => {
-    const current = runtime.workspace.current
-    const viewId = runtime.selectedViewId
-    if (!current || !viewId || runtime.busy || current.state.compilation.status !== 'valid') return false
+    const activeRuntime = runtimeRef.current
+    const current = activeRuntime.workspace.current
+    const viewId = activeRuntime.selectedViewId
+    if (!current || !viewId || activeRuntime.busy || current.state.compilation.status !== 'valid') return false
 
     const ids = selectedNodeIds()
     const minimum = action.startsWith('distribute-') ? 3 : 2
     if (ids.size < minimum) {
-      runtime.setFeedback(minimum === 3
+      activeRuntime.setFeedback(minimum === 3
         ? 'Для распределения выделите не менее трёх элементов.'
         : 'Для выравнивания выделите не менее двух элементов.')
       return false
@@ -222,7 +239,7 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
     const layouted = current.state.manualLayouts[viewId]
       ?? current.state.lastValidModel?.findView(viewId as ViewId)?.$layouted
     if (!layouted) {
-      runtime.setCommandError('Не удалось получить текущую раскладку вида.')
+      activeRuntime.setCommandError('Не удалось получить текущую раскладку вида.')
       return false
     }
 
@@ -232,8 +249,8 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
       action,
     )
 
-    runtime.setBusy(true)
-    runtime.setCommandError(null)
+    activeRuntime.setBusy(true)
+    activeRuntime.setCommandError(null)
     try {
       const result = await current.dispatch({
         id: Date.now() * 1000 + (++sequence.current % 1000),
@@ -243,15 +260,15 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
           input: { viewId, snapshot },
         },
       })
-      runtime.finishResult(result, 'Не удалось изменить раскладку.')
+      activeRuntime.finishResult(result, 'Не удалось изменить раскладку.')
       if (result.status === 'applied') {
-        runtime.setLayoutMode('manual')
-        runtime.setFeedback('Раскладка выбранных элементов обновлена.')
+        activeRuntime.setLayoutMode('manual')
+        activeRuntime.setFeedback('Раскладка выбранных элементов обновлена.')
         return true
       }
       return false
     } finally {
-      runtime.setBusy(false)
+      activeRuntime.setBusy(false)
     }
   }
 
