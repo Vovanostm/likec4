@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 export type CanvasContextMenuKind = 'node' | 'edge' | 'canvas'
 
@@ -26,6 +26,8 @@ export interface CanvasContextMenuProps {
   readonly onFitView: () => void
 }
 
+const viewportMargin = 12
+
 export function CanvasContextMenu({
   kind,
   x,
@@ -50,7 +52,27 @@ export function CanvasContextMenu({
   onFitView,
 }: CanvasContextMenuProps) {
   const menu = useRef<HTMLDivElement | null>(null)
+  const [position, setPosition] = useState({ left: x, top: y })
   const nodeClipboardReady = kind === 'node' || canCopy
+
+  useLayoutEffect(() => {
+    const element = menu.current
+    if (!element) return
+
+    const keepInsideViewport = () => {
+      const bounds = element.getBoundingClientRect()
+      const maxLeft = Math.max(viewportMargin, window.innerWidth - bounds.width - viewportMargin)
+      const maxTop = Math.max(viewportMargin, window.innerHeight - bounds.height - viewportMargin)
+      const left = Math.min(Math.max(x, viewportMargin), maxLeft)
+      const top = Math.min(Math.max(y, viewportMargin), maxTop)
+
+      setPosition(current => current.left === left && current.top === top ? current : { left, top })
+    }
+
+    keepInsideViewport()
+    window.addEventListener('resize', keepInsideViewport)
+    return () => window.removeEventListener('resize', keepInsideViewport)
+  }, [kind, x, y])
 
   useEffect(() => {
     menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
@@ -62,7 +84,7 @@ export function CanvasContextMenu({
       className="canvas-context-menu"
       role="menu"
       aria-label={kind === 'node' ? 'Меню элемента' : kind === 'edge' ? 'Меню связи' : 'Меню холста'}
-      style={{ left: x, top: y }}
+      style={{ left: position.left, top: position.top }}
       onKeyDown={event => {
         if (event.key === 'Escape') {
           event.preventDefault()
