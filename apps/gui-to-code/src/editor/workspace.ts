@@ -23,9 +23,19 @@ import type {
   WorkspaceDocumentSnapshot,
 } from './contracts'
 import { EditorDocumentError } from './contracts'
+import type { PasteSubgraphInput, PasteSubgraphResult } from './professional-clipboard'
+import type {
+  MultiRemovalInspection,
+  MultiRemovalInspectionResult,
+  RemoveSubgraphResult,
+} from './professional-removal'
+import {
+  applyPasteSubgraph,
+  applyRemoveSubgraph,
+  inspectMultiRemoval,
+} from './professional-workspace'
 import { applyWp06Command } from './wp06-workspace'
 
-const supportedKinds = new Set<ElementKind>(['actor', 'system', 'component'] as ElementKind[])
 type CompiledElements = NonNullable<CompileResult['model']>['$data']['elements']
 type CompiledRelations = NonNullable<CompileResult['model']>['$data']['relations']
 type ManualLayouts = Readonly<Record<ViewId, ViewManualLayoutSnapshot>>
@@ -459,6 +469,46 @@ export class EditorWorkspace {
 
   inspectElementRemoval(id: Fqn, expectedRevision: number): Promise<RemovalInspectionResult> {
     return this.enqueue(() => this.applyRemovalInspection(id, expectedRevision))
+  }
+
+  inspectSubgraphRemoval(ids: readonly Fqn[], expectedRevision: number): Promise<MultiRemovalInspectionResult> {
+    return this.enqueue(() => {
+      const state = this.current
+      return inspectMultiRemoval({
+        state,
+        inspectElementRemoval: (sources, id) => this.documents.inspectRemoveElement(sources, id),
+        isCurrent: () => this.isCurrent(state),
+        currentRevision: () => this.current.revision,
+      }, ids, expectedRevision)
+    })
+  }
+
+  removeSubgraph(inspection: MultiRemovalInspection, expectedRevision: number): Promise<RemoveSubgraphResult> {
+    return this.enqueue(() => {
+      const state = this.current
+      return applyRemoveSubgraph({
+        state,
+        compileCandidate: (revision, sources) => this.compileCandidate(revision, sources),
+        commitCandidate: (revision, sources, model, layouts) =>
+          this.commitCandidate(state, revision, sources, model, layouts),
+        isCurrent: () => this.isCurrent(state),
+        currentRevision: () => this.current.revision,
+      }, inspection, expectedRevision)
+    })
+  }
+
+  pasteSubgraph(input: PasteSubgraphInput, expectedRevision: number): Promise<PasteSubgraphResult> {
+    return this.enqueue(() => {
+      const state = this.current
+      return applyPasteSubgraph({
+        state,
+        compileCandidate: (revision, sources) => this.compileCandidate(revision, sources),
+        commitCandidate: (revision, sources, model, layouts) =>
+          this.commitCandidate(state, revision, sources, model, layouts),
+        isCurrent: () => this.isCurrent(state),
+        currentRevision: () => this.current.revision,
+      }, input, expectedRevision)
+    })
   }
 
   private enqueue<T>(action: () => Promise<T>): Promise<T> {
@@ -1175,7 +1225,7 @@ export class EditorWorkspace {
   }
 
   private validateCreateKind(state: EditorWorkspaceState, kind: ElementKind): CommandResult | null {
-    if (supportedKinds.has(kind) && availableKinds(state).has(kind)) return null
+    if (availableKinds(state).has(kind)) return null
     return {
       status: 'rejected',
       revision: state.revision,
