@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { MouseEvent, PointerEvent, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 export type CanvasContextMenuKind = 'node' | 'edge' | 'canvas'
@@ -37,24 +37,12 @@ interface MenuItemProps {
 const viewportMargin = 12
 
 function MenuItem({ children, disabled = false, onActivate }: MenuItemProps) {
-  const handlePointerDown = (event: PointerEvent<HTMLButtonElement>): void => {
-    if (event.button !== 0) return
-    event.preventDefault()
-    event.stopPropagation()
-    onActivate()
-  }
-
-  const handleClick = (event: MouseEvent<HTMLButtonElement>): void => {
-    if (event.detail === 0) onActivate()
-  }
-
   return (
     <button
       role="menuitem"
       type="button"
       disabled={disabled}
-      onPointerDown={handlePointerDown}
-      onClick={handleClick}>
+      onClick={onActivate}>
       {children}
     </button>
   )
@@ -109,6 +97,17 @@ export function CanvasContextMenu({
   useEffect(() => {
     menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
   }, [kind])
+
+  useEffect(() => {
+    const keepPointerDownOutOfCanvasCapture = (event: globalThis.PointerEvent): void => {
+      const element = menu.current
+      if (!element || !(event.target instanceof Node) || !element.contains(event.target)) return
+      event.stopPropagation()
+    }
+
+    document.addEventListener('pointerdown', keepPointerDownOutOfCanvasCapture, true)
+    return () => document.removeEventListener('pointerdown', keepPointerDownOutOfCanvasCapture, true)
+  }, [])
 
   return createPortal(
     <div
