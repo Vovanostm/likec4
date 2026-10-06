@@ -16,6 +16,7 @@ allowBuilds:
   workerd: true
   oxlint: true
   wrangler: true
+  '@ast-grep/cli': true
 
 overrides:
   "react": "catalog:react"

@@ -1,0 +1,293 @@
+{
+  "date": "2026-10-05",
+  "readiness": "changes_requested",
+  "scope": "desktop C4 service authoring via UI only",
+  "browser": "Chrome DevTools MCP, isolated c4-orders-desktop-20261005, 1440x1000 DPR1",
+  "candidate": "index-CSKAq45U.js",
+  "states": {
+    "c4ActorState": {
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    actor actor {\n      title 'Покупатель'\n    }\n  }\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n}\n",
+      "view": "Новый элемент (view1)",
+      "nodes": [
+        {
+          "id": "system",
+          "transform": "translate(117.805px, 29.332px)",
+          "text": "СЕРВИС ЗАКАЗОВ",
+          "rect": {
+            "x": 518,
+            "y": 415.11328125,
+            "width": 404,
+            "height": 282
+          }
+        },
+        {
+          "id": "system.actor",
+          "transform": "translate(159.805px, 89.332px)",
+          "text": "Покупатель",
+          "rect": {
+            "x": 560,
+            "y": 475.11328125,
+            "width": 320,
+            "height": 180
+          }
+        }
+      ]
+    },
+    "c4ActorRootState": {
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n  }\n  actor actor {\n    title 'Покупатель'\n  }\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n}\n",
+      "nodes": [
+        {
+          "id": "system",
+          "text": "Сервис заказов"
+        }
+      ],
+      "body": "LikeC4: визуальный редактор\n\nСоздавайте, связывайте и редактируйте сущности непосредственно на холсте.\n\nТекущий вид\nНовый элемент (view1)\nСоздать вид\nДополнительно\nСтруктура\nИнспектор\nКод\nОтменить\nПовторить\nФайл и действия\n\nРабочее пространство сохранено.\n\nДиаграмма\nВыбор\nАктор\nСистема\nКомпонент\nСвязать\nПокупатель\nНазвание\nПоложение\nСвойства\nУдалить\n×\n−\nПоказать всю диаграмму\n+\n\nF2 — название · Enter — свойства · Delete — удалить\n\nЭлемент перемещён: actor.\n\nИнспектор\nЗакрыть\nСценарии и развёртывание\nИнспектор\n\nПокупатель\n\nОсновные свойства\nНазвание\nОписание\nПодробности\nТехнология\nТеги\n\nВ спецификации нет тегов.\n\nИдентификатор\nТекущий FQN\nЛокальный ID\nПереименовать\nРодитель\nРодитель\nБез родителя\nСервис заказов (system)\nПереместить\nСохранить свойства\nОпасная зона\nУдалить элемент"
+    },
+    "c4OverlapState": {
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n    }\n      component component2 {\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n}\n",
+      "nodes": [
+        {
+          "id": "system",
+          "text": "СЕРВИС ЗАКАЗОВ",
+          "position": "translate(235px, 59px)",
+          "zIndex": "1",
+          "rect": {
+            "x": 438.1953125,
+            "y": 374.78125,
+            "width": 564,
+            "height": 363
+          }
+        },
+        {
+          "id": "system.component",
+          "text": "API заказов",
+          "position": "translate(277.805px, 119.332px)",
+          "zIndex": "20",
+          "rect": {
+            "x": 481,
+            "y": 435.11328125,
+            "width": 320,
+            "height": 180
+          }
+        },
+        {
+          "id": "system.component2",
+          "text": "База заказов",
+          "position": "translate(437.805px, 200.332px)",
+          "zIndex": "20",
+          "rect": {
+            "x": 641,
+            "y": 516.11328125,
+            "width": 320,
+            "height": 180
+          }
+        }
+      ],
+      "siblingIntersection": {
+        "width": 160,
+        "height": 99
+      },
+      "layoutMode": "manual"
+    },
+    "c4AutoState": {
+      "mode": "auto",
+      "nodes": [
+        {
+          "id": "system",
+          "position": "translate(8px, 8px)",
+          "text": "СЕРВИС ЗАКАЗОВ"
+        },
+        {
+          "id": "system.component",
+          "position": "translate(48px, 69px)",
+          "text": "API заказов"
+        },
+        {
+          "id": "system.component2",
+          "position": "translate(48px, 369px)",
+          "text": "База заказов"
+        }
+      ],
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n    }\n      component component2 {\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n}\n"
+    },
+    "c4AutoReloadState": {
+      "mode": "manual",
+      "nodes": [
+        {
+          "id": "system",
+          "position": "translate(235px, 59px)",
+          "text": "СЕРВИС ЗАКАЗОВ"
+        },
+        {
+          "id": "system.component",
+          "position": "translate(277.805px, 119.332px)",
+          "text": "API заказов"
+        },
+        {
+          "id": "system.component2",
+          "position": "translate(437.805px, 200.332px)",
+          "text": "База заказов"
+        }
+      ],
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n    }\n      component component2 {\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n}\n"
+    },
+    "c4TechnologyBefore": {
+      "html": "<div class=\"likec4-element-node group\" data-likec4-hovered=\"false\" data-likec4-color=\"primary\" data-likec4-shape=\"rectangle\" data-likec4-shape-size=\"md\" data-likec4-spacing=\"md\" data-likec4-text-size=\"md\" tabindex=\"-1\" style=\"transform: scale(1.02);\"><div aria-hidden=\"true\" class=\"likec4-element-shape likec4-element-shape--withBorder_false likec4-element-shape--withOutline_true likec4-element-shape--shapetype_html\" style=\"border-style: none;\"><div class=\"likec4-shape-outline\"></div></div><div aria-hidden=\"true\" class=\"likec4-element-node-data likec4-element-node-data--iconPosition_left likec4-element-node-data--withIconColor_false likec4-element\"><div class=\"likec4-element-node-content\"><div class=\"likec4-element-title\" data-likec4-node-title=\"\">База заказов</div></div></div><div data-nodeid=\"system.component2\" data-handlepos=\"bottom\" data-id=\"1-system.component2-null-source\" class=\"react-flow__handle react-flow__handle-bottom nodrag nopan likec4-node-handle-center source connectable connectablestart connectableend connectionindicator\"></div><div data-nodeid=\"system.component2\" data-handlepos=\"top\" data-id=\"1-system.component2-null-target\" class=\"react-flow__handle react-flow__handle-top nodrag nopan likec4-node-handle-center target connectable connectablestart connectableend connectionindicator\"></div><div data-handleid=\"likec4-authoring-source\" data-nodeid=\"system.component2\" data-handlepos=\"right\" data-id=\"1-system.component2-likec4-authoring-source-source\" class=\"react-flow__handle react-flow__handle-right nodrag nopan likec4-authoring-handle source connectable connectablestart connectableend connectionindicator\" style=\"width: 16px; height: 16px; background: var(--mantine-color-blue-5); border: 2px solid var(--mantine-color-body); cursor: crosshair; z-index: 30; visibility: visible; pointer-events: all;\"></div><div data-handleid=\"likec4-authoring-target\" data-nodeid=\"system.component2\" data-handlepos=\"left\" data-id=\"1-system.component2-likec4-authoring-target-target\" class=\"react-flow__handle react-flow__handle-left nodrag nopan likec4-authoring-handle target connectable connectablestart connectableend connectionindicator\" style=\"width: 16px; height: 16px; background: var(--mantine-color-blue-5); border: 2px solid var(--mantine-color-body); cursor: crosshair; z-index: 30; visibility: visible; pointer-events: all;\"></div></div>",
+      "images": 0,
+      "text": "База заказов",
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n    }\n      component component2 {\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n}\n"
+    },
+    "c4TechnologyAfter": {
+      "html": "<div class=\"likec4-element-node group\" data-likec4-hovered=\"false\" data-likec4-color=\"primary\" data-likec4-shape=\"rectangle\" data-likec4-shape-size=\"md\" data-likec4-spacing=\"md\" data-likec4-text-size=\"md\" tabindex=\"-1\" style=\"transform: scale(1.02);\"><div aria-hidden=\"true\" class=\"likec4-element-shape likec4-element-shape--withBorder_false likec4-element-shape--withOutline_true likec4-element-shape--shapetype_html\" style=\"border-style: none;\"><div class=\"likec4-shape-outline\"></div></div><div aria-hidden=\"true\" class=\"likec4-element-node-data likec4-element-node-data--iconPosition_left likec4-element-node-data--withIconColor_false likec4-element\"><div class=\"likec4-element-node-content\"><div class=\"likec4-element-title\" data-likec4-node-title=\"\">База заказов</div><div class=\"likec4-element-technology\" data-likec4-node-technology=\"\">PostgreSQL</div></div></div><div data-nodeid=\"system.component2\" data-handlepos=\"bottom\" data-id=\"1-system.component2-null-source\" class=\"react-flow__handle react-flow__handle-bottom nodrag nopan likec4-node-handle-center source connectable connectablestart connectableend connectionindicator\"></div><div data-nodeid=\"system.component2\" data-handlepos=\"top\" data-id=\"1-system.component2-null-target\" class=\"react-flow__handle react-flow__handle-top nodrag nopan likec4-node-handle-center target connectable connectablestart connectableend connectionindicator\"></div><div data-handleid=\"likec4-authoring-source\" data-nodeid=\"system.component2\" data-handlepos=\"right\" data-id=\"1-system.component2-likec4-authoring-source-source\" class=\"react-flow__handle react-flow__handle-right nodrag nopan likec4-authoring-handle source connectable connectablestart connectableend connectionindicator\" style=\"width: 16px; height: 16px; background: var(--mantine-color-blue-5); border: 2px solid var(--mantine-color-body); cursor: crosshair; z-index: 30; visibility: visible; pointer-events: all;\"></div><div data-handleid=\"likec4-authoring-target\" data-nodeid=\"system.component2\" data-handlepos=\"left\" data-id=\"1-system.component2-likec4-authoring-target-target\" class=\"react-flow__handle react-flow__handle-left nodrag nopan likec4-authoring-handle target connectable connectablestart connectableend connectionindicator\" style=\"width: 16px; height: 16px; background: var(--mantine-color-blue-5); border: 2px solid var(--mantine-color-body); cursor: crosshair; z-index: 30; visibility: visible; pointer-events: all;\"></div></div>",
+      "images": 0,
+      "text": "База заказов\nPostgreSQL",
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n    }\n      component component2 {\n        technology 'PostgreSQL'\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n}\n",
+      "status": "saved"
+    },
+    "c4ResetState": {
+      "mode": "auto",
+      "nodes": [
+        {
+          "id": "system",
+          "position": "translate(8px, 8px)"
+        },
+        {
+          "id": "system.component",
+          "position": "translate(48px, 69px)"
+        },
+        {
+          "id": "system.component2",
+          "position": "translate(48px, 369px)"
+        }
+      ],
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n    }\n      component component2 {\n        technology 'PostgreSQL'\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n}\n"
+    },
+    "c4ComponentViewState": {
+      "view": "view2",
+      "nodes": [
+        {
+          "id": "system.component",
+          "text": "API ЗАКАЗОВ"
+        },
+        {
+          "id": "system.component.component",
+          "text": "Контроллер заказов"
+        }
+      ],
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n      component component {\n        title 'Контроллер заказов'\n      }\n        }\n      component component2 {\n        technology 'PostgreSQL'\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n\n  view view2 of system.component {\n    title 'C3 — Компоненты API'\n    include *\n  }\n}\n"
+    },
+    "c4ContainerViewState": {
+      "view": "view1",
+      "mode": "auto",
+      "nodes": [
+        {
+          "id": "system",
+          "text": "СЕРВИС ЗАКАЗОВ"
+        },
+        {
+          "id": "system.component",
+          "text": "API заказов"
+        },
+        {
+          "id": "system.component2",
+          "text": "База заказов\nPostgreSQL"
+        }
+      ],
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n      component component {\n        title 'Контроллер заказов'\n      }\n        }\n      component component2 {\n        technology 'PostgreSQL'\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n\n  view view2 of system.component {\n    title 'C3 — Компоненты API'\n    include *\n  }\n}\n"
+    },
+    "c4DrillInteraction": {
+      "view": "view1",
+      "titleEditor": true,
+      "body": "LikeC4: визуальный редактор\n\nСоздавайте, связывайте и редактируйте сущности непосредственно на холсте.\n\nТекущий вид\nНовый элемент (view1)\nC3 — Компоненты API (view2)\nСоздать вид\nДополнительно\nСтруктура\nИнспектор\nКод\nОтменить\nПовторить\nФайл и действия\n\nРабочее пространство сохранено.\n\nСтруктура модели\nЗакрыть\nПокупатель\nactor\nСервис заказов\nsystem\nAPI заказов\nsystem.component\nКонтроллер заказов\nsystem.component.component\nБаза заказов\nsystem.component2\nДиаграмма\nВыбор\nАктор\nСистема\nКомпонент\nСвязать\nНазвание элемента\nСохранить\nОтмена\n−\nПоказать всю диаграмму\n+\n\nF2 — название · Enter — свойства · Delete — удалить\n\nНазвание элемента обновлено.",
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n      component component {\n        title 'Контроллер заказов'\n      }\n        }\n      component component2 {\n        technology 'PostgreSQL'\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n\n  view view2 of system.component {\n    title 'C3 — Компоненты API'\n    include *\n  }\n}\n"
+    },
+    "c4RelationState": {
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n      component component {\n        title 'Контроллер заказов'\n      }\n        }\n      component component2 {\n        technology 'PostgreSQL'\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n  system.component -> system.component2\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n\n  view view2 of system.component {\n    title 'C3 — Компоненты API'\n    include *\n  }\n}\n",
+      "status": "saved",
+      "feedback": "Связь создана.",
+      "nodes": [
+        {
+          "id": "system",
+          "text": "СЕРВИС ЗАКАЗОВ"
+        },
+        {
+          "id": "system.component",
+          "text": "API заказов"
+        },
+        {
+          "id": "system.component2",
+          "text": "База заказов\nPostgreSQL"
+        }
+      ],
+      "edgeCount": 1
+    },
+    "c4ExternalRelationState": {
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n      component component {\n        title 'Контроллер заказов'\n      }\n        }\n      component component2 {\n        technology 'PostgreSQL'\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n  system.component -> system.component2\n  actor -> system\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n\n  view view2 of system.component {\n    title 'C3 — Компоненты API'\n    include *\n  }\n}\n",
+      "nodes": [
+        {
+          "id": "system",
+          "text": "СЕРВИС ЗАКАЗОВ"
+        },
+        {
+          "id": "system.component",
+          "text": "API заказов"
+        },
+        {
+          "id": "system.component2",
+          "text": "База заказов\nPostgreSQL"
+        }
+      ],
+      "edges": [
+        {
+          "id": "83eg",
+          "label": "Связь от API заказов к База заказов."
+        }
+      ],
+      "body": "LikeC4: визуальный редактор\n\nСоздавайте, связывайте и редактируйте сущности непосредственно на холсте.\n\nТекущий вид\nНовый элемент (view1)\nC3 — Компоненты API (view2)\nСоздать вид\nДополнительно\nСтруктура\nИнспектор\nКод\nОтменить\nПовторить\nФайл и действия\n\nРабочее пространство сохранено.\n\nДиаграмма\nВыбор\nАктор\nСистема\nКомпонент\nСвязать\nAPI заказов\nНазвание\nПоложение\nСвойства\nУдалить\n×\n−\nПоказать всю диаграмму\n+\n\nF2 — название · Enter — свойства · Delete — удалить\n\nСвязь создана в модели, но текущий вид её не отображает."
+    },
+    "c4FinalState": {
+      "mode": "manual",
+      "view": "view1",
+      "source": "specification {\n  element actor\n  element system\n  element component\n  deploymentNode environment\n}\n\nmodel {\n  system system 'Сервис заказов' {\n    component component {\n      title 'API заказов'\n      component component {\n        title 'Контроллер заказов'\n      }\n        }\n      component component2 {\n        technology 'PostgreSQL'\n        title 'База заказов'\n      }\n        }\n  actor actor {\n    title 'Покупатель'\n  }\n  system.component -> system.component2\n  actor -> system\n}\n\nviews {\n  view view1 of system {\n    title 'Новый элемент'\n    include *\n  }\n\n  view view2 of system.component {\n    title 'C3 — Компоненты API'\n    include *\n  }\n}\n",
+      "nodes": [
+        {
+          "id": "system",
+          "text": "СЕРВИС ЗАКАЗОВ",
+          "position": "translate(8px, 8px)"
+        },
+        {
+          "id": "system.component",
+          "text": "API заказов",
+          "position": "translate(48px, 69px)"
+        },
+        {
+          "id": "system.component2",
+          "text": "База заказов\nPostgreSQL",
+          "position": "translate(48px, 369px)"
+        }
+      ]
+    },
+    "c4Assets": [
+      {
+        "path": "/assets/index-CSKAq45U.js",
+        "size": 4702210,
+        "sha256": "fcb8c8c0f74e7973883d65545fa087fae1d4ba31d11f8d597d91a799432be80f"
+      },
+      {
+        "path": "/assets/index-2XorT5yy.css",
+        "size": 176412,
+        "sha256": "27678784528643bbe871625228a7cc1cc7b00d7f7fa509665c3b4af73bc7453d"
+      }
+    ]
+  },
+  "console": [
+    "Emulating viewport: {\"deviceScaleFactor\":1,\"isMobile\":false,\"hasTouch\":false,\"isLandscape\":false,\"width\":1440,\"height\":1000}\n## Console messages\nShowing 1-3 of 3 (Page 1 of 1).\nmsgid=5 [warn] WARN  likec4.server.workspace No likec4 documents found in workspace (1 args)\nmsgid=12 [error] Failed to load resource: the server responded with a status of 404 (Not Found) (0 args)\nmsgid=18 [warn] WARN  likec4.server.workspace No likec4 documents found in workspace (1 args) [50 times]"
+  ],
+  "limitations": [
+    "No DSL was typed or imported to complete the model; source was only read for verification and saved as evidence.",
+    "No claim of complete C1/C2/C3 authoring: C1 remained unavailable via the tested UI path.",
+    "Programmatic DOM reads were used for source, geometry and hashes; creation/editing/view switching used browser UI tools.",
+    "No product code changes during this audit. Previous test counts are historical verification of this same asset, not acceptance of the newly required C4 journey.",
+    "One expired element UID during automation was corrected by rereading the snapshot; it is not a product defect."
+  ]
+}

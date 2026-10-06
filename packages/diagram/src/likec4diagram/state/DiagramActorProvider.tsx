@@ -25,6 +25,7 @@ import { DiagramToggledFeaturesPersistence } from './persistence'
 
 export function DiagramActorProvider({
   id,
+  locale,
   view,
   zoomable,
   pannable,
@@ -36,6 +37,7 @@ export function DiagramActorProvider({
   dynamicViewVariant: _defaultVariant,
 }: PropsWithChildren<{
   id: string
+  locale?: 'en' | 'ru' | undefined
   view: DiagramView
   zoomable: boolean
   pannable: boolean
@@ -62,6 +64,7 @@ export function DiagramActorProvider({
       // ...inspector,
       input: {
         xystore,
+        locale,
         view,
         zoomable,
         pannable,

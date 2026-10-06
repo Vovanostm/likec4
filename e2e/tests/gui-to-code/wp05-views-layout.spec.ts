@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openPanel } from './panels'
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.clear())
@@ -13,8 +14,10 @@ test('creates and selects a scoped static view without changing history on selec
   const revision = page.getByText(/Ревизия проекта:/)
 
   await expect(viewSelector).toHaveValue('index')
+  await openPanel(page, 'Структура')
   await page.getByRole('button', { name: /Online shop.*shop/ }).click()
   await page.getByRole('button', { name: 'Создать вид' }).click()
+  await page.getByRole('form', { name: 'Создание статического вида' }).getByText('Подробности', { exact: true }).click()
   await page.getByLabel('ID нового вида').fill('shop_overview')
   await page.getByLabel('Название нового вида').fill('Обзор магазина')
   await page.getByRole('button', { name: 'Создать', exact: true }).click()
@@ -41,10 +44,42 @@ test('creates and selects a scoped static view without changing history on selec
   await expect(viewSelector.locator('option[value="shop_overview"]')).toHaveCount(1)
 })
 
+test('creates a titled view with an automatic ID while expert details stay collapsed', async ({ page }) => {
+  await openPanel(page, 'Структура')
+  await page.getByRole('button', { name: /Online shop.*shop/ }).click()
+  const view = page.getByLabel('Текущий вид')
+  const beforeOptions = await view.locator('option').count()
+  await page.getByRole('button', { name: 'Создать вид', exact: true }).click()
+  const title = page.getByLabel('Название нового вида')
+  const id = page.getByLabel('ID нового вида')
+  await expect(title).toBeFocused()
+  await expect(id).toBeHidden()
+  await expect(id).toHaveValue('')
+  await expect(id).not.toHaveAttribute('required', '')
+  await title.fill('Автоматический обзор')
+  await title.press('Enter')
+  await expect(title).toBeHidden()
+  await expect(view.locator('option')).toHaveCount(beforeOptions + 1)
+  const createdId = await view.inputValue()
+  expect(createdId).not.toBe('index')
+  expect(createdId).toMatch(/^[A-Za-z_][\w]*$/)
+  await expect(view.locator('option:checked')).toContainText('Автоматический обзор')
+  await openPanel(page, 'Код')
+  const source = page.getByLabel('Исходный код LikeC4')
+  const created = await source.inputValue()
+  expect(created).toContain(`view ${createdId} of shop`)
+  expect(created).toContain('title \'Автоматический обзор\'')
+  await page.getByRole('button', { name: 'Отменить последнее изменение' }).click()
+  await expect(view.locator('option')).toHaveCount(beforeOptions)
+  await page.getByRole('button', { name: 'Повторить отменённое изменение' }).click()
+  await expect(source).toHaveValue(created)
+})
+
 test('restores a standard manual-layout snapshot after reload and file round trip', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: 'Код', exact: true }).click()
   const source = page.getByLabel('Исходный код LikeC4')
   const sourceBeforeLayout = await source.inputValue()
+  await page.getByRole('button', { name: 'Код', exact: true }).click()
   const node = page.locator('.react-flow__node[data-id="customer"]')
   await expect(node).toBeVisible()
   await node.scrollIntoViewIfNeeded()
@@ -64,13 +99,7 @@ test('restores a standard manual-layout snapshot after reload and file round tri
   await expect(source).toHaveValue(sourceBeforeLayout)
   await expect(page.getByLabel('Режим раскладки')).toHaveValue('manual')
 
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('likec4.gui-to-code.manual-layouts.v1')))
-    .not.toBeNull()
-  const stored = await page.evaluate(() => localStorage.getItem('likec4.gui-to-code.manual-layouts.v1'))
-  expect(JSON.parse(stored!)).toMatchObject({
-    version: 1,
-    files: { '.likec4/index.likec4.snap': { id: 'index', _stage: 'layouted' } },
-  })
+  await expect(page.locator('.save-status')).toHaveAttribute('data-status', 'saved')
 
   await page.reload()
   await expect(page.getByLabel('Текущий вид')).toHaveValue('index')
@@ -80,6 +109,7 @@ test('restores a standard manual-layout snapshot after reload and file round tri
   await expect(reloadedSource).toHaveValue(sourceBeforeLayout)
 
   const exportButton = page.getByRole('button', { name: 'Экспортировать раскладку' })
+  await page.getByText('Дополнительно', { exact: true }).click()
   await expect(exportButton).toBeEnabled()
   const [download] = await Promise.all([
     page.waitForEvent('download'),

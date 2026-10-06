@@ -6,6 +6,14 @@ export default defineConfig({
     conditions: ['sources', 'module', 'import', 'default'],
     alias: [
       {
+        find: /^@likec4\/diagram$/,
+        replacement: resolve(import.meta.dirname, '../../packages/diagram/src/index.ts'),
+      },
+      {
+        find: /^@likec4\/diagram\/manual-layout$/,
+        replacement: resolve(import.meta.dirname, '../../packages/diagram/src/editor/applyChangesToManualLayout.ts'),
+      },
+      {
         find: /^@likec4\/config$/,
         replacement: resolve(import.meta.dirname, '../../packages/config/src/index.ts'),
       },

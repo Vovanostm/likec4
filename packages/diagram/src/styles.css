@@ -1,3 +1,14 @@
 @layer reset, base, mantine, xyflow, tokens, recipes, utilities;
 @import "@mantine/core/styles.layer.css";
 @import "@xyflow/react/dist/style.css" layer(xyflow);
+
+@layer xyflow {
+  .react-flow .react-flow__attribution {
+    background: #fff;
+    color: #475569;
+    font-size: 12px;
+  }
+  .react-flow .react-flow__attribution a {
+    color: inherit;
+  }
+}

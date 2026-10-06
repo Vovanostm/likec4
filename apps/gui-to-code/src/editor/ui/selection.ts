@@ -9,6 +9,20 @@ export interface StructureNode {
   readonly children: readonly StructureNode[]
 }
 
+/** Retain matching branches and their ancestors without changing the canonical tree. */
+export function filterStructureTree(nodes: readonly StructureNode[], query: string): readonly StructureNode[] {
+  const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return nodes
+  const visit = (items: readonly StructureNode[]): StructureNode[] =>
+    items.flatMap(node => {
+      const text = `${node.title} ${node.id}`.toLocaleLowerCase()
+      if (words.every(word => text.includes(word))) return [node]
+      const children = visit(node.children)
+      return children.length ? [{ ...node, children }] : []
+    })
+  return visit(nodes)
+}
+
 export function buildStructureTree(state: EditorWorkspaceState): readonly StructureNode[] {
   const elements = Object.values(state.lastValidModel?.$data.elements ?? {})
   const byParent = new Map<string | null, typeof elements>()
@@ -32,7 +46,10 @@ export function buildStructureTree(state: EditorWorkspaceState): readonly Struct
   return visit(null)
 }
 
-export function parentOptions(state: EditorWorkspaceState, target: Fqn): readonly { readonly id: Fqn; readonly title: string }[] {
+export function parentOptions(
+  state: EditorWorkspaceState,
+  target: Fqn,
+): readonly { readonly id: Fqn; readonly title: string }[] {
   return Object.values(state.lastValidModel?.$data.elements ?? {})
     .filter(element => element.id !== target && !element.id.startsWith(`${target}.`))
     .map(element => ({ id: element.id as Fqn, title: element.title }))
@@ -57,9 +74,11 @@ export function selectionAfterResult(
       return { type: 'element', id: result.updatedElementId }
     case 'element.createAt':
     case 'element.createConnected':
+    case 'diagram.create':
       return { type: 'element', id: result.createdElementId }
     case 'element.remove':
       return null
+    case 'tag.create':
     case 'element.create':
     case 'relation.create':
     case 'relation.patch':
@@ -78,6 +97,7 @@ export function selectionAfterResult(
     case 'layout.reset':
     case 'history.undo':
     case 'history.redo':
+    case 'history.goto':
       return reconcileSelection(selection, state)
   }
 }

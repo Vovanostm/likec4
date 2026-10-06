@@ -14,6 +14,7 @@
     "check:agent-instructions": "node --test devops/check-agent-instructions.spec.mjs && node devops/check-agent-instructions.mjs",
     "changeset:empty": "changeset --empty",
     "lint": "oxlint",
+    "lint:ast-grep": "node devops/ast-grep-scan.mjs",
     "lint:errors-only": "oxlint --quiet",
     "lint:fix": "oxlint --fix-suggestions",
     "build": "turbo run build  --filter=\"!./apps/*\"",
@@ -43,6 +44,7 @@
     "vitest:ui": "vitest --ui --no-isolate"
   },
   "devDependencies": {
+    "@ast-grep/cli": "0.45.3",
     "@changesets/changelog-github": "catalog:",
     "@changesets/cli": "catalog:",
     "@likec4/devops": "workspace:*",

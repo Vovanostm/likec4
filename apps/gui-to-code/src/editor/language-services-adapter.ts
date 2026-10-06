@@ -2,12 +2,15 @@ import type { Fqn } from '@likec4/core/types'
 import {
   applyDocumentTextEdits,
   createDocumentEditService,
-  createElementViewDocumentEditService,
   createDynamicDeploymentDocumentEditService,
+  createElementViewDocumentEditService,
   DocumentEditError,
   fromSources,
 } from '@likec4/language-services/browser'
-import type { DocumentEditErrorCode, RemovalDependencyReport as LanguageRemovalReport } from '@likec4/language-services/browser'
+import type {
+  DocumentEditErrorCode,
+  RemovalDependencyReport as LanguageRemovalReport,
+} from '@likec4/language-services/browser'
 import type {
   CreateElementEditInput,
   EditorDocumentPort,
@@ -15,7 +18,6 @@ import type {
   SourceFile,
 } from './contracts'
 import { EditorDocumentError } from './contracts'
-import { patchLogicalRelationTitle, removeLogicalRelation } from './relation-source-edits'
 
 interface ApplicableEditPlan {
   readonly baseRevisions: Readonly<Record<string, string>>
@@ -84,12 +86,15 @@ async function createRootElementCandidate(
   input: CreateElementEditInput,
 ): Promise<readonly SourceFile[]> {
   const { documents } = await serviceFor(sources)
-  return applyPlan(sources, await documents.planAddElement({
-    id: input.id,
-    kind: input.kind,
-    ...(input.title ? { title: input.title } : {}),
-    ...(input.documentUri ? { documentUri: input.documentUri } : {}),
-  }))
+  return applyPlan(
+    sources,
+    await documents.planAddElement({
+      id: input.id,
+      kind: input.kind,
+      ...(input.title ? { title: input.title } : {}),
+      ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+    }),
+  )
 }
 
 async function createElementCandidate(
@@ -99,15 +104,27 @@ async function createElementCandidate(
   let candidate = await createRootElementCandidate(sources, input)
   if (input.parentId) {
     const { documents: candidateDocuments } = await serviceFor(candidate)
-    candidate = applyPlan(candidate, await candidateDocuments.planMoveElement({
-      target: input.id as Fqn,
-      parent: input.parentId,
-    }))
+    candidate = applyPlan(
+      candidate,
+      await candidateDocuments.planMoveElement({
+        target: input.id as Fqn,
+        parent: input.parentId,
+      }),
+    )
   }
   return candidate
 }
 
 export const languageServicesDocumentPort: EditorDocumentPort = {
+  async createTag(sources, input) {
+    try {
+      const { documents } = await serviceFor(sources)
+      return applyPlan(sources, await documents.planAddTag(input))
+    } catch (error) {
+      return documentError(error)
+    }
+  },
+
   async createElement(sources, input) {
     try {
       return await createElementCandidate(sources, input)
@@ -119,11 +136,14 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
   async createRelation(sources, input) {
     try {
       const { documents } = await serviceFor(sources)
-      return applyPlan(sources, await documents.planAddRelation({
-        source: input.sourceId,
-        target: input.targetId,
-        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
-      }))
+      return applyPlan(
+        sources,
+        await documents.planAddRelation({
+          source: input.sourceId,
+          target: input.targetId,
+          ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+        }),
+      )
     } catch (error) {
       return documentError(error)
     }
@@ -133,17 +153,23 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
     try {
       let candidate = await createRootElementCandidate(sources, input)
       const { documents: relationDocuments } = await serviceFor(candidate)
-      candidate = applyPlan(candidate, await relationDocuments.planAddRelation({
-        source: input.sourceId,
-        target: input.id as Fqn,
-        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
-      }))
+      candidate = applyPlan(
+        candidate,
+        await relationDocuments.planAddRelation({
+          source: input.sourceId,
+          target: input.id as Fqn,
+          ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+        }),
+      )
       if (input.parentId) {
         const { documents: moveDocuments } = await serviceFor(candidate)
-        candidate = applyPlan(candidate, await moveDocuments.planMoveElement({
-          target: input.id as Fqn,
-          parent: input.parentId,
-        }))
+        candidate = applyPlan(
+          candidate,
+          await moveDocuments.planMoveElement({
+            target: input.id as Fqn,
+            parent: input.parentId,
+          }),
+        )
       }
       return candidate
     } catch (error) {
@@ -154,12 +180,15 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
   async createView(sources, input) {
     try {
       const { views } = await serviceFor(sources)
-      return applyPlan(sources, await views.planAddElementView({
-        id: input.id,
-        viewOf: input.viewOf,
-        ...(input.title ? { title: input.title } : {}),
-        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
-      }))
+      return applyPlan(
+        sources,
+        await views.planAddElementView({
+          id: input.id,
+          ...(input.viewOf ? { viewOf: input.viewOf } : {}),
+          ...(input.title ? { title: input.title } : {}),
+          ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+        }),
+      )
     } catch (error) {
       return documentError(error)
     }
@@ -177,12 +206,15 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
   async createDynamicStep(sources, input) {
     try {
       const { semantics } = await serviceFor(sources)
-      return applyPlan(sources, await semantics.planAddDynamicStep({
-        viewId: input.viewId,
-        source: input.sourceId,
-        target: input.targetId,
-        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
-      }))
+      return applyPlan(
+        sources,
+        await semantics.planAddDynamicStep({
+          viewId: input.viewId,
+          source: input.sourceId,
+          target: input.targetId,
+          ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+        }),
+      )
     } catch (error) {
       return documentError(error)
     }
@@ -236,11 +268,14 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
   async createDeploymentRelation(sources, input) {
     try {
       const { semantics } = await serviceFor(sources)
-      return applyPlan(sources, await semantics.planAddDeploymentRelation({
-        source: input.sourceId,
-        target: input.targetId,
-        ...(input.documentUri ? { documentUri: input.documentUri } : {}),
-      }))
+      return applyPlan(
+        sources,
+        await semantics.planAddDeploymentRelation({
+          source: input.sourceId,
+          target: input.targetId,
+          ...(input.documentUri ? { documentUri: input.documentUri } : {}),
+        }),
+      )
     } catch (error) {
       return documentError(error)
     }
@@ -275,10 +310,8 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
 
   async patchRelation(sources, input) {
     try {
-      if (input.patch.title === undefined) {
-        throw new EditorDocumentError('invalid-operation', 'Relation patch is empty')
-      }
-      return patchLogicalRelationTitle(sources, input, input.patch.title)
+      const { documents } = await serviceFor(sources)
+      return applyPlan(sources, await documents.planPatchRelation({ id: input.id, patch: input.patch }))
     } catch (error) {
       return documentError(error)
     }
@@ -286,7 +319,8 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
 
   async removeRelation(sources, input) {
     try {
-      return removeLogicalRelation(sources, input)
+      const { documents } = await serviceFor(sources)
+      return applyPlan(sources, await documents.planRemoveRelation({ id: input.id }))
     } catch (error) {
       return documentError(error)
     }
@@ -322,11 +356,14 @@ export const languageServicesDocumentPort: EditorDocumentPort = {
   async removeElement(sources, input) {
     try {
       const { documents } = await serviceFor(sources)
-      return applyPlan(sources, documents.planRemoveElement({
-        target: input.id,
-        dependencyRevision: input.dependencyRevision,
-        approvedDependencyIds: input.approvedDependencyIds,
-      }))
+      return applyPlan(
+        sources,
+        documents.planRemoveElement({
+          target: input.id,
+          dependencyRevision: input.dependencyRevision,
+          approvedDependencyIds: input.approvedDependencyIds,
+        }),
+      )
     } catch (error) {
       return documentError(error)
     }

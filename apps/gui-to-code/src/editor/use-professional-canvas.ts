@@ -1,11 +1,11 @@
 import type { Fqn, ViewId, ViewManualLayoutSnapshot } from '@likec4/core/types'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CanvasClipboard } from './professional-clipboard'
 import { captureCanvasClipboard, refreshClipboardRevision } from './professional-clipboard'
 import type { MultiNodeLayoutAction } from './professional-layout'
 import { snapGridStep, transformSelectedNodes } from './professional-layout'
 import type { MultiRemovalInspection } from './professional-removal'
-import { workspaceDocumentUri, type useWorkspaceRuntime } from './use-workspace-runtime'
+import { type useWorkspaceRuntime, workspaceDocumentUri } from './use-workspace-runtime'
 
 type WorkspaceRuntime = ReturnType<typeof useWorkspaceRuntime>
 
@@ -18,7 +18,9 @@ interface CanvasNode {
 interface XYFlowPort {
   getNodes(): readonly CanvasNode[]
   setNodes(updater: (nodes: CanvasNode[]) => CanvasNode[]): void
-  fitView(options?: { readonly nodes?: readonly CanvasNode[]; readonly padding?: number; readonly duration?: number }): Promise<boolean>
+  fitView(
+    options?: { readonly nodes?: readonly CanvasNode[]; readonly padding?: number; readonly duration?: number },
+  ): Promise<boolean>
 }
 
 export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
@@ -31,15 +33,35 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   const [snapEnabled, setSnapEnabled] = useState(false)
   const [gridStep, setGridStepState] = useState(16)
 
+  const workspace = runtime.workspace.current
+  useEffect(() => {
+    setClipboard(null)
+    setRemovalInspection(null)
+    pasteSequence.current = 0
+  }, [workspace])
+
+  const checkRemovalGuard = (ids: readonly Fqn[]): boolean => {
+    const reason = runtime.mutationDisabledReason ?? ids.map(id =>
+      runtime.semanticGuard.current?.({
+        type: 'element.remove',
+        input: { id, dependencyRevision: '', approvedDependencyIds: [] },
+      })
+    ).find(Boolean)
+    if (!reason) return true
+    runtime.setCommandError(reason)
+    return false
+  }
+
   const attachXYFlow = (instance: unknown): void => {
     xyflow.current = instance as XYFlowPort
   }
 
   const selectedNodes = (): readonly CanvasNode[] => xyflow.current?.getNodes().filter(node => node.selected) ?? []
 
-  const selectedNodeIds = (): ReadonlySet<string> => new Set(
-    selectedNodes().map(node => node.data.id ?? node.id),
-  )
+  const selectedNodeIds = (): ReadonlySet<string> =>
+    new Set(
+      selectedNodes().map(node => node.data.id ?? node.id),
+    )
 
   const ensureNodeSelected = (nodeId: string): void => {
     const nodes = xyflow.current?.getNodes() ?? []
@@ -85,9 +107,11 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
     setClipboard(captured)
     pasteSequence.current = 0
     runtime.setCommandError(null)
-    runtime.setFeedback(captured.elements.length === 1
-      ? 'Элемент скопирован.'
-      : `Скопировано элементов: ${captured.elements.length}.`)
+    runtime.setFeedback(
+      captured.elements.length === 1
+        ? 'Элемент скопирован.'
+        : `Скопировано элементов: ${captured.elements.length}.`,
+    )
     return true
   }
 
@@ -96,6 +120,18 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
     const viewId = runtime.selectedViewId
     if (!current || !viewId || runtime.busy || current.state.compilation.status !== 'valid') return false
 
+    const reason = runtime.mutationDisabledReason ?? captured.elements.map(element => {
+      const separator = element.id.lastIndexOf('.')
+      const parentId = separator < 0 ? null : element.id.slice(0, separator) as Fqn
+      return runtime.semanticGuard.current?.({
+        type: 'element.create',
+        input: { kind: element.kind, ...(parentId ? { parentId } : {}) },
+      })
+    }).find(Boolean)
+    if (reason) {
+      runtime.setCommandError(reason)
+      return false
+    }
     const pasteIndex = pasteSequence.current + 1
     runtime.setBusy(true)
     runtime.setCommandError(null)
@@ -130,9 +166,12 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
       runtime.setFeedback('Буфер элементов пуст.')
       return false
     }
-    return paste(clipboard, clipboard.elements.length === 1
-      ? 'Элемент вставлен.'
-      : `Вставлено элементов: ${clipboard.elements.length}.`)
+    return paste(
+      clipboard,
+      clipboard.elements.length === 1
+        ? 'Элемент вставлен.'
+        : `Вставлено элементов: ${clipboard.elements.length}.`,
+    )
   }
 
   const duplicateSelection = async (): Promise<boolean> => {
@@ -142,9 +181,12 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
       return false
     }
     pasteSequence.current = 0
-    return paste(captured, captured.elements.length === 1
-      ? 'Элемент продублирован.'
-      : `Продублировано элементов: ${captured.elements.length}.`)
+    return paste(
+      captured,
+      captured.elements.length === 1
+        ? 'Элемент продублирован.'
+        : `Продублировано элементов: ${captured.elements.length}.`,
+    )
   }
 
   const inspectSelectedRemoval = async (): Promise<boolean> => {
@@ -154,6 +196,7 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
       runtime.setFeedback('Для группового удаления выделите не менее двух логических элементов в статическом виде.')
       return false
     }
+    if (!checkRemovalGuard(captured.elements.map(element => element.id))) return false
     runtime.setBusy(true)
     runtime.setCommandError(null)
     try {
@@ -180,6 +223,7 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
   const confirmSelectedRemoval = async (): Promise<boolean> => {
     const current = runtime.workspace.current
     if (!current || !removalInspection || runtime.busy) return false
+    if (!checkRemovalGuard(removalInspection.roots)) return false
     runtime.setBusy(true)
     runtime.setCommandError(null)
     try {
@@ -213,9 +257,11 @@ export function useProfessionalCanvas(runtime: WorkspaceRuntime) {
     const ids = selectedNodeIds()
     const minimum = action.startsWith('distribute-') ? 3 : 2
     if (ids.size < minimum) {
-      runtime.setFeedback(minimum === 3
-        ? 'Для распределения выделите не менее трёх элементов.'
-        : 'Для выравнивания выделите не менее двух элементов.')
+      runtime.setFeedback(
+        minimum === 3
+          ? 'Для распределения выделите не менее трёх элементов.'
+          : 'Для выравнивания выделите не менее двух элементов.',
+      )
       return false
     }
 

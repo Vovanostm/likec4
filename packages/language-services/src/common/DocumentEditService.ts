@@ -1,6 +1,8 @@
-import type { ElementKind, Fqn, ProjectId } from '@likec4/core/types'
+import { ElementShapes, ThemeColors } from '@likec4/core/styles'
+import type { Color, ElementKind, ElementShape, Fqn, ProjectId, RelationId } from '@likec4/core/types'
+import { UriUtils } from 'langium'
 import type { AstNode, CstNode, LangiumDocument, ReferenceDescription } from 'langium'
-import { GrammarUtils } from 'langium'
+import { AstUtils, GrammarUtils } from 'langium'
 import type { Position, Range } from 'vscode-languageserver-types'
 import { URI } from 'vscode-uri'
 import type { LikeC4, LikeC4Langium } from './LikeC4'
@@ -84,9 +86,13 @@ export interface AddRelationInput {
 }
 
 export interface ElementPatch {
+  readonly kind?: ElementKind
+  readonly shape?: ElementShape
+  readonly color?: Color
   readonly title?: string
   readonly description?: string | null
   readonly technology?: string | null
+  readonly icon?: string | null
   readonly tags?: readonly string[]
 }
 
@@ -138,6 +144,12 @@ interface ElementNode extends AstNode {
   readonly body?: ElementBodyNode
 }
 
+interface RelationNode extends AstNode {
+  readonly body?: ElementBodyNode
+  readonly target: AstNode
+  readonly tags?: AstNode
+}
+
 interface LocatedElement {
   readonly target: Fqn
   readonly projectId: ProjectId
@@ -166,7 +178,6 @@ interface ContainerInsertion {
 
 const ID_PATTERN = /^([a-zA-Z]|_+[a-zA-Z0-9])[-\w]*$/
 const PLAIN_FQN_PATTERN = /^([a-zA-Z]|_+[a-zA-Z0-9])[-\w]*(?:\.([a-zA-Z]|_+[a-zA-Z0-9])[-\w]*)*$/
-const editablePropertyKeys = new Set(['title', 'description', 'summary', 'technology'])
 const referenceNodeTypes = new Set(['ElementRef', 'FqnRef', 'StrictFqnRef', 'StrictFqnElementRef'])
 
 /**
@@ -241,18 +252,189 @@ export class DocumentEditService {
     }])
   }
 
+  /** Patch the parser-owned relation declaration, including shorthand references and duplicate endpoints. */
+  async planPatchRelation(input: {
+    readonly id: RelationId
+    readonly patch: {
+      readonly title?: string
+      readonly description?: string | null
+      readonly technology?: string | null
+      readonly tags?: readonly string[]
+    }
+    readonly project?: string
+  }): Promise<SourceEditPlan> {
+    const patch = input.patch
+    if (Object.keys(patch).length === 0) throw new DocumentEditError('invalid-operation', 'Relation patch is empty')
+    const title = patch.title?.trim()
+    if (patch.title !== undefined && !title) {
+      throw new DocumentEditError('invalid-title', 'Relation title must not be empty')
+    }
+    const { document, node } = this.locateRelation(input.id, input.project)
+    const cst = node.$cstNode!
+    const source = document.textDocument.getText()
+    const edits: OffsetEdit[] = []
+    const additions: string[] = []
+    for (const key of ['title', 'description', 'technology'] as const) {
+      const value = key === 'title' ? title : patch[key]
+      if (value === undefined) continue
+      const positional = GrammarUtils.findNodeForProperty(cst, key)
+      const bodyProperties = (node.body?.props ?? []).filter(property => property.key === key)
+      if (positional) {
+        const previous = source.slice(positional.offset, positional.end)
+        edits.push({
+          start: positional.offset,
+          end: positional.end,
+          newText: previous.startsWith('"') && !previous.startsWith('"""')
+            ? `"${(value ?? '').replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
+            : propertyLiteral(value ?? '', previous),
+        })
+      }
+      for (const property of bodyProperties) {
+        if (!property.$cstNode) throw new DocumentEditError('not-found', 'Relation property range is unavailable')
+        if (value === null) {
+          edits.push(offsetRemoval(document, property.$cstNode))
+        } else {
+          const valueCst = GrammarUtils.findNodeForProperty(property.$cstNode, 'value')
+          if (!valueCst) throw new DocumentEditError('not-found', 'Relation property value is unavailable')
+          edits.push({
+            start: valueCst.offset,
+            end: valueCst.end,
+            newText: relationPropertyLiteral(value, source.slice(valueCst.offset, valueCst.end)),
+          })
+        }
+      }
+      if (!positional && bodyProperties.length === 0 && value !== null) {
+        if (key === 'title') {
+          const target = node.target.$cstNode
+          if (!target) throw new DocumentEditError('not-found', 'Relation target range is unavailable')
+          edits.push({ start: target.end, end: target.end, newText: ` '${escapeSingleQuoted(value)}'` })
+        } else {
+          additions.push(`${key} '${escapeSingleQuoted(value)}'`)
+        }
+      }
+    }
+    const tagNodes = [node.tags, node.body?.tags].flatMap(tags => tags?.$cstNode ? [tags.$cstNode] : [])
+    if (patch.tags !== undefined) {
+      const parsed = await this.langium.likec4.likec4.ModelBuilder.parseModel(this.projectId(input.project))
+      const tags = [...new Set(patch.tags)].sort()
+      if (tags.some(tag => !Object.hasOwn(parsed?.$data.specification.tags ?? {}, tag))) {
+        throw new DocumentEditError('invalid-tag', 'Unknown relation tag')
+      }
+      // Inline tags take precedence over body tags. Keep one clause and remove the others.
+      for (const [index, tagCst] of tagNodes.entries()) {
+        edits.push(
+          index === 0 && tags.length > 0
+            ? { start: tagCst.offset, end: tagCst.end, newText: tags.map(tag => `#${tag}`).join(', ') }
+            : offsetRemoval(document, tagCst),
+        )
+      }
+      if (tags.length > 0 && tagNodes.length === 0) additions.unshift(tags.map(tag => `#${tag}`).join(', '))
+    }
+    if (additions.length > 0) {
+      const indent = lineIndent(source, cst.offset)
+      const lines = additions.map(line => `${indent}  ${line}`).join('\n')
+      const bodyCst = node.body?.$cstNode
+      if (bodyCst) {
+        const opening = GrammarUtils.findNodeForKeyword(bodyCst, '{')
+        if (!opening) throw new DocumentEditError('not-found', 'Relation body opening brace is unavailable')
+        const insertion = patch.tags?.length === 0 ? opening.end : node.body?.tags?.$cstNode?.end ?? opening.end
+        edits.push({ start: insertion, end: insertion, newText: `\n${lines}\n${indent}  ` })
+      } else {
+        edits.push({ start: cst.end, end: cst.end, newText: ` {\n${lines}\n${indent}}` })
+      }
+    }
+    // An untitled bodyless relation inserts its title and body at the same CST boundary.
+    const insertions = new Map<number, number>()
+    const mergedEdits: OffsetEdit[] = []
+    for (const edit of edits) {
+      const previous = edit.start === edit.end ? insertions.get(edit.start) : undefined
+      if (previous !== undefined) {
+        const existing = mergedEdits[previous]!
+        mergedEdits[previous] = { ...existing, newText: existing.newText + edit.newText }
+      } else {
+        if (edit.start === edit.end) insertions.set(edit.start, mergedEdits.length)
+        mergedEdits.push(edit)
+      }
+    }
+    return this.planFromEdits([{
+      uri: document.uri.toString(),
+      range: cst.range,
+      newText: applyOffsetEdits(source, mergedEdits, cst.offset, cst.end),
+    }])
+  }
+
+  /** Declare a tag in a selected project specification without rewriting existing source. */
+  async planAddTag(input: {
+    readonly name: string
+    readonly documentUri?: string
+    readonly project?: string
+  }): Promise<SourceEditPlan> {
+    this.assertIdentifier(input.name)
+    const projectId = this.projectId(input.project)
+    const parsed = await this.langium.likec4.likec4.ModelBuilder.parseModel(projectId)
+    if (Object.hasOwn(parsed?.$data.specification.tags ?? {}, input.name)) {
+      throw new DocumentEditError('collision', `Tag "${input.name}" already exists`)
+    }
+    const documents = [...this.langium.shared.workspace.LangiumDocuments.userDocuments]
+      .filter(document => document.likec4ProjectId === projectId)
+    const document = input.documentUri
+      ? documents.find(document => this.matchesDocumentUri(document, input.documentUri!))
+      : documents.find(document => {
+        const root = document.parseResult.value as AstNode & { specifications?: readonly AstNode[] }
+        return !!root.specifications?.length
+      })
+    if (!document) throw new DocumentEditError('not-found', 'No matching specification document found')
+    const root = document.parseResult.value as AstNode & { specifications?: readonly AstNode[] }
+    const cst = root.specifications?.[0]?.$cstNode
+    if (!cst) {
+      const position = document.textDocument.positionAt(document.textDocument.getText().length)
+      return this.planFromEdits([{
+        uri: document.uri.toString(),
+        range: { start: position, end: position },
+        newText: `\nspecification {\n  tag ${input.name}\n}\n`,
+      }])
+    }
+    const insertion = insertionBeforeClosing(document, cst)
+    return this.planFromEdits([{
+      uri: document.uri.toString(),
+      range: { start: insertion.position, end: insertion.position },
+      newText: `${insertion.prefix}${insertion.indent}tag ${input.name}\n${insertion.suffix}`,
+    }])
+  }
+
+  /** Remove exactly one parser-owned logical relation declaration. */
+  async planRemoveRelation(input: { readonly id: RelationId; readonly project?: string }): Promise<SourceEditPlan> {
+    const { document, node } = this.locateRelation(input.id, input.project)
+    return this.planFromEdits([this.removalEdit(document, node)])
+  }
+
   async planPatchElement(input: PatchElementInput): Promise<SourceEditPlan> {
     if (Object.keys(input.patch).length === 0) {
       throw new DocumentEditError('invalid-operation', 'Element patch is empty')
     }
     const located = this.locateElement(input.target, input.project)
     const patch = input.patch
+    const iconIsUri = patch.icon !== undefined && patch.icon !== null
+      ? this.assertIcon(patch.icon, located.element.kind)
+      : false
     const title = patch.title === undefined ? located.element.title ?? localId(input.target) : patch.title.trim()
     if (!title) {
       throw new DocumentEditError('invalid-title', 'Element title must not be empty')
     }
 
     const parsed = await this.langium.likec4.likec4.ModelBuilder.parseModel(located.projectId)
+    if (patch.kind !== undefined && !parsed?.$data.specification.elements[patch.kind]) {
+      throw new DocumentEditError('invalid-operation', `Unknown element kind "${patch.kind}"`)
+    }
+    if (patch.shape !== undefined && !ElementShapes.some(shape => shape === patch.shape)) {
+      throw new DocumentEditError('invalid-operation', 'Unknown element shape')
+    }
+    if (
+      patch.color !== undefined && !ThemeColors.some(color => color === patch.color)
+      && !parsed?.$data.specification.customColors?.[patch.color]
+    ) {
+      throw new DocumentEditError('invalid-operation', 'Unknown element color')
+    }
     const availableTags = new Set(Object.keys(parsed?.$data.specification.tags ?? {}))
     const tags = patch.tags === undefined
       ? [...(located.element.tags ?? [])]
@@ -262,10 +444,6 @@ export class DocumentEditService {
       throw new DocumentEditError('invalid-tag', `Unknown element tag "${invalidTag}"`)
     }
 
-    const description = patch.description === undefined
-      ? stringValue(located.element.description ?? located.element.summary)
-      : patch.description
-    const technology = patch.technology === undefined ? located.element.technology ?? null : patch.technology
     const source = located.document.textDocument.getText()
     const cst = located.node.$cstNode
     if (!cst) {
@@ -273,32 +451,115 @@ export class DocumentEditService {
     }
 
     const edits: OffsetEdit[] = []
+    if (patch.kind !== undefined) {
+      const kindCst = GrammarUtils.findNodeForProperty(cst, 'kind')
+      if (!kindCst) throw new DocumentEditError('not-found', 'Element kind source range was not found')
+      edits.push({ start: kindCst.offset, end: kindCst.end, newText: patch.kind })
+    }
     const positional = GrammarUtils.findNodesForProperty(cst, 'props')
     const body = located.node.body
     const bodyCst = body?.$cstNode
-    if (positional.length > 0) {
-      const start = positional[0]!.offset
-      const end = bodyCst?.offset ?? cst.end
-      const removedHeader = source.slice(start, end)
-      if (removedHeader.includes('//') || removedHeader.includes('/*')) {
-        throw new DocumentEditError(
-          'invalid-operation',
-          'Cannot safely normalize positional properties that contain comments',
-        )
+    const styleBlocks = body?.props?.filter(property => property.$type === 'ElementStyleProperty') ?? []
+    const missingStyle: string[] = []
+    for (const key of ['shape', 'color'] as const) {
+      const value = patch[key]
+      if (value === undefined) continue
+      const existing = styleBlocks.flatMap(block => AstUtils.streamContents(block).toArray())
+        .filter(property => 'key' in property && property.key === key)
+      if (existing.length === 0) missingStyle.push(`${key} ${value}`)
+      for (const property of existing) {
+        const propertyCst = property.$cstNode
+        const valueCst = propertyCst && (GrammarUtils.findNodeForProperty(propertyCst, 'value')
+          ?? GrammarUtils.findNodeForProperty(propertyCst, 'themeColor')
+          ?? GrammarUtils.findNodeForProperty(propertyCst, 'customColor'))
+        if (!valueCst) throw new DocumentEditError('not-found', 'Style value source range was not found')
+        edits.push({ start: valueCst.offset, end: valueCst.end, newText: value })
       }
-      edits.push({ start, end, newText: bodyCst ? ' ' : '' })
     }
+    const lastStyle = styleBlocks.at(-1)?.$cstNode
+    if (lastStyle && missingStyle.length > 0) {
+      const insertion = insertionBeforeClosing(located.document, lastStyle)
+      const offset = located.document.textDocument.offsetAt(insertion.position)
+      edits.push({
+        start: offset,
+        end: offset,
+        newText: `${insertion.prefix}${missingStyle.map(line => `${insertion.indent}${line}`).join('\n')}\n`,
+      })
+    }
+    const styleIcons = body
+      ? AstUtils.streamAst(body).filter(node =>
+        node.$type === 'IconProperty' && node.$container?.$type === 'ElementStyleProperty'
+        && node.$container.$container === body
+      ).toArray()
+      : []
+    const hasBodyProperty = (key: string): boolean => body?.props?.some(property => property.key === key) ?? false
+    const inheritedIcon = parsed?.$data.specification.elements[located.element.kind]?.style?.icon
+      ?? (!hasBodyProperty('icon') && styleIcons.length === 0
+        ? parsed?.$data.elements[input.target]?.style.icon
+        : undefined)
+    // A missing property inherits the kind logo; `none` is the existing DSL override for an explicitly hidden logo.
+    const icon = patch.icon === null && inheritedIcon && inheritedIcon !== 'none' ? 'none' : patch.icon
+    // Positional strings are CST-addressed separately so omitted values and comments stay byte-for-byte intact.
+    // The second positional string is summary, a distinct property that ElementPatch does not edit.
+    const positionalValues = [patch.title === undefined ? undefined : title, undefined, patch.technology]
+    positional.forEach((property, index) => {
+      const value = positionalValues[index]
+      if (value !== undefined) {
+        edits.push({ start: property.offset, end: property.end, newText: `'${escapeSingleQuoted(value ?? '')}'` })
+      }
+    })
+    const properties = propertyLines({
+      ...(patch.title !== undefined && !positional[0] && !hasBodyProperty('title') ? { title } : {}),
+      ...(patch.description !== undefined && !hasBodyProperty('description') ? { description: patch.description } : {}),
+      ...(patch.technology !== undefined && !positional[2] && !hasBodyProperty('technology')
+        ? { technology: patch.technology }
+        : {}),
+      ...(patch.icon !== undefined && !hasBodyProperty('icon') && styleIcons.length === 0 ? { icon } : {}),
+      ...(patch.tags !== undefined && !body?.tags ? { tags } : {}),
+    })
+    if (!lastStyle && missingStyle.length > 0) properties.push(`style { ${missingStyle.join('; ')} }`)
+    const changedPropertyKeys = new Set([
+      ...(patch.title !== undefined ? ['title'] : []),
+      ...(patch.description !== undefined ? ['description'] : []),
+      ...(patch.technology !== undefined ? ['technology'] : []),
+      ...(patch.icon !== undefined ? ['icon'] : []),
+    ])
 
     if (body) {
       if (!bodyCst) {
         throw new DocumentEditError('not-found', 'Element body source range was not found')
       }
-      if (body.tags?.$cstNode) {
-        edits.push(offsetRemoval(located.document, body.tags.$cstNode))
+      if (patch.tags !== undefined && body.tags?.$cstNode) {
+        const tagsCst = body.tags.$cstNode
+        edits.push(
+          tags.length > 0
+            ? { start: tagsCst.offset, end: tagsCst.end, newText: tags.map(tag => `#${tag}`).join(', ') }
+            : offsetRemoval(located.document, tagsCst),
+        )
       }
-      for (const property of body.props ?? []) {
-        if (property.key && editablePropertyKeys.has(property.key) && property.$cstNode) {
-          edits.push(offsetRemoval(located.document, property.$cstNode))
+      for (const property of [...(body.props ?? []), ...styleIcons]) {
+        const key = property.$type === 'IconProperty' ? 'icon' : 'key' in property ? property.key : undefined
+        if (typeof key === 'string' && changedPropertyKeys.has(key) && property.$cstNode) {
+          const value = key === 'title' ? title : key === 'description'
+            ? patch.description
+            : key === 'icon'
+            ? icon
+            : patch.technology
+          if (value === null) {
+            edits.push(offsetRemoval(located.document, property.$cstNode))
+          } else if (value !== undefined) {
+            const valueCst = GrammarUtils.findNodeForProperty(property.$cstNode, 'value')
+              ?? (key === 'icon' ? GrammarUtils.findNodeForProperty(property.$cstNode, 'libicon') : undefined)
+            if (!valueCst) throw new DocumentEditError('not-found', 'Property value source range was not found')
+            const previous = source.slice(valueCst.offset, valueCst.end)
+            edits.push({
+              start: valueCst.offset,
+              end: valueCst.end,
+              newText: key === 'icon'
+                ? `${value}${iconIsUri && /\S/.test(source.slice(valueCst.end, valueCst.end + 1)) ? ' ' : ''}`
+                : propertyLiteral(value, previous),
+            })
+          }
         }
       }
       const opening = GrammarUtils.findNodeForKeyword(bodyCst, '{')
@@ -306,16 +567,22 @@ export class DocumentEditService {
         throw new DocumentEditError('not-found', 'Element body opening brace was not found')
       }
       const childIndent = `${lineIndent(source, cst.offset)}  `
-      const properties = propertyLines({ title, description, technology, tags })
-      edits.push({
-        start: opening.end,
-        end: opening.end,
-        newText: `\n${properties.map(line => `${childIndent}${line}`).join('\n')}`,
-      })
-    } else {
+      // Tags must precede ordinary properties in the grammar; keep unchanged tags at the start of the body.
+      const keepTags = patch.tags === undefined || tags.length > 0
+      const insertion = keepTags ? body.tags?.$cstNode?.end ?? opening.end : opening.end
+      if (properties.length > 0) {
+        const suffix = icon != null && source[insertion] !== '\n' && source[insertion] !== '\r'
+          ? `\n${childIndent}`
+          : ''
+        edits.push({
+          start: insertion,
+          end: insertion,
+          newText: `\n${properties.map(line => `${childIndent}${line}`).join('\n')}${suffix}`,
+        })
+      }
+    } else if (properties.length > 0) {
       const indent = lineIndent(source, cst.offset)
       const childIndent = `${indent}  `
-      const properties = propertyLines({ title, description, technology, tags })
       edits.push({
         start: cst.end,
         end: cst.end,
@@ -556,9 +823,10 @@ export class DocumentEditService {
         kind: 'child-element',
         uri: element.document.uri.toString(),
         range,
-        removal: element.document.uri.toString() === located.document.uri.toString() && rangeContains(targetRange, range)
-          ? 'contained'
-          : 'unsupported',
+        removal:
+          element.document.uri.toString() === located.document.uri.toString() && rangeContains(targetRange, range)
+            ? 'contained'
+            : 'unsupported',
       })
     }
 
@@ -636,6 +904,23 @@ export class DocumentEditService {
     }
   }
 
+  private locateRelation(id: RelationId, project?: string): { document: LangiumDocument; node: RelationNode } {
+    const projectId = this.projectId(project)
+    for (const document of this.langium.likec4.likec4.ModelParser.documents(projectId)) {
+      const relation = document.c4Relations.find(candidate => candidate.id === id)
+      if (!relation) continue
+      const node = this.langium.likec4.workspace.AstNodeLocator.getAstNode(
+        document.parseResult.value,
+        relation.astPath,
+      ) as RelationNode | undefined
+      if (!node?.$cstNode || node.$type !== 'Relation') {
+        throw new DocumentEditError('not-found', `Source range for relation "${id}" was not found`)
+      }
+      return { document, node }
+    }
+    throw new DocumentEditError('not-found', `Relation "${id}" was not found`)
+  }
+
   private locateElement(target: Fqn, project?: string | ProjectId): LocatedElement {
     const projectId = this.projectId(project as string | undefined)
     const located = this.langium.likec4.likec4.ModelLocator.getParsedElement(target, projectId)
@@ -666,7 +951,7 @@ export class DocumentEditService {
     const documents = [...this.langium.shared.workspace.LangiumDocuments.userDocuments]
       .filter(document => document.likec4ProjectId === projectId)
     const selected = documentUri
-      ? documents.find(document => document.uri.toString() === URI.parse(documentUri).toString())
+      ? documents.find(document => this.matchesDocumentUri(document, documentUri))
       : documents.find(document => {
         const root = document.parseResult.value as AstNode & { models?: readonly AstNode[] }
         return !!root.models?.length
@@ -677,6 +962,16 @@ export class DocumentEditService {
     return selected
   }
 
+  private matchesDocumentUri(document: LangiumDocument, documentUri: string): boolean {
+    const requested = URI.parse(documentUri)
+    if (document.uri.toString() === requested.toString()) return true
+    const isRelativePath = !/^[a-z][a-z\d+.-]*:/i.test(documentUri) && !documentUri.startsWith('/') &&
+      !documentUri.startsWith('\\')
+    if (!isRelativePath) return false
+    const workspaceUri = this.langium.shared.workspace.WorkspaceManager.workspaceUri
+    return document.uri.toString() === UriUtils.joinPath(workspaceUri, requested.path).toString()
+  }
+
   private projectId(project?: string): ProjectId {
     return this.langium.shared.workspace.ProjectsManager.ensureProjectId(project as ProjectId | undefined)
   }
@@ -685,6 +980,30 @@ export class DocumentEditService {
     if (!ID_PATTERN.test(id)) {
       throw new DocumentEditError('invalid-identifier', `Invalid LikeC4 identifier "${id}"`)
     }
+  }
+
+  private assertIcon(icon: string, kind: ElementKind): boolean {
+    const parsed = this.langium.likec4.parser.LangiumParser.parse(
+      `model {\n  ${kind} iconValidation {\n    icon ${icon}\n  }\n}`,
+    )
+    const properties = AstUtils.streamAst(parsed.value).filter(node => node.$type === 'IconProperty').toArray()
+    const property = properties[0]
+    const value = property?.$cstNode && (GrammarUtils.findNodeForProperty(property.$cstNode, 'libicon')
+      ?? GrammarUtils.findNodeForProperty(property.$cstNode, 'value'))
+    if (
+      parsed.lexerErrors.length > 0 || parsed.parserErrors.length > 0 || properties.length !== 1
+      || value?.text !== icon || icon.startsWith('file:')
+    ) {
+      throw new DocumentEditError('invalid-operation', `Invalid LikeC4 icon "${icon}"`)
+    }
+    const isLibraryIcon = !!property?.$cstNode && !!GrammarUtils.findNodeForProperty(property.$cstNode, 'libicon')
+    if (
+      isLibraryIcon
+      && !this.langium.shared.workspace.IndexManager.allElements('LibIcon').some(element => element.name === icon)
+    ) {
+      throw new DocumentEditError('invalid-operation', `Unknown LikeC4 library icon "${icon}"`)
+    }
+    return !isLibraryIcon && icon !== 'none'
   }
 
   private removalEdit(document: LangiumDocument, node: AstNode): DocumentTextEdit {
@@ -758,22 +1077,26 @@ export function applyDocumentTextEdits(
   return result
 }
 
-function propertyLines(input: {
-  readonly title: string
-  readonly description: string | null
-  readonly technology: string | null
-  readonly tags: readonly string[]
-}): string[] {
+function propertyLines(input: ElementPatch): string[] {
   return [
-    ...(input.tags.length === 0 ? [] : [input.tags.map(tag => `#${tag}`).join(', ')]),
-    `title '${escapeSingleQuoted(input.title)}'`,
-    ...(input.description === null ? [] : [`description '${escapeSingleQuoted(input.description)}'`]),
-    ...(input.technology === null ? [] : [`technology '${escapeSingleQuoted(input.technology)}'`]),
+    ...(input.tags?.length ? [input.tags.map(tag => `#${tag}`).join(', ')] : []),
+    ...(input.title === undefined ? [] : [`title '${escapeSingleQuoted(input.title)}'`]),
+    ...(input.description == null ? [] : [`description '${escapeSingleQuoted(input.description)}'`]),
+    ...(input.technology == null ? [] : [`technology '${escapeSingleQuoted(input.technology)}'`]),
+    ...(input.icon == null ? [] : [`icon ${input.icon}`]),
   ]
 }
 
-function stringValue(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
+function relationPropertyLiteral(value: string, previous: string): string {
+  return previous.startsWith('"') && !previous.startsWith('"""')
+    ? `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
+    : propertyLiteral(value, previous)
+}
+
+function propertyLiteral(value: string, previous: string): string {
+  const delimiter = previous.startsWith('\'\'\'') ? '\'\'\'' : previous.startsWith('"""') ? '"""' : null
+  if (delimiter && !value.includes(delimiter)) return `${delimiter}${value}${delimiter}`
+  return `'${escapeSingleQuoted(value)}'`
 }
 
 function localId(fqn: Fqn): string {
@@ -800,7 +1123,8 @@ function insertionBeforeClosing(document: LangiumDocument, cst: CstNode): Omit<C
     position: document.textDocument.positionAt(insertionOffset),
     indent: `${actualClosingIndent}  `,
     prefix: insertionOffset > 0 && source[insertionOffset - 1] !== '\n' ? '\n' : '',
-    suffix: actualClosingIndent,
+    // Inserting at the line start leaves the original closing-brace indentation in place.
+    suffix: '',
   }
 }
 

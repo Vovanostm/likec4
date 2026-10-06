@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { EditorWorkspaceState } from '../contracts'
 import {
   buildStructureTree,
+  filterStructureTree,
   parentOptions,
   reconcileSelection,
   selectionAfterResult,
@@ -22,17 +23,29 @@ function stateWith(ids: readonly string[]): EditorWorkspaceState {
   return {
     version: 2,
     projectId: 'default',
+    entryDocumentUri: 'model.c4',
     revision: 0,
     committedSources: [],
     draftSources: [],
     manualLayouts: {},
     compilation: { revision: 0, status: 'valid', diagnostics: [], model },
     lastValidModel: model,
-    history: { past: [], future: [] },
+    history: { past: [], future: [], current: { type: 'workspace.open', label: 'Начальное состояние' } },
   }
 }
 
 describe('selection helpers', () => {
+  it('finds deep titles and paths while retaining their ancestors and preserving the original tree', () => {
+    const tree = buildStructureTree(stateWith(['root', 'root.api', 'root.api.worker', 'other']))
+    const snapshot = JSON.stringify(tree)
+    const filtered = filterStructureTree(tree, 'ROOT Worker')
+    expect(filtered.map(node => node.id)).toEqual(['root'])
+    expect(filtered[0]?.children[0]?.children[0]?.id).toBe('root.api.worker')
+    expect(filterStructureTree(tree, 'missing')).toEqual([])
+    expect(filterStructureTree(tree, ' ')).toBe(tree)
+    expect(filterStructureTree(tree, 'root.api')[0]?.children[0]?.children).toHaveLength(1)
+    expect(JSON.stringify(tree)).toBe(snapshot)
+  })
   it('builds a recursive logical tree from FQNs', () => {
     const tree = buildStructureTree(stateWith(['shop.web', 'shop', 'shop.api', 'platform']))
     expect(tree.map(node => node.id)).toEqual(['platform', 'shop'])

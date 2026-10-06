@@ -258,6 +258,7 @@ export namespace Types {
 
   export type RelationshipEdgeData = Simplify<
     & BaseEdgeData
+    & { presentationLocked?: boolean }
     & NonOptional<
       Pick<
         DiagramEdge,

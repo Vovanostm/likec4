@@ -10,15 +10,31 @@ export interface ElementFormValues {
   readonly title: string
   readonly description: string
   readonly technology: string
+  readonly icon?: string | null
   readonly tags: readonly string[]
 }
 
-export function patchFromForm(values: ElementFormValues): ElementPatch {
-  return {
+export function patchFromForm(values: ElementFormValues, base?: ElementFormValues): ElementPatch {
+  const patch = {
     title: values.title.trim(),
     description: values.description.length === 0 ? null : values.description,
     technology: values.technology.length === 0 ? null : values.technology,
+    ...(values.icon !== undefined ? { icon: values.icon || null } : {}),
     tags: [...new Set(values.tags)].sort((left, right) => left.localeCompare(right)),
+  }
+  if (!base) return patch
+  const baseTags = [...new Set(base.tags)].sort((left, right) => left.localeCompare(right))
+  const tagsChanged = patch.tags.length !== baseTags.length || patch.tags.some((tag, index) => tag !== baseTags[index])
+  const technologyChanged = values.technology !== base.technology
+  // Explicit technology selection commits its logo in the same sparse command. Older callers
+  // that only submit text still remove an existing logo when changing that text.
+  const icon = values.icon !== undefined ? values.icon || null : technologyChanged && base.icon ? null : undefined
+  return {
+    ...(patch.title !== base.title.trim() ? { title: patch.title } : {}),
+    ...(values.description !== base.description ? { description: patch.description } : {}),
+    ...(technologyChanged ? { technology: patch.technology } : {}),
+    ...(icon !== undefined && (technologyChanged || icon !== (base.icon || null)) ? { icon } : {}),
+    ...(tagsChanged ? { tags: patch.tags } : {}),
   }
 }
 

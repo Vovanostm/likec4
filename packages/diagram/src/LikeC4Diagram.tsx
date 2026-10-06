@@ -65,6 +65,7 @@ export function LikeC4Diagram<A extends Any = Any>({
   view,
   className,
   controls = true,
+  locale = 'en',
   fitView = true,
   fitViewPadding: _fitViewPadding = controls ? FitViewPaddings.withControls : FitViewPaddings.default,
   pannable = true,
@@ -197,6 +198,8 @@ export function LikeC4Diagram<A extends Any = Any>({
                       {...initialRef.current}
                     >
                       <DiagramActorProvider
+                        key={locale}
+                        locale={locale}
                         id={id}
                         view={view}
                         zoomable={zoomable}

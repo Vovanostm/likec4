@@ -72,6 +72,7 @@ export interface NavigationHistory {
 }
 
 export interface Input {
+  locale?: 'en' | 'ru' | undefined
   view: DiagramView
   xystore: XYStoreApi
   zoomable: boolean

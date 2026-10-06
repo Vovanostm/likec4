@@ -20,6 +20,7 @@
   "dependencies": {
     "@likec4/diagram": "workspace:*",
     "@likec4/core": "workspace:*",
+    "@likec4/icons": "workspace:*",
     "@likec4/language-services": "workspace:*",
     "@likec4/style-preset": "workspace:*",
     "@likec4/styles": "workspace:*",

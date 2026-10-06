@@ -32,6 +32,18 @@ export function testData<const Nodes, Edges>(patches?: Patches<Nodes, Edges>) {
 }
 
 describe('applyChangesToManualLayout', () => {
+  it('accepts implicit auto layout and preserves the input snapshots', ({ expect }) => {
+    const { snapshot, layouted } = prepareFixtures({})
+    const { _layout, ...implicitAuto } = layouted
+    const beforeManual = structuredClone(snapshot)
+    const beforeAuto = structuredClone(implicitAuto)
+    const result = applyChangesToManualLayout(snapshot, implicitAuto)
+    expect(result._layout).toBe('manual')
+    expect(result.nodes.map(node => node.id)).toEqual(layouted.nodes.map(node => node.id))
+    expect(snapshot).toEqual(beforeManual)
+    expect(implicitAuto).toEqual(beforeAuto)
+  })
+
   it('should take latestView as base structure', ({ expect }) => {
     const { result, latest } = testData({})
 
@@ -39,6 +51,18 @@ describe('applyChangesToManualLayout', () => {
     expect(result.nodes.length).toBe(latest.nodes.length)
     expect(result.edges.length).toBe(latest.edges.length)
     expect(result._layout).toBe('manual')
+  })
+
+  it('retains explicitly positioned labels across a semantic recompile', ({ expect }) => {
+    const { snapshot, layouted } = prepareFixtures({})
+    const manual = structuredClone(snapshot)
+    const customized = manual.edges[0]!
+    customized.labelBBox = { x: 12000, y: 12000, width: 100, height: 30 }
+    customized.isLabelCustomized = true
+    const result = applyChangesToManualLayout(manual, layouted)
+    const restored = result.edges.find(edge => edge.id === customized.id)!
+    expect(restored.isLabelCustomized).toBe(true)
+    expect(restored.labelBBox).toMatchObject({ x: 12000, y: 12000 })
   })
 
   it('should preserve positions from manual layout', ({ expect }) => {
@@ -309,8 +333,17 @@ describe('applyChangesToManualLayout', () => {
       },
     })
 
-    // Should include edge between two added nodes
-    expect(result.edges).toContain(latestEdges['new.node1:new.node2'])
+    // Added edges retain semantics; fixture geometry may need repair against retained manual nodes.
+    const latest = latestEdges['new.node1:new.node2']
+    const added = resultEdges['new.node1:new.node2']
+    expect(result.edges).toContain(added)
+    expect(added).toMatchObject({
+      id: latest.id,
+      source: latest.source,
+      target: latest.target,
+      relations: latest.relations,
+    })
+    expect(added.points.every(point => point.every(Number.isFinite))).toBe(true)
   })
 
   it('should not include edges between added and existing nodes', ({ expect }) => {

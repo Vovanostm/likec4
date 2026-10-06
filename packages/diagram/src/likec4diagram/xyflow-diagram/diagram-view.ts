@@ -30,10 +30,20 @@ function sentence(parts: Array<string | null | undefined>): string {
   return parts.filter((part): part is string => !!part).map(part => part.endsWith('.') ? part : `${part}.`).join(' ')
 }
 
-function nodeAriaLabel(node: DiagramNode): string {
+function nodeAriaLabel(node: DiagramNode, locale: 'en' | 'ru' = 'en'): string {
   const title = readableText(node.title) ?? node.id
   const description = readableText(node.description)
   const notes = readableText(node.notes)
+  if (locale === 'ru') {
+    return sentence([
+      title,
+      node.kind === GroupElementKind ? `Группа, элементов: ${node.children.length}` : `Тип: ${node.kind}`,
+      node.technology && `Технология: ${node.technology}`,
+      description && `Описание: ${description}`,
+      notes && `Примечания: ${notes}`,
+      node.navigateTo && `Открывает вид ${node.navigateTo}`,
+    ])
+  }
 
   if (node.kind === GroupElementKind) {
     const childCount = node.children.length
@@ -55,12 +65,27 @@ function nodeAriaLabel(node: DiagramNode): string {
   ])
 }
 
-function edgeAriaLabel(edge: DiagramEdge, source: DiagramNode, target: DiagramNode): string {
+function edgeAriaLabel(
+  edge: DiagramEdge,
+  source: DiagramNode,
+  target: DiagramNode,
+  locale: 'en' | 'ru' = 'en',
+): string {
   const sourceTitle = readableText(source.title) ?? source.id
   const targetTitle = readableText(target.title) ?? target.id
   const label = readableText(edge.label)
   const description = readableText(edge.description)
   const notes = readableText(edge.notes)
+  if (locale === 'ru') {
+    return sentence([
+      `Связь от ${sourceTitle} к ${targetTitle}`,
+      label && `Название: ${label}`,
+      edge.technology && `Технология: ${edge.technology}`,
+      description && `Описание: ${description}`,
+      notes && `Примечания: ${notes}`,
+      edge.navigateTo && `Открывает вид ${edge.navigateTo}`,
+    ])
+  }
 
   return sentence([
     `Relationship from ${sourceTitle} to ${targetTitle}`,
@@ -84,6 +109,7 @@ export function diagramToXY(opts: {
   view: Pick<DiagramView, 'id' | 'nodes' | 'bounds' | 'edges' | '_type' | 'autoLayout'>
   currentViewId: ViewId | undefined
   where: WhereOperator | null
+  locale?: 'en' | 'ru' | undefined
 }): {
   xynodes: Types.Node[]
   xyedges: Types.Edge[]
@@ -166,7 +192,7 @@ export function diagramToXY(opts: {
         width: node.width,
         height: node.height,
       },
-      ariaLabel: nodeAriaLabel(node),
+      ariaLabel: nodeAriaLabel(node, opts.locale),
       initialWidth: node.width,
       initialHeight: node.height,
       hidden: node.kind !== GroupElementKind && !visiblePredicate(node),
@@ -322,7 +348,7 @@ export function diagramToXY(opts: {
       type: 'relationship',
       source: ns + source,
       target: ns + target,
-      ariaLabel: edgeAriaLabel(edge, nodeById(source), nodeById(target)),
+      ariaLabel: edgeAriaLabel(edge, nodeById(source), nodeById(target), opts.locale),
       zIndex: ZIndexes.Edge,
       hidden: !visiblePredicate(edge),
       deletable,

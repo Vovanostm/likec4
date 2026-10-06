@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { type Page, expect, test } from '@playwright/test'
+import { openPanel } from './panels'
 
 const sourceFixture = `specification {
   element actor
@@ -32,7 +33,7 @@ async function loadFixture(page: Page) {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'LikeC4: визуальный редактор' })).toBeVisible()
   await page.getByRole('button', { name: 'Код', exact: true }).click()
-  const source = page.getByRole('textbox', { name: 'Исходный код LikeC4' })
+  const source = page.getByLabel('Исходный код LikeC4')
   await source.fill(sourceFixture)
   const view = page.getByRole('combobox', { name: 'Текущий вид' })
   await expect(view.locator('option[value="flow"]')).toHaveCount(1)
@@ -51,6 +52,7 @@ test('edits and removes dynamic and deployment edges with exact Undo/Redo', asyn
 
   await view.selectOption('flow')
   await selectCanvasEdge(page)
+  await openPanel(page, 'Инспектор')
   await expect(page.getByRole('heading', { name: 'Направленный шаг' })).toBeVisible()
   const dynamicTitle = page.getByRole('textbox', { name: 'Название: направленный шаг' })
   await dynamicTitle.fill('Updated step')
@@ -73,6 +75,7 @@ test('edits and removes dynamic and deployment edges with exact Undo/Redo', asyn
 
   await view.selectOption('deployment')
   await selectCanvasEdge(page)
+  await openPanel(page, 'Инспектор')
   await expect(page.getByRole('heading', { name: 'Связь развёртывания' })).toBeVisible()
   const deploymentTitle = page.getByRole('textbox', { name: 'Название: связь развёртывания' })
   await deploymentTitle.fill('Updated deployment')
@@ -105,14 +108,20 @@ test('keeps keyboard inspector access and rejects stale edge actions', async ({ 
 
   await canvas.focus()
   await page.keyboard.press('Shift+F10')
+  const menu = page.getByRole('menu', { name: 'Действия выбранной сущности' })
+  await expect(menu).toBeVisible()
+  await menu.getByRole('menuitem', { name: 'Свойства' }).click()
   await expect(title).toBeFocused()
 
   await title.fill('Must stay stale')
+  await openPanel(page, 'Код')
   const before = await source.inputValue()
   await source.fill(`${before}\n// concurrent source edit`)
   await expect(source).toHaveValue(/concurrent source edit/)
 
-  await page.getByRole('button', { name: 'Сохранить', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('Рабочее пространство или текущий вид изменились')
+  await expect(page.locator('.save-status')).toHaveAttribute('data-status', 'saved')
+  await openPanel(page, 'Инспектор')
+  await expect(title).toBeHidden()
+  await expect(page.getByRole('group', { name: 'Действия выбранной сущности' })).toBeHidden()
   await expect(source).not.toHaveValue(/Must stay stale/)
 })

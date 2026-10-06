@@ -1,8 +1,8 @@
 import type { ViewManualLayoutSnapshot } from '@likec4/core/types'
 import { serializeSnapshot, snapshotFileName } from './layout-snapshots'
 
-export function downloadSource(source: string): void {
-  downloadText('model.c4', source, 'text/plain')
+export function downloadSource(source: string, filename = 'model.c4'): void {
+  downloadText(filename, source, 'text/plain')
 }
 
 export function downloadLayout(snapshot: ViewManualLayoutSnapshot): void {

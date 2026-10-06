@@ -1,10 +1,22 @@
 # Дорожная карта canvas-first редактора LikeC4
 
+## Актуальная целевая платформа
+
+По инструкции пользователя от 5 октября 2026 продукт и приёмка ограничены desktop-сервисом создания диаграмм.
+Применяется desktop-only policy root AGENTS.md; mobile/touch, WCAG/AT и accessibility certification не являются
+обязательными gates. Исторические work packages и evidence сохраняются без расширения текущего scope.
+
 ## Цель и границы
 
 Редактор должен давать ощущение Miro: пользователь начинает на бесконечном canvas, добавляет и связывает архитектурные сущности, немедленно видит диаграмму и получает валидный LikeC4 DSL. Canvas — основной способ навигации и создания, а исходный код — всегда доступный, точный результат.
 
 Это не редактор произвольных пикселей. Семантика принадлежит LikeC4: actor, system, component, relation, view и deployment создаются как доменные сущности, а не как свободные фигуры. Не входят в работу backend, совместное редактирование, облачная синхронизация, прямое сохранение в файловую систему, генерация архитектуры ИИ и самостоятельная модель геометрии canvas.
+
+Актуальная продуктовая приёмка дополнена реальным C4 service authoring: C1/C2/C3, layers, technology logos,
+collision-free creation и durable auto arrangement. [Аудит](tasks/c4-service-audit-2026-10-05/REPORT.md)
+показал, что прежние owner checks этого не подтверждают. [Волны реализации](tasks/c4-service-audit-2026-10-05/PLAN.md)
+реализованы в admitted WP-16 packet; текущие результаты — tasks/c4-completion/READINESS.md. Этот цикл не вводит
+новый mutable graph или portable geometry schema.
 
 ## Неподвижные инварианты
 
@@ -26,19 +38,67 @@ WP-00 ──> WP-01 ──> WP-02 ──> WP-03 ──> WP-04 ──> WP-05 ─�
  baseline   decisions   create     connect    edit       views      deploy     workspace  release
 ```
 
-| ID | Наблюдаемый результат | Основной write scope | Зависит от | Доказательство |
-| --- | --- | --- | --- | --- |
-| WP-00 | Текущий source-first срез безопасен, полностью русифицирован и имеет app test script. | `apps/gui-to-code/**`, CI job приложения | — | Invalid import/command не заменяет valid state; unit test, build, browser smoke. |
-| WP-01 | Закрыты `DG-01` и `DG-02`, приняты минимальные source-edit и canvas-intent контракты. | spike/tests в owning packages, `decisions/**`, `SPEC.md` | WP-00 | Исполняемые add/rename/remove и create/connect proofs; ADR; public API review. |
-| WP-02 | На canvas можно создать actor/system/component; однопроектный `EditorWorkspace` и revision guard стали SSOT. | document/compiler в app; отдельный canvas adapter в diagram | WP-01 | `AC-01`, `AC-02`, `AC-04`, `AC-09`; canvas → command → compile → render test. |
-| WP-03 | Drag-to-connect создаёт ровно одну направленную relation и отменяется одним Undo. | relation command + canvas intent + inspector | WP-02 | `AC-03`; duplicate/stale/self-relation cases; keyboard alternative. |
-| WP-04 | Inspector поддерживает patch, nesting, ID rename, safe remove и историю. | app document/inspector/tree | WP-03 | Reference visitor и dependency tests; `AC-02`, `AC-04`, `AC-05`. |
-| WP-05 | Виды создаются/выбираются на canvas, manual layout сохраняется стандартным snapshot. | app view UI, diagram editor contract, core manual-layout | WP-04 | `AC-03`, `AC-06`; save/reset/drift integration tests. |
-| WP-06 | Canvas workflow покрывает dynamic и deployment semantics без обхода document layer. | app commands/UI; existing domain owners only when required | WP-05 | Parse → command → compile → render tests по каждой family. |
-| WP-07 | Workspace переживает reload; import/export DSL/ZIP имеет миграции и semantic round trip. | persistence/codec worker в app, generator only for proven gaps | WP-06 | `AC-07`, `AC-09`; IndexedDB and ZIP round-trip tests. |
-| WP-08 | Выполнен MVP-gate: русский UX, accessibility, CI, docs и artifact smoke. | app/e2e/CI/docs | WP-07 | Все `AC-*`, quality matrix и два review pass. |
+| ID    | Наблюдаемый результат                                                                                                 | Основной write scope                                           | Зависит от | Доказательство                                                                                        |
+| ----- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------- |
+| WP-00 | Текущий source-first срез безопасен, полностью русифицирован и имеет app test script.                                 | `apps/gui-to-code/**`, CI job приложения                       | —          | Invalid import/command не заменяет valid state; unit test, build, browser smoke.                      |
+| WP-01 | Закрыты `DG-01` и `DG-02`, приняты минимальные source-edit и canvas-intent контракты.                                 | spike/tests в owning packages, `decisions/**`, `SPEC.md`       | WP-00      | Исполняемые add/rename/remove и create/connect proofs; ADR; public API review.                        |
+| WP-02 | На canvas можно создать actor/system/component; однопроектный `EditorWorkspace` и revision guard стали SSOT.          | document/compiler в app; отдельный canvas adapter в diagram    | WP-01      | `AC-01`, `AC-02`, `AC-04`, `AC-09`; canvas → command → compile → render test.                         |
+| WP-03 | Drag-to-connect создаёт ровно одну направленную relation и отменяется одним Undo.                                     | relation command + canvas intent + inspector                   | WP-02      | `AC-03`; duplicate/stale/self-relation cases; keyboard alternative.                                   |
+| WP-04 | Inspector поддерживает patch, nesting, ID rename, safe remove и историю.                                              | app document/inspector/tree                                    | WP-03      | Reference visitor и dependency tests; `AC-02`, `AC-04`, `AC-05`.                                      |
+| WP-05 | Виды создаются/выбираются на canvas, manual layout сохраняется стандартным snapshot.                                  | app view UI, diagram editor contract, core manual-layout       | WP-04      | `AC-03`, `AC-06`; save/reset/drift integration tests.                                                 |
+| WP-06 | Canvas workflow покрывает dynamic и deployment semantics без обхода document layer.                                   | app commands/UI; existing domain owners only when required     | WP-05      | Parse → command → compile → render tests по каждой family.                                            |
+| WP-07 | Workspace переживает reload; import/export DSL/ZIP имеет миграции и semantic round trip.                              | persistence/codec worker в app, generator only for proven gaps | WP-06      | `AC-07`, `AC-09`; IndexedDB and ZIP round-trip tests.                                                 |
+| WP-08 | Выполнен MVP-gate: русский UX, accessibility, CI, docs и artifact smoke.                                              | app/e2e/CI/docs                                                | WP-07      | Все `AC-*`, quality matrix и два review pass.                                                         |
+| WP-13 | Компактные инструменты и действия выбранной сущности оставляют больше места холсту; shortcuts уважают текстовый ввод. | app UI, keyboard routing, styles                               | WP-12      | `AC-01`, `AC-02`, `AC-03`, `AC-05`, `AC-08`, `AC-10`; shortcut tests, app gates; browser QA отдельно. |
 
-### Decision gates
+### WP-18 — История действий
+
+Панель «История» показывает подтверждённые команды, текущую позицию и отменённые шаги.
+Выбор записи атомарно восстанавливает sources и standard manual-layout snapshots через EditorWorkspace.
+Новая правка после возврата удаляет future; Undo/Redo используют ту же историю.
+AC-02, AC-03, AC-04, AC-06, AC-08, AC-09, AC-10. Packet: `tasks/WP-18-action-history.md`.
+История текущей сессии не переносится через reload/ZIP.
+
+### WP-19 — Просмотр готовой схемы
+
+Полноэкранный просмотр последней корректной схемы через стандартный `@likec4/diagram`, с выбором вида,
+темы и переходами между видами. Просмотр не меняет код, историю, snapshots или состояние редактора.
+Проверки: AC-02, AC-04, AC-06, AC-08, AC-09, AC-10. Packet: `tasks/WP-19-diagram-preview.md`.
+Публикация и полный клон оболочки сайта не входят в пакет.
+
+### WP-17 — Файлы исходников
+
+Первый этап принятого предложения по композиции: дерево исходников, независимый выбор документа для
+редактирования и переход к объявлению выбранного логического элемента. Все файлы остаются в одном
+EditorWorkspace; переключение не меняет entryDocumentUri, семантику, историю или геометрию.
+Проверки: AC-02, AC-04, AC-07, AC-08, AC-09, AC-10; multi-file draft/history/ZIP/reload и browser journey.
+Packet: `tasks/WP-17-source-files.md`. Создание/перенос файлов, модульная маршрутизация и конструктор
+представлений — последующие отдельные пакеты.
+
+### WP-13 — Удобное редактирование на холсте
+
+- Плавающая панель предлагает выбор, доступные типы элементов и связь для текущего семейства вида.
+- Выбранная сущность имеет быстрые действия: название, свойства и безопасное удаление через существующие команды.
+- `V` возвращает выбор, `L` запускает связь, `1`–`3` выбирают доступный тип; Enter создаёт элемент в центре canvas.
+- Undo/Redo и shortcuts сущностей не перехватывают редактирование текста, native controls или открытый dialog/menu.
+- Подсказка текущего действия и feedback занимают одну строку; форма связи и ошибки остаются доступны.
+- Семантика, source edits, history, geometry и persistence сохраняют существующих владельцев.
+- Рабочий пакет: `tasks/WP-13-canvas-editing.md`. Browser evidence требуется отдельно от unit/static checks.
+
+### WP-14 — Безопасное и предсказуемое редактирование
+
+Bounded follow-up к UX audit: `tasks/UX-FIXES.spec.json`, execution packet `tasks/WP-14-ux-fixes.md`.
+FIX-01–FIX-12 сохраняют существующие source/semantic/layout owners; изменение storage ограничено IndexedDB v3
+metadata CAS, без изменения portable envelope/ZIP v1. `DG-FIX-PERSISTENCE` и `DG-FIX-EMPTY-BOOTSTRAP` имеют
+отдельные ADR и исполняемые regression tests. WP-13 не расширяется. Browser/human acceptance остаётся отдельным gate.
+
+### Decision gates (исходные пакеты)
+
+WP-16 продолжает критическую проверку поддержанного пользовательского пути по F01–F18 audit. Порядок исправлений и ограниченные owner scopes: `tasks/WP-16-critical-ux-loop.md`. Каждый цикл требует regression proof и browser recheck новой сборки; существующие WP-13–WP-15 не заменяются и не объявляются завершёнными.
+
+WP-15 продолжает canvas-first UX: скрытые стартовые панели, viewport-bound workspace и атомарный первый холст
+без технического ID. Packet: `tasks/WP-15-canvas-workspace.md`; gate: `decisions/DG-15-bootstrap.md`.
+Состояние и acceptance evidence находятся только в `ROADMAP.STATUS.md`.
 
 - **DG-01 Source edits:** владелец минимальных workspace edits должен быть доказан для add/rename/remove с сохранением
   соседних комментариев. Если public API отсутствует, агент останавливает реализацию и оформляет ADR; regex/brace parser
@@ -51,13 +111,13 @@ WP-00 ──> WP-01 ──> WP-02 ──> WP-03 ──> WP-04 ──> WP-05 ─�
 Параллельность разрешена только после согласования типов в `apps/gui-to-code/src/editor/contracts.ts`. Один integration
 owner редактирует contracts/public exports, `package.json`, lockfile и changeset.
 
-| Дорожка | Разрешённый scope | Передаёт |
-| --- | --- | --- |
-| Document | `apps/gui-to-code/src/editor/document/**` | Pure reducer, commands, history и unit tests. |
-| Compiler | `apps/gui-to-code/src/editor/compiler/**` | Revision-aware port, diagnostics и integration tests. |
-| Canvas | согласованный subset `packages/diagram/src/editor/**` | Только `CanvasIntent`/layout adapter и package tests. |
-| UI | `apps/gui-to-code/src/editor/ui/**`, styles | Русские controls, inspector, focus/selection; не меняет contracts. |
-| QA | app/e2e tests после появления стабильного interface | Black-box acceptance evidence; production code не меняет. |
+| Дорожка  | Разрешённый scope                                     | Передаёт                                                           |
+| -------- | ----------------------------------------------------- | ------------------------------------------------------------------ |
+| Document | `apps/gui-to-code/src/editor/document/**`             | Pure reducer, commands, history и unit tests.                      |
+| Compiler | `apps/gui-to-code/src/editor/compiler/**`             | Revision-aware port, diagnostics и integration tests.              |
+| Canvas   | согласованный subset `packages/diagram/src/editor/**` | Только `CanvasIntent`/layout adapter и package tests.              |
+| UI       | `apps/gui-to-code/src/editor/ui/**`, styles           | Русские controls, inspector, focus/selection; не меняет contracts. |
+| QA       | app/e2e tests после появления стабильного interface   | Black-box acceptance evidence; production code не меняет.          |
 
 Две дорожки не редактируют один файл. Если slice требует незапланированный public API, schema/persistence migration или
 новую dependency, агент завершает пакет как `blocked` с interface proposal, а integration owner пересматривает границу.
@@ -151,14 +211,14 @@ library declarations, IndexedDB и ZIP-compatible export.
 
 ## Единая тестовая и release-матрица
 
-| Уровень | Доказательство |
-| --- | --- |
-| Document | CRUD, rename/remove dependencies, cascade confirmation, undo/redo, reference remapping |
-| Compiler | valid/invalid source, diagnostics, stale worker replies, last valid model |
-| UI | canvas/form/tree selection, Russian states, keyboard/focus, source synchronization |
-| Diagram/layout | view rendering, save/reset snapshot, drift/recovery |
-| Workspace | import/export ZIP, IndexedDB migration, canonical reimport |
-| Release | `generate`, `typecheck`, `test`, `build`, `check:agent-instructions`, format and diff check |
+| Уровень        | Доказательство                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| Document       | CRUD, rename/remove dependencies, cascade confirmation, undo/redo, reference remapping      |
+| Compiler       | valid/invalid source, diagnostics, stale worker replies, last valid model                   |
+| UI             | canvas/form/tree selection, Russian states, keyboard/focus, source synchronization          |
+| Diagram/layout | view rendering, save/reset snapshot, drift/recovery                                         |
+| Workspace      | import/export ZIP, IndexedDB migration, canonical reimport                                  |
+| Release        | `generate`, `typecheck`, `test`, `build`, `check:agent-instructions`, format and diff check |
 
 Минимальный release gate для каждого изменения: запускаются наиболее узкие tests изменённой границы, затем `pnpm --filter @likec4/gui-to-code generate`, `typecheck`, `test`, `build`, `pnpm check:agent-instructions`, formatter и `git diff --check`. Непройденная команда фиксируется с фактической причиной и остаточным риском, а не заменяется утверждением о готовности.
 

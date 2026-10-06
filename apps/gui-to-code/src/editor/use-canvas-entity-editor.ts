@@ -1,20 +1,30 @@
 import type { ElementKind, Fqn, RelationId, ViewId } from '@likec4/core/types'
+import { flattenMarkdownOrString } from '@likec4/core/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CanvasPosition } from './contracts'
+import type { CanvasPosition, RelationPatch } from './contracts'
 import type { useWorkspaceRuntime } from './use-workspace-runtime'
+import type { EditorWorkspace } from './workspace'
 
 export type CanvasEntityRef =
   | { readonly family: 'logical-element'; readonly id: Fqn }
   | { readonly family: 'logical-relation'; readonly viewId: ViewId; readonly revision: number; readonly id: RelationId }
   | { readonly family: 'dynamic-step'; readonly viewId: ViewId; readonly revision: number; readonly id: string }
   | { readonly family: 'deployment-element'; readonly id: Fqn }
-  | { readonly family: 'deployment-relation'; readonly viewId: ViewId; readonly revision: number; readonly id: RelationId }
+  | {
+    readonly family: 'deployment-relation'
+    readonly viewId: ViewId
+    readonly revision: number
+    readonly id: RelationId
+  }
 
 export interface EditableEdgeDetails {
   readonly id: string
   readonly title: string
   readonly sourceId: string
   readonly targetId: string
+  readonly description?: string
+  readonly technology?: string
+  readonly tags?: readonly string[]
 }
 
 export interface CanvasCreationRequest {
@@ -34,6 +44,17 @@ interface InlineTitleEdit {
   readonly id: Fqn
   readonly screenPosition: CanvasPosition | null
   readonly value: string
+  readonly workspace: EditorWorkspace
+  readonly revision: number
+  readonly baseTitle: string
+}
+
+export function inlineTitleContextIsCurrent(
+  edit: Pick<InlineTitleEdit, 'workspace' | 'revision' | 'baseTitle' | 'id'>,
+  current: EditorWorkspace | null,
+): boolean {
+  return current === edit.workspace && current?.state.revision === edit.revision
+    && current.state.lastValidModel?.$data.elements[edit.id]?.title === edit.baseTitle
 }
 
 type Runtime = ReturnType<typeof useWorkspaceRuntime>
@@ -45,7 +66,10 @@ export function useCanvasEntityEditor(
   runtime: Runtime,
   onElementSelected: (id: Fqn | null) => void,
   onElementCreated: (id: Fqn) => void,
+  onSelectionCleared: () => void,
 ) {
+  const runtimeRef = useRef(runtime)
+  runtimeRef.current = runtime
   const [selection, setSelection] = useState<CanvasEntityRef | null>(null)
   const [relationAlternatives, setRelationAlternatives] = useState<readonly RelationId[]>([])
   const [pendingCreation, setPendingCreation] = useState<PendingCanvasCreation | null>(null)
@@ -63,19 +87,31 @@ export function useCanvasEntityEditor(
 
   useEffect(() => {
     if (!selection || !runtime.state?.lastValidModel) return
-    if (selection.family === 'logical-relation'
-      && !runtime.state.lastValidModel.$data.relations[selection.id]) {
+    if ('revision' in selection && selection.revision !== runtime.state.revision) {
+      setSelection(null)
+      setRelationAlternatives([])
+      return
+    }
+    if (
+      selection.family === 'logical-relation'
+      && !runtime.state.lastValidModel.$data.relations[selection.id]
+    ) {
       setSelection(null)
       setRelationAlternatives([])
     }
-    if (selection.family === 'deployment-relation'
-      && !runtime.state.lastValidModel.$data.deployments.relations[selection.id]) {
+    if (
+      selection.family === 'deployment-relation'
+      && !runtime.state.lastValidModel.$data.deployments.relations[selection.id]
+    ) {
       setSelection(null)
     }
-    if (selection.family === 'dynamic-step' && !findDynamicEdge(runtime.state.lastValidModel.$data.views[selection.viewId], selection.id)) {
+    if (
+      selection.family === 'dynamic-step' &&
+      !findDynamicEdge(runtime.state.lastValidModel.$data.views[selection.viewId], selection.id)
+    ) {
       setSelection(null)
     }
-  }, [runtime.state?.revision, selection])
+  }, [runtime.state?.lastValidModel, runtime.state?.revision, selection])
 
   const selectElement = (id: Fqn): void => {
     setSelection({ family: 'logical-element', id })
@@ -148,10 +184,13 @@ export function useCanvasEntityEditor(
     return {
       id: selection.id,
       title: relation.title ?? '',
+      description: flattenMarkdownOrString(relation.description) ?? '',
+      technology: relation.technology ?? '',
+      tags: relation.tags ?? [],
       sourceId: localEndpoint(relation.source),
       targetId: localEndpoint(relation.target),
     }
-  }, [runtime.state?.revision, selection])
+  }, [runtime.state?.lastValidModel, selection])
 
   const selectedDynamicStep = useMemo((): EditableEdgeDetails | null => {
     if (selection?.family !== 'dynamic-step') return null
@@ -164,7 +203,7 @@ export function useCanvasEntityEditor(
       sourceId: dynamicEndpoint(view, edge['source']),
       targetId: dynamicEndpoint(view, edge['target']),
     }
-  }, [runtime.state?.revision, selection])
+  }, [runtime.state?.lastValidModel, selection])
 
   const selectedDeploymentRelation = useMemo((): EditableEdgeDetails | null => {
     if (selection?.family !== 'deployment-relation') return null
@@ -176,15 +215,26 @@ export function useCanvasEntityEditor(
       sourceId: deploymentEndpoint(relation.source),
       targetId: deploymentEndpoint(relation.target),
     }
-  }, [runtime.state?.revision, selection])
+  }, [runtime.state?.lastValidModel, selection])
 
-  const patchSelectedRelation = async (title: string): Promise<boolean> => {
+  const createTag = async (name: string): Promise<boolean> => {
+    const current = runtime.workspace.current
+    const captured = selection
+    const result = await runtime.dispatchSemantic({ type: 'tag.create', input: { name } }, 'Не удалось создать тег.')
+    if (result?.status !== 'applied' || result.command !== 'tag.create') return false
+    if (runtime.workspace.current !== current || current?.state.revision !== result.revision) return false
+    if (captured && 'revision' in captured) setSelection({ ...captured, revision: result.revision })
+    runtime.setFeedback(`Тег #${result.createdTag} создан. Выберите его для назначения.`)
+    return true
+  }
+
+  const patchSelectedRelation = async (title: string, patch?: RelationPatch): Promise<boolean> => {
     const captured = selection
     if (captured?.family !== 'logical-relation') return false
     if (!edgeCaptureIsCurrent(runtime, captured)) return staleEdgeAction(runtime)
     const result = await runtime.dispatchSemantic({
       type: 'relation.patch',
-      input: { id: captured.id, patch: { title } },
+      input: { id: captured.id, patch: patch ?? { title } },
     }, 'Не удалось изменить связь.')
     if (result?.status === 'applied' && result.command === 'relation.patch') {
       const revision = runtime.workspace.current?.state.revision ?? result.revision
@@ -195,7 +245,7 @@ export function useCanvasEntityEditor(
         id: result.updatedRelationId,
       })
       setRelationAlternatives(current => current.map(id => id === captured.id ? result.updatedRelationId : id))
-      runtime.setFeedback('Название связи обновлено.')
+      runtime.setFeedback('Свойства связи сохранены.')
       return true
     }
     return false
@@ -299,9 +349,9 @@ export function useCanvasEntityEditor(
     screenPosition: CanvasPosition,
     sourceId: Fqn | null = null,
   ): PendingCanvasCreation | null => {
-    const state = runtime.state
-    const view = runtime.selectedView
-    if (!state || !view || view._type !== 'element' || state.compilation.status !== 'valid' || runtime.busy) {
+    const state = runtime.workspace.current?.state
+    const view = runtimeRef.current.selectedView
+    if (!runtime.assertMutationAvailable() || !state || !view || view._type !== 'element') {
       runtime.setCommandError('Создание элемента сейчас недоступно.')
       return null
     }
@@ -327,9 +377,9 @@ export function useCanvasEntityEditor(
     pending: PendingCanvasCreation,
     request: CanvasCreationRequest,
   ): Promise<boolean> => {
-    const state = runtime.state
+    const state = runtime.workspace.current?.state
     if (!state) return false
-    if (state.revision !== pending.revision || runtime.selectedViewId !== pending.viewId) {
+    if (state.revision !== pending.revision || runtimeRef.current.selectedViewId !== pending.viewId) {
       setPendingCreation(null)
       runtime.setCommandError('Рабочее пространство или текущий вид изменились. Повторите создание.')
       return false
@@ -339,27 +389,32 @@ export function useCanvasEntityEditor(
       runtime.setCommandError('Введите название нового элемента.')
       return false
     }
-    const result = await runtime.dispatchSemantic(pending.sourceId
-      ? {
-        type: 'element.createConnected',
-        input: {
-          sourceId: pending.sourceId,
-          kind: request.kind,
-          ...(title ? { title } : {}),
-          viewId: pending.viewId,
-          position: pending.position,
+    const result = await runtime.dispatchSemantic(
+      pending.sourceId
+        ? {
+          type: 'element.createConnected',
+          input: {
+            sourceId: pending.sourceId,
+            kind: request.kind,
+            ...(title ? { title } : {}),
+            viewId: pending.viewId,
+            position: pending.position,
+          },
+        }
+        : {
+          type: 'element.createAt',
+          input: {
+            kind: request.kind,
+            viewId: pending.viewId,
+            position: pending.position,
+          },
         },
-      }
-      : {
-        type: 'element.createAt',
-        input: {
-          kind: request.kind,
-          viewId: pending.viewId,
-          position: pending.position,
-        },
-      }, pending.sourceId ? 'Не удалось создать элемент со связью.' : 'Не удалось создать элемент на холсте.')
-    if (result?.status === 'applied'
-      && (result.command === 'element.createAt' || result.command === 'element.createConnected')) {
+      pending.sourceId ? 'Не удалось создать элемент со связью.' : 'Не удалось создать элемент на холсте.',
+    )
+    if (
+      result?.status === 'applied'
+      && (result.command === 'element.createAt' || result.command === 'element.createConnected')
+    ) {
       setPendingCreation(null)
       runtime.setLayoutMode('manual')
       onElementCreated(result.createdElementId)
@@ -372,6 +427,9 @@ export function useCanvasEntityEditor(
           id: result.createdElementId,
           value: element?.title ?? result.createdElementId,
           screenPosition: pending.screenPosition,
+          workspace: runtime.workspace.current!,
+          revision: result.revision,
+          baseTitle: element?.title ?? result.createdElementId,
         })
         runtime.setFeedback('Элемент создан в выбранной позиции.')
       }
@@ -394,10 +452,19 @@ export function useCanvasEntityEditor(
   }
 
   const startInlineTitle = (id: Fqn, screenPosition: CanvasPosition | null = null): void => {
+    if (!runtime.assertMutationAvailable()) return
     const element = runtime.state?.lastValidModel?.$data.elements[id]
-    if (!element) return
+    const current = runtime.workspace.current
+    if (!element || !current) return
     selectElement(id)
-    setInlineTitle({ id, value: element.title, screenPosition })
+    setInlineTitle({
+      id,
+      value: element.title,
+      screenPosition,
+      workspace: current,
+      revision: current.state.revision,
+      baseTitle: element.title,
+    })
   }
 
   const updateInlineTitle = (value: string): void => {
@@ -407,6 +474,16 @@ export function useCanvasEntityEditor(
   const saveInlineTitle = async (): Promise<boolean> => {
     const edit = inlineTitle
     if (!edit) return false
+    if (!inlineTitleContextIsCurrent(edit, runtime.workspace.current)) {
+      runtime.setCommandError(
+        'Элемент или проект изменился. Черновик сохранён в форме; скопируйте его и откройте название заново.',
+      )
+      return false
+    }
+    if (!edit.value.trim()) {
+      runtime.setCommandError('Введите непустое название элемента.')
+      return false
+    }
     const result = await runtime.dispatchSemantic({
       type: 'element.patch',
       input: { id: edit.id, patch: { title: edit.value } },
@@ -425,6 +502,7 @@ export function useCanvasEntityEditor(
     setSelection(null)
     setRelationAlternatives([])
     onElementSelected(null)
+    onSelectionCleared()
   }
 
   return {
@@ -438,6 +516,7 @@ export function useCanvasEntityEditor(
     selectElement,
     selectEdge,
     selectRelationAlternative,
+    createTag,
     patchSelectedRelation,
     removeSelectedRelation,
     patchSelectedDynamicStep,

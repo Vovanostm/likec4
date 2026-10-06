@@ -4,9 +4,11 @@ import type { Types } from './types'
 import { diagramToXY } from './xyflow-diagram/diagram-view'
 import { sequenceLayoutToXY } from './xyflow-sequence/sequence-view-to-xy'
 
-type ConvertToXYFlowInput = Pick<DiagramContext, 'view' | 'where' | 'dynamicViewVariant' | 'collapsedSequenceFlows'> & {
-  currentViewId: ViewId | undefined
-}
+type ConvertToXYFlowInput =
+  & Pick<DiagramContext, 'view' | 'where' | 'dynamicViewVariant' | 'collapsedSequenceFlows' | 'locale'>
+  & {
+    currentViewId: ViewId | undefined
+  }
 
 export function convertToXYFlow({ dynamicViewVariant, ...params }: ConvertToXYFlowInput): {
   view: LayoutedView

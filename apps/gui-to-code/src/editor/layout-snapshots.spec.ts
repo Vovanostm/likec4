@@ -34,6 +34,21 @@ function snapshot(id = 'index'): ViewManualLayoutSnapshot {
   } as unknown as ViewManualLayoutSnapshot
 }
 
+function dynamicSnapshot(id = 'flow'): ViewManualLayoutSnapshot<'dynamic'> {
+  return {
+    ...snapshot(id),
+    _type: 'dynamic',
+    sequenceLayout: {
+      actors: [],
+      steps: [],
+      compounds: [],
+      parallelAreas: [],
+      subflows: [],
+      bounds: { x: 0, y: 0, width: 0, height: 0 },
+    },
+  } as unknown as ViewManualLayoutSnapshot<'dynamic'>
+}
+
 function memoryStorage(initial: Record<string, string> = {}) {
   const data = new Map(Object.entries(initial))
   return {
@@ -105,5 +120,40 @@ describe('manual layout snapshot persistence', () => {
     const original = snapshot()
     const parsed = parseSnapshotText(serializeSnapshot(original), 'index' as ViewId, 'element')
     expect(parsed).toEqual({ ok: true, snapshot: original })
+  })
+
+  it.each([
+    { controlPoints: { x: 20, y: 30 } },
+    { controlPoints: [{ x: Number.NaN, y: 30 }] },
+    { controlPoints: [{ x: 20 }] },
+    { labelBBox: { x: 20, y: 30, width: -1, height: 18 } },
+  ])('rejects malformed route data before rendering: %j', patch => {
+    expect(parseSnapshot({
+      ...snapshot(),
+      edges: [{
+        id: 'relation',
+        source: 'shop',
+        target: 'shop',
+        points: [[0, 0]],
+        ...patch,
+      }],
+    })).toMatchObject({ ok: false, message: expect.stringContaining('связи') })
+  })
+
+  it('rejects dynamic snapshots without valid sequence layout data', () => {
+    const original = dynamicSnapshot()
+    const { sequenceLayout: _sequenceLayout, ...missing } = original
+    expect(parseSnapshot(missing, 'flow' as ViewId)).toMatchObject({
+      ok: false,
+      message: expect.stringContaining('sequenceLayout'),
+    })
+
+    expect(
+      parseSnapshot({ ...original, sequenceLayout: { ...original.sequenceLayout, actors: [{}] } }, 'flow' as ViewId),
+    )
+      .toMatchObject({
+        ok: false,
+        message: expect.stringContaining('sequenceLayout'),
+      })
   })
 })

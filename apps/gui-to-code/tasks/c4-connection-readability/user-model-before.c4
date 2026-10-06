@@ -1,0 +1,29 @@
+specification {
+  element actor
+  element system
+  element component
+}
+
+model {
+  customer = actor 'Customer'
+  shop = system 'Online shop' {
+    web = component 'Web application'
+    actor actor
+      system system {
+        title 'system'
+      }
+          component component
+                }
+
+  customer -> shop 'places orders'
+  web -> customer 'shows orders'
+  shop.actor -> shop.system
+  shop.system -> shop.actor
+  shop.system -> shop.web
+}
+
+views {
+  view index of shop {
+    include *
+  }
+}

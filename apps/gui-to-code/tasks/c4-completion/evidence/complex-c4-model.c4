@@ -1,0 +1,94 @@
+specification {
+  element actor { style { shape person } }
+  element system
+  element container
+  element component
+  deploymentNode environment
+}
+
+model {
+  system system 'Сервис заказов' {
+    container container {
+      title 'Веб-клиент'
+    }
+    container container2 {
+      title 'API заказов'
+      component component {
+        title 'HTTP-контроллер'
+      }
+          component component2 {
+            title 'Сервис заказов'
+          }
+                  component component3 {
+                    title 'Репозиторий'
+                  }
+                                }
+      container container3 {
+        title 'Обработчик'
+        component component {
+          title 'Подписчик'
+        }
+              component component2 {
+                title 'Планировщик'
+              }
+                          component component3 {
+                            title 'Отправка уведомлений'
+                          }
+                                                }
+          container container4 {
+            title 'База заказов'
+          }
+                  container container5 {
+                    title 'Кэш'
+                  }
+                                  container container6 {
+                                    title 'Очередь событий'
+                                  }
+                                                                }
+  actor actor {
+    title 'Покупатель'
+  }
+  system system2 {
+    title 'Внешняя платёжная система'
+  }
+  actor -> system
+  system -> system2
+  system.container -> system.container2
+  system.container2 -> system.container4
+  system.container2 -> system.container5
+  system.container2 -> system.container6
+  system.container6 -> system.container3
+  system.container3 -> system.container4
+  system.container3 -> system.container5
+  system.container2.component -> system.container2.component2
+  system.container2.component2 -> system.container2.component3
+  system.container3.component -> system.container3.component2
+  system.container3.component2 -> system.container3.component3
+}
+
+views {
+  view view1 {
+    title 'Контекст архитектуры'
+    include *
+  }
+
+  view c1_context {
+    title 'Контекст сервиса заказов'
+    include *
+  }
+
+  view c2_service of system {
+    title 'Контейнеры сервиса заказов'
+    include *
+  }
+
+  view c3_api of system.container2 {
+    title 'Компоненты API'
+    include *
+  }
+
+  view c3_worker of system.container3 {
+    title 'Компоненты обработчика'
+    include *
+  }
+}

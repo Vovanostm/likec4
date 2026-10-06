@@ -2,6 +2,9 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const maxEntries = 256
 const maxUncompressedBytes = 16 * 1024 * 1024
+const localFileHeaderSignature = 0x04034b50
+const centralDirectoryHeaderSignature = 0x02014b50
+const endOfCentralDirectorySignature = 0x06054b50
 
 export interface ZipEntry {
   readonly path: string
@@ -41,13 +44,17 @@ function safePath(path: string): boolean {
     && path.split('/').every(part => part !== '' && part !== '.' && part !== '..')
 }
 
+export function normalizeZipPath(path: string): string {
+  return path.toLowerCase()
+}
+
 export function encodeZip(entries: readonly ZipEntry[]): Uint8Array {
   const ordered = [...entries].sort((left, right) => left.path.localeCompare(right.path))
   if (ordered.length === 0 || ordered.length > maxEntries) throw new Error('Недопустимое число файлов в ZIP.')
   const seen = new Set<string>()
   let total = 0
   for (const entry of ordered) {
-    const normalized = entry.path.toLocaleLowerCase()
+    const normalized = normalizeZipPath(entry.path)
     if (!safePath(entry.path) || seen.has(normalized)) {
       throw new Error('ZIP содержит небезопасный или повторяющийся путь.')
     }
@@ -108,8 +115,17 @@ export function decodeZip(bytes: Uint8Array): readonly ZipEntry[] {
   let offset = 0
   let total = 0
   const entries: ZipEntry[] = []
+  const localRecords: {
+    offset: number
+    flags: number
+    method: number
+    checksum: number
+    compressedSize: number
+    uncompressedSize: number
+    path: string
+  }[] = []
   const seen = new Set<string>()
-  while (offset + 4 <= bytes.length && view.getUint32(offset, true) === 0x04034b50) {
+  while (offset + 4 <= bytes.length && view.getUint32(offset, true) === localFileHeaderSignature) {
     if (entries.length >= maxEntries) throw new Error('ZIP содержит слишком много файлов.')
     if (offset + 30 > bytes.length) throw new Error('ZIP повреждён.')
     const flags = view.getUint16(offset + 6, true)
@@ -127,16 +143,74 @@ export function decodeZip(bytes: Uint8Array): readonly ZipEntry[] {
     const contentEnd = contentStart + uncompressedSize
     if (contentEnd > bytes.length) throw new Error('ZIP повреждён.')
     const path = decoder.decode(bytes.subarray(nameStart, nameStart + nameLength))
-    const normalized = path.toLocaleLowerCase()
+    const normalized = normalizeZipPath(path)
     if (!safePath(path) || seen.has(normalized)) throw new Error('ZIP содержит небезопасный или повторяющийся путь.')
     const content = bytes.slice(contentStart, contentEnd)
     if (crc32(content) !== checksum) throw new Error(`Контрольная сумма ${path} не совпадает.`)
     seen.add(normalized)
     total += content.length
     if (total > maxUncompressedBytes) throw new Error('Распакованный ZIP превышает допустимый размер.')
+    localRecords.push({ offset, flags, method, checksum, compressedSize, uncompressedSize, path })
     entries.push({ path, content })
     offset = contentEnd
   }
   if (entries.length === 0) throw new Error('ZIP не содержит workspace.')
+
+  const centralDirectoryStart = offset
+  for (const localRecord of localRecords) {
+    if (offset + 46 > bytes.length || view.getUint32(offset, true) !== centralDirectoryHeaderSignature) {
+      throw new Error('ZIP повреждён.')
+    }
+    const flags = view.getUint16(offset + 8, true)
+    const method = view.getUint16(offset + 10, true)
+    const checksum = view.getUint32(offset + 16, true)
+    const compressedSize = view.getUint32(offset + 20, true)
+    const uncompressedSize = view.getUint32(offset + 24, true)
+    const nameLength = view.getUint16(offset + 28, true)
+    const extraLength = view.getUint16(offset + 30, true)
+    const commentLength = view.getUint16(offset + 32, true)
+    const diskNumber = view.getUint16(offset + 34, true)
+    const localHeaderOffset = view.getUint32(offset + 42, true)
+    const nameStart = offset + 46
+    const recordEnd = nameStart + nameLength + extraLength + commentLength
+    if (recordEnd > bytes.length) throw new Error('ZIP повреждён.')
+    const path = decoder.decode(bytes.subarray(nameStart, nameStart + nameLength))
+    if (
+      diskNumber !== 0
+      || localHeaderOffset !== localRecord.offset
+      || flags !== localRecord.flags
+      || method !== localRecord.method
+      || checksum !== localRecord.checksum
+      || compressedSize !== localRecord.compressedSize
+      || uncompressedSize !== localRecord.uncompressedSize
+      || path !== localRecord.path
+    ) {
+      throw new Error('ZIP повреждён.')
+    }
+    offset = recordEnd
+  }
+
+  if (offset + 22 > bytes.length || view.getUint32(offset, true) !== endOfCentralDirectorySignature) {
+    throw new Error('ZIP повреждён.')
+  }
+  const diskNumber = view.getUint16(offset + 4, true)
+  const centralDirectoryDisk = view.getUint16(offset + 6, true)
+  const entriesOnDisk = view.getUint16(offset + 8, true)
+  const totalEntries = view.getUint16(offset + 10, true)
+  const centralDirectorySize = view.getUint32(offset + 12, true)
+  const centralDirectoryOffset = view.getUint32(offset + 16, true)
+  const commentLength = view.getUint16(offset + 20, true)
+  const endOfDirectory = offset + 22 + commentLength
+  if (
+    diskNumber !== 0
+    || centralDirectoryDisk !== 0
+    || entriesOnDisk !== entries.length
+    || totalEntries !== entries.length
+    || centralDirectorySize !== offset - centralDirectoryStart
+    || centralDirectoryOffset !== centralDirectoryStart
+    || endOfDirectory !== bytes.length
+  ) {
+    throw new Error('ZIP повреждён.')
+  }
   return entries
 }

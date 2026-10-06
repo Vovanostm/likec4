@@ -1,6 +1,7 @@
 import type { LikeC4Model } from '@likec4/core/model'
 import { fromSources } from '@likec4/language-services/browser'
 import type { CompileRequest, CompileResult } from './editor/contracts'
+import { workspaceSourceUri } from './editor/source-documents'
 
 export interface Compilation {
   readonly errors: string[]
@@ -10,10 +11,10 @@ export interface Compilation {
 async function compileRequest(request: CompileRequest): Promise<CompileResult> {
   try {
     const likec4 = await fromSources(Object.fromEntries(request.sources.map(source => [source.uri, source.content])))
-    const diagnostics = likec4.getErrors().map(error => ({
-      line: error.line + 1,
-      message: error.message,
-    }))
+    const diagnostics = likec4.getErrors().map(error => {
+      const uri = workspaceSourceUri(error.sourceFsPath, request.sources)
+      return { line: error.line + 1, message: error.message, ...(uri ? { uri } : {}) }
+    })
     if (diagnostics.length > 0) {
       return { revision: request.revision, diagnostics, model: null }
     }

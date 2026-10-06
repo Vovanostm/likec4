@@ -16,9 +16,10 @@ test('multi-selection removal is atomic and one Undo restores it', async ({ page
   await expect(web).toBeVisible()
   await expect(customer).toBeVisible()
   await web.click()
-  await page.keyboard.down('Control')
+  const modifier = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await page.keyboard.down(modifier)
   await customer.click()
-  await page.keyboard.up('Control')
+  await page.keyboard.up(modifier)
   await expect(page.locator('.react-flow__node.selected')).toHaveCount(2)
 
   const canvas = page.getByLabel('Холст диаграммы')
@@ -33,8 +34,8 @@ test('multi-selection removal is atomic and one Undo restores it', async ({ page
 
   await codeToggle.click()
   await expect(source).toBeVisible()
-  await expect.poll(async () => await source.inputValue()).not.toContain("web = component 'Web application'")
-  expect(await source.inputValue()).not.toContain("customer = actor 'Customer'")
+  await expect.poll(async () => await source.inputValue()).not.toContain('web = component \'Web application\'')
+  expect(await source.inputValue()).not.toContain('customer = actor \'Customer\'')
 
   await page.getByRole('button', { name: 'Отменить последнее изменение' }).click()
   await expect.poll(async () => await source.inputValue()).toBe(before)

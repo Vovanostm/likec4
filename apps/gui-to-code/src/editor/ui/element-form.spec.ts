@@ -6,8 +6,60 @@ import {
   patchOperation,
   renameOperation,
 } from './element-form'
+import { technologyCatalogue, technologyFields } from './technology-catalogue'
 
 describe('element form command factories', () => {
+  it.each(technologyCatalogue)('patches $label and its canonical logo in one sparse command', entry => {
+    const base = {
+      title: 'Хранилище',
+      description: 'Не менять',
+      technology: 'Старая технология',
+      icon: 'tech:react',
+      tags: ['backend'],
+    }
+    expect(patchFromForm({ ...base, ...technologyFields(entry.label) }, base))
+      .toEqual({ technology: entry.label, icon: entry.icon })
+  })
+
+  it('removes the old logo with custom technology or explicit clearing', () => {
+    const base = { title: 'API', description: '', technology: 'React', icon: 'tech:react', tags: [] }
+    expect(patchFromForm({ ...base, ...technologyFields('Свой движок') }, base))
+      .toEqual({ technology: 'Свой движок', icon: null })
+    expect(patchFromForm({ ...base, ...technologyFields('') }, base))
+      .toEqual({ technology: null, icon: null })
+    expect(patchFromForm({
+      title: base.title,
+      description: base.description,
+      technology: 'Свой движок',
+      tags: base.tags,
+    }, base))
+      .toEqual({ technology: 'Свой движок', icon: null })
+  })
+
+  it('preserves an unchanged custom logo and does not broaden unrelated sparse patches', () => {
+    const base = { title: 'API', description: '', technology: 'Свой движок', icon: 'tech:typescript', tags: [] }
+    expect(patchFromForm({ ...base, title: 'Заказы' }, base)).toEqual({ title: 'Заказы' })
+    expect(patchFromForm(base, base)).toEqual({})
+    expect(patchFromForm({ ...base, icon: null }, base)).toEqual({ icon: null })
+    expect(patchFromForm({ ...base, ...technologyFields('React') })).toEqual({
+      title: 'API',
+      description: null,
+      technology: 'React',
+      icon: 'tech:react',
+      tags: [],
+    })
+  })
+
+  it('does not rewrite unchanged properties when only the title changes', () => {
+    const base = { title: 'API', description: '**Описание**', technology: 'Node.js', tags: ['backend', 'ui'] }
+    expect(patchFromForm({ ...base, title: 'API заказов', tags: ['ui', 'backend', 'ui'] }, base))
+      .toEqual({ title: 'API заказов' })
+    expect(patchFromForm({ ...base, description: '' }, base)).toEqual({ description: null })
+    expect(patchFromForm({ ...base, technology: '' }, base)).toEqual({ technology: null })
+    expect(patchFromForm({ ...base, tags: [] }, base)).toEqual({ tags: [] })
+    expect(patchFromForm(base, base)).toEqual({})
+  })
+
   it('creates one deterministic patch command from one form submission', () => {
     const values = {
       title: '  Storefront  ',

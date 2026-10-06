@@ -1,0 +1,68 @@
+.diagram-preview {
+  background: var(--surface);
+  border: 0;
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  inset: 0;
+  margin: 0;
+  max-height: none;
+  max-width: none;
+  overflow: hidden;
+  padding: 0;
+  width: 100vw;
+}
+.diagram-preview:not([open]) {
+  display: none;
+}
+.diagram-preview[data-color-scheme="dark"] {
+  color-scheme: dark;
+  --surface: #1a1b1e;
+  --ink: #f1f3f5;
+  --muted: #c1c2c5;
+  --border: #494b50;
+  --border-strong: #5c5f66;
+  --surface-hover: #373a40;
+}
+.diagram-preview-header {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+}
+.diagram-preview-heading {
+  margin-right: auto;
+}
+.diagram-preview-heading h2 {
+  font-size: var(--text-heading);
+  margin: 0;
+}
+.diagram-preview-heading p {
+  color: var(--muted);
+  font-size: var(--text-caption);
+  margin: 0.2rem 0 0;
+}
+.diagram-preview-header label {
+  color: var(--ink);
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.diagram-preview-header select {
+  max-width: 20rem;
+}
+.diagram-preview-warning {
+  background: #fff6d8;
+  color: #654800;
+  font-size: var(--text-control);
+  margin: 0;
+  padding: 0.5rem 1rem;
+}
+.diagram-preview-canvas {
+  flex: 1;
+  min-height: 0;
+}
