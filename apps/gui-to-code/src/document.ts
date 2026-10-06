@@ -1,7 +1,29 @@
-export const starterSource = `specification {
-  element actor
+/**
+ * Starter source shared by the app's initial workspace and legacy document
+ * spike tests. The semantic runtime owner is `EditorWorkspace`.
+ */
+export const emptySource = `specification {
+  element actor { style { shape person } }
   element system
+  element container
   element component
+  element database { style { shape cylinder } }
+  element queue { style { shape queue } }
+  deploymentNode environment
+}
+
+model {}
+
+views {}
+`
+
+export const starterSource = `specification {
+  element actor { style { shape person } }
+  element system
+  element container
+  element component
+  element database { style { shape cylinder } }
+  element queue { style { shape queue } }
 }
 
 model {
@@ -21,7 +43,11 @@ views {
 }
 `
 
-export type EditorCommand =
+/**
+ * @deprecated Test-only prototype command shape. Do not use from application
+ * runtime; semantic mutations belong to `EditorWorkspace`.
+ */
+export type LegacyEditorCommand =
   | { type: 'add-element'; id: string; kind: string; title: string }
   | { type: 'add-relation'; source: string; target: string; title: string }
   | { type: 'add-view'; id: string; of: string }
@@ -72,8 +98,11 @@ function assertFqn(value: string, label: string): void {
   if (!fqn.test(value)) throw new Error(`${label} must be an element FQN.`)
 }
 
-/** Applies one explicit GUI command to the canonical DSL document. */
-export function applyCommand(source: string, command: EditorCommand): string {
+/**
+ * @deprecated Isolated brace/string prototype retained only for the existing
+ * `document.spec.ts` spike. It is not an application runtime mutation path.
+ */
+export function applyCommand(source: string, command: LegacyEditorCommand): string {
   switch (command.type) {
     case 'add-element':
       assertIdentifier(command.id, 'Element ID')

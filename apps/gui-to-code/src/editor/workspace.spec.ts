@@ -34,10 +34,12 @@ function parseElements(source: string): ParsedLine[] {
   return source.split('\n').flatMap(line => {
     const match = /^(actor|system|component) ([A-Za-z_][\w.-]*)(.*)$/.exec(line)
     if (!match) return []
-    const properties = Object.fromEntries(match[3]!.split('|').filter(Boolean).map(part => {
-      const [key, ...value] = part.split('=')
-      return [key, value.join('=')]
-    }))
+    const properties = Object.fromEntries(
+      match[3]!.split('|').filter(Boolean).map(part => {
+        const [key, ...value] = part.split('=')
+        return [key, value.join('=')]
+      }),
+    )
     return [{
       kind: match[1] as ElementKind,
       id: match[2] as Fqn,
@@ -50,24 +52,28 @@ function parseElements(source: string): ParsedLine[] {
 }
 
 function modelFor(source: string): LikeC4Model.Layouted {
-  const elements = Object.fromEntries(parseElements(source).map(element => [element.id, {
-    id: element.id,
-    kind: element.kind,
-    title: element.title,
-    description: element.description,
-    technology: element.technology,
-    tags: element.tags,
-  }]))
-  const relations = Object.fromEntries(source.split('\n').flatMap((line, index) => {
-    const match = /^relation ([\w.-]+)->([\w.-]+)$/.exec(line)
-    return match
-      ? [[`relation-${index}`, {
-        id: `relation-${index}`,
-        source: { model: match[1] },
-        target: { model: match[2] },
-      }]]
-      : []
-  }))
+  const elements = Object.fromEntries(
+    parseElements(source).map(element => [element.id, {
+      id: element.id,
+      kind: element.kind,
+      title: element.title,
+      description: element.description,
+      technology: element.technology,
+      tags: element.tags,
+    }]),
+  )
+  const relations = Object.fromEntries(
+    source.split('\n').flatMap((line, index) => {
+      const match = /^relation ([\w.-]+)->([\w.-]+)$/.exec(line)
+      return match
+        ? [[`relation-${index}`, {
+          id: `relation-${index}`,
+          source: { model: match[1] },
+          target: { model: match[2] },
+        }]]
+        : []
+    }),
+  )
   return {
     $data: {
       specification: {
@@ -95,9 +101,10 @@ function replaceSource(current: readonly SourceFile[], transform: (source: strin
 }
 
 function remapSource(source: string, oldRoot: Fqn, newRoot: Fqn): string {
-  const map = (value: string): string => value === oldRoot || value.startsWith(`${oldRoot}.`)
-    ? `${newRoot}${value.slice(oldRoot.length)}`
-    : value
+  const map = (value: string): string =>
+    value === oldRoot || value.startsWith(`${oldRoot}.`)
+      ? `${newRoot}${value.slice(oldRoot.length)}`
+      : value
   return source.split('\n').map(line => {
     const element = /^(actor|system|component) ([\w.-]+)(.*)$/.exec(line)
     if (element) return `${element[1]} ${map(element[2]!)}${element[3]}`
@@ -154,23 +161,28 @@ const documents: EditorDocumentPort = {
     return wp06Unused()
   },
   async patchElement(current, input) {
-    return replaceSource(current, source => source.split('\n').map(line => {
-      const parsed = /^(actor|system|component) ([\w.-]+)(.*)$/.exec(line)
-      if (!parsed || parsed[2] !== input.id) return line
-      const currentElement = parseElements(`${line}\n`)[0]!
-      const patch = input.patch
-      const title = patch.title ?? currentElement.title
-      const description = patch.description === undefined ? currentElement.description : patch.description ?? undefined
-      const technology = patch.technology === undefined ? currentElement.technology : patch.technology ?? undefined
-      const tags = patch.tags === undefined ? currentElement.tags : [...new Set(patch.tags)].sort()
-      return `${parsed[1]} ${input.id}|title=${title}`
-        + `${description ? `|desc=${description}` : ''}`
-        + `${technology ? `|tech=${technology}` : ''}`
-        + `${tags.length ? `|tags=${tags.join(',')}` : ''}`
-    }).join('\n'))
+    return replaceSource(current, source =>
+      source.split('\n').map(line => {
+        const parsed = /^(actor|system|component) ([\w.-]+)(.*)$/.exec(line)
+        if (!parsed || parsed[2] !== input.id) return line
+        const currentElement = parseElements(`${line}\n`)[0]!
+        const patch = input.patch
+        const title = patch.title ?? currentElement.title
+        const description = patch.description === undefined
+          ? currentElement.description
+          : patch.description ?? undefined
+        const technology = patch.technology === undefined ? currentElement.technology : patch.technology ?? undefined
+        const tags = patch.tags === undefined ? currentElement.tags : [...new Set(patch.tags)].sort()
+        return `${parsed[1]} ${input.id}|title=${title}`
+          + `${description ? `|desc=${description}` : ''}`
+          + `${technology ? `|tech=${technology}` : ''}`
+          + `${tags.length ? `|tags=${tags.join(',')}` : ''}`
+      }).join('\n'))
   },
   async moveElement(current, input) {
-    const next = (input.parentId ? `${input.parentId}.${input.id.slice(input.id.lastIndexOf('.') + 1)}` : input.id.slice(input.id.lastIndexOf('.') + 1)) as Fqn
+    const next = (input.parentId
+      ? `${input.parentId}.${input.id.slice(input.id.lastIndexOf('.') + 1)}`
+      : input.id.slice(input.id.lastIndexOf('.') + 1)) as Fqn
     return replaceSource(current, source => remapSource(source, input.id, next))
   },
   async renameElement(current, input) {
@@ -187,12 +199,13 @@ const documents: EditorDocumentPort = {
     if (input.approvedDependencyIds.join() !== report.dependencies.map(item => item.id).join()) {
       throw new EditorDocumentError('dependencies-not-approved', 'approval mismatch')
     }
-    return replaceSource(current, source => source.split('\n').filter(line => {
-      const element = /^(actor|system|component) ([\w.-]+)/.exec(line)
-      if (element && (element[2] === input.id || element[2]!.startsWith(`${input.id}.`))) return false
-      const relation = /^relation ([\w.-]+)->([\w.-]+)$/.exec(line)
-      return !relation || ![relation[1], relation[2]].some(id => id === input.id || id!.startsWith(`${input.id}.`))
-    }).join('\n'))
+    return replaceSource(current, source =>
+      source.split('\n').filter(line => {
+        const element = /^(actor|system|component) ([\w.-]+)/.exec(line)
+        if (element && (element[2] === input.id || element[2]!.startsWith(`${input.id}.`))) return false
+        const relation = /^relation ([\w.-]+)->([\w.-]+)$/.exec(line)
+        return !relation || ![relation[1], relation[2]].some(id => id === input.id || id!.startsWith(`${input.id}.`))
+      }).join('\n'))
   },
 }
 
@@ -205,6 +218,63 @@ function createWorkspace(customCompiler: CompilerPort = compiler, customDocument
 }
 
 describe('EditorWorkspace WP-04', () => {
+  it('preserves an explicit entry URI and persisted revision during construction', async () => {
+    const workspace = await EditorWorkspace.create(
+      [
+        { uri: 'z.c4', content: initialSource },
+        { uri: 'a.c4', content: 'system auxiliary|title=Auxiliary\n' },
+      ],
+      compiler,
+      documents,
+      'default',
+      {},
+      'z.c4',
+      7,
+    )
+
+    expect(workspace.state.entryDocumentUri).toBe('z.c4')
+    expect(workspace.state.revision).toBe(7)
+    expect(workspace.state.compilation.revision).toBe(7)
+    expect(workspace.state.history).toEqual({
+      past: [],
+      future: [],
+      current: { type: 'workspace.open', label: 'Начальное состояние' },
+    })
+  })
+
+  it('does not add history or increment revision for an identical draft', async () => {
+    const workspace = await createWorkspace()
+    const before = workspace.state
+
+    await workspace.updateDraft([{ uri: 'model.c4', content: initialSource }])
+
+    expect(workspace.state.revision).toBe(before.revision)
+    expect(workspace.state.history).toEqual(before.history)
+  })
+
+  it('updates only the entry source when a multi-file draft is edited', async () => {
+    const auxiliary = { uri: 'a.c4', content: 'system auxiliary|title=Auxiliary\n' }
+    const workspace = await EditorWorkspace.create(
+      [{ uri: 'z.c4', content: initialSource }, auxiliary],
+      compiler,
+      documents,
+      'default',
+      {},
+      'z.c4',
+    )
+
+    const edited = `${initialSource}\n// edited entry\n`
+    await workspace.updateDraft([
+      { uri: 'z.c4', content: edited },
+      auxiliary,
+    ])
+
+    expect(workspace.state.committedSources).toEqual([
+      { uri: 'z.c4', content: edited },
+      auxiliary,
+    ])
+  })
+
   it('patches requested fields in one atomic history entry', async () => {
     const workspace = await createWorkspace()
     const result = await workspace.dispatch(operation({
@@ -231,7 +301,12 @@ describe('EditorWorkspace WP-04', () => {
       input: { id: 'shop' as Fqn, parentId: 'platform' as Fqn },
     }))
 
-    expect(result).toEqual({ status: 'applied', command: 'element.move', revision: 1, updatedElementId: 'platform.shop' })
+    expect(result).toEqual({
+      status: 'applied',
+      command: 'element.move',
+      revision: 1,
+      updatedElementId: 'platform.shop',
+    })
     expect(workspace.state.lastValidModel?.$data.elements['platform.shop.web']).toBeDefined()
     expect(workspace.state.lastValidModel?.$data.elements['shop']).toBeUndefined()
   })
@@ -335,9 +410,12 @@ describe('EditorWorkspace WP-04', () => {
   })
 
   it('keeps state identity when source editing fails', async () => {
-    const failing = { ...documents, patchElement: async () => {
-      throw new EditorDocumentError('invalid-title', 'invalid')
-    } }
+    const failing = {
+      ...documents,
+      patchElement: async () => {
+        throw new EditorDocumentError('invalid-title', 'invalid')
+      },
+    }
     const workspace = await createWorkspace(compiler, failing)
     const before = workspace.state
 

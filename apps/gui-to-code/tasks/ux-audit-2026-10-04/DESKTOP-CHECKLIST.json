@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-05",
+  "scope": "desktop-only diagram creation and editing",
+  "excluded": [
+    "mobile/tablet/touch acceptance",
+    "WCAG/AT/accessibility certification"
+  ],
+  "candidate": "index-CSKAq45U.js",
+  "checklist": [
+    {
+      "id": "D01",
+      "check": "Desktop-only policy и согласованные инструкции",
+      "status": "PASS",
+      "evidenceAndLimit": "Root/scoped AGENTS, README/SPEC/ROADMAP и task packet согласованы. Instruction validator: 10/10."
+    },
+    {
+      "id": "D02",
+      "check": "Создание пустого проекта без DSL",
+      "status": "PASS",
+      "evidenceAndLimit": "Production browser: empty-workspace и WP16 bootstrap, первый элемент/вид, Undo/Redo и reload."
+    },
+    {
+      "id": "D03",
+      "check": "Создание элементов, именование и инспектор",
+      "status": "PASS",
+      "evidenceAndLimit": "Production browser: WP04/WP10/WP12, context menu, draft сохранён при смене панелей."
+    },
+    {
+      "id": "D04",
+      "check": "Направленные связи, static/dynamic/deployment",
+      "status": "PASS",
+      "evidenceAndLimit": "WP11/WP12: точная связь, title/remove, stale rejection, атомарное create-and-connect."
+    },
+    {
+      "id": "D05",
+      "check": "Удаление и защита зависимостей",
+      "status": "PASS",
+      "evidenceAndLimit": "Browser CRUD и owner tests: зависимые сущности/подтверждение/отклонение без изменения валидной ревизии."
+    },
+    {
+      "id": "D06",
+      "check": "Source-preserving patches",
+      "status": "PASS",
+      "evidenceAndLimit": "Exact-source title/Markdown/clear/Undo/Redo/reload. Comments, technology и untouched properties сохранены."
+    },
+    {
+      "id": "D07",
+      "check": "Last valid canvas и invalid DSL",
+      "status": "PASS",
+      "evidenceAndLimit": "Invalid draft сохраняет valid diagram; semantic и geometry actions блокируются; точный draft доступен для скачивания."
+    },
+    {
+      "id": "D08",
+      "check": "Единая семантическая история Undo/Redo",
+      "status": "PASS",
+      "evidenceAndLimit": "EditorWorkspace owner; browser exact history для semantic и layout операций, keyboard repeat — один Undo."
+    },
+    {
+      "id": "D09",
+      "check": "Ручное перемещение мышью и constraints",
+      "status": "PASS",
+      "evidenceAndLimit": "Native drag; compound переносит детей один раз, отдельный ребёнок не сдвигает соседа. Owner: 4 solver regressions."
+    },
+    {
+      "id": "D10",
+      "check": "Клавиатурное перемещение, repeat и потеря фокуса",
+      "status": "PASS",
+      "evidenceAndLimit": "WP16: release, blur, window blur, Shift, source unchanged, Undo/Redo, reload. Chrome native ArrowRight 50→55, сохранено после reload."
+    },
+    {
+      "id": "D11",
+      "check": "Кнопки «Положение», выбор через дерево и read-only",
+      "status": "PASS",
+      "evidenceAndLimit": "Один renderer API; tree selection снимает прежний canvas selection; button movement/Undo, invalid/read-only guards."
+    },
+    {
+      "id": "D12",
+      "check": "Reload и ZIP сохраняют ручное положение",
+      "status": "PASS",
+      "evidenceAndLimit": "Реальный ZIP download/import и reload; стандартные .likec4 snapshots, без app-owned geometry."
+    },
+    {
+      "id": "D13",
+      "check": "Экспорт ждёт незавершённую раскладку",
+      "status": "PASS",
+      "evidenceAndLimit": "Held arrow: статус saving, ZIP и Undo disabled. После сохранения ZIP содержит актуальное положение."
+    },
+    {
+      "id": "D14",
+      "check": "IndexedDB, backup, CAS и replacement races",
+      "status": "PASS",
+      "evidenceAndLimit": "355 app tests и browser two-page stale-token/recovery; sources/layout/metadata сохраняются транзакционно."
+    },
+    {
+      "id": "D15",
+      "check": "Desktop canvas, панели и основные controls",
+      "status": "PASS",
+      "evidenceAndLimit": "Desktop/wide browser smoke, 1440×1000 Chrome; zoom controls reachable. Mobile исключён из финальной matrix."
+    },
+    {
+      "id": "D16",
+      "check": "Безопасный bounded ZIP import и Markdown",
+      "status": "PARTIAL",
+      "evidenceAndLimit": "15 workspace/ZIP и 27 Markdown owner tests из расширенного аудита; script/javascript probe не исполнился. Полный security audit не выполнен."
+    },
+    {
+      "id": "D17",
+      "check": "Desktop startup и работа небольшой диаграммы",
+      "status": "PARTIAL",
+      "evidenceAndLimit": "Текущий fresh Chrome context: 3 nodes, first diagram 449.4 ms, LCP 484 ms, FCP 212 ms, CLS 0, max long task 156 ms. Один loopback lab sample, не field CWV/INP."
+    },
+    {
+      "id": "D18",
+      "check": "Большие модели и длительная нагрузка",
+      "status": "NOT_RUN",
+      "evidenceAndLimit": "Нет corpus, согласованного budget и sustained benchmark. Отдельный performance packet: задать число nodes/edges и измерить startup/edit/drag/history/memory."
+    },
+    {
+      "id": "D19",
+      "check": "App tests, public owner checks, types и build",
+      "status": "PASS",
+      "evidenceAndLimit": "App 355/355; diagram owners 23/23; app/diagram typecheck и production build. В браузере SHA-256 совпал с dist."
+    },
+    {
+      "id": "D20",
+      "check": "Focused lint/format, architecture/instruction checks",
+      "status": "PARTIAL",
+      "evidenceAndLimit": "Focused oxlint, scoped dprint, AST, instruction validator и diff check passed. Полный root lint имеет 3 прежних import-type violations вне изменённых owners; не заявляется clean repository."
+    },
+    {
+      "id": "D21",
+      "check": "CI и опубликованный release candidate",
+      "status": "NOT_RUN",
+      "evidenceAndLimit": "Dirty worktree, без commit/push/publish. После отдельной авторизации публикации: CI на неизменном commit/artifact."
+    },
+    {
+      "id": "D22",
+      "check": "Реальный пользователь и desktop browser matrix",
+      "status": "NOT_RUN",
+      "evidenceAndLimit": "Chrome automation не заменяет human onboarding, Safari/Firefox. Следующий отдельный QA: supported browser list и реальный путь create→edit→save→ZIP→reload."
+    },
+    {
+      "id": "D23",
+      "check": "C1 context без DSL",
+      "status": "FAIL",
+      "evidenceAndLimit": "C4-01: root actor исчезает из scoped view; actor→system сохранена, но не отображается; root context UI не найден."
+    },
+    {
+      "id": "D24",
+      "check": "Генерация C2/C3 и прямые переходы",
+      "status": "PARTIAL",
+      "evidenceAndLimit": "Scoped views, child creation и dropdown работают. C4-07: ручное создание, нет ясного drill/back; double-click открывает rename."
+    },
+    {
+      "id": "D25",
+      "check": "Каталог технологий и изображения",
+      "status": "FAIL",
+      "evidenceAndLimit": "C4-04/05: PostgreSQL — текст без logo; отсутствует C4 Container starter kind."
+    },
+    {
+      "id": "D26",
+      "check": "Рабочие слои и дерево",
+      "status": "FAIL",
+      "evidenceAndLimit": "C4-06: recursive selection list всегда раскрыт; hide/lock/order отсутствуют."
+    },
+    {
+      "id": "D27",
+      "check": "Создание без наложения siblings",
+      "status": "FAIL",
+      "evidenceAndLimit": "C4-02: API и база после двух create-at пересеклись 160×99 px."
+    },
+    {
+      "id": "D28",
+      "check": "Сохраняемая авторасстановка",
+      "status": "FAIL",
+      "evidenceAndLimit": "C4-03: выбор auto развёл узлы; reload без правок вернул manual и старое перекрытие. Reset — отдельный обход."
+    }
+  ],
+  "summary": {
+    "PASS": 16,
+    "PARTIAL": 4,
+    "NOT_RUN": 3,
+    "FAIL": 5
+  },
+  "conformanceClaim": "Previous 22 criteria are bounded operation checks on index-CSKAq45U.js; full C4 authoring is not accepted. See current C4 journey evidence.",
+  "productReadiness": "changes_requested",
+  "latestUserJourney": "../c4-service-audit-2026-10-05/REPORT.md"
+}

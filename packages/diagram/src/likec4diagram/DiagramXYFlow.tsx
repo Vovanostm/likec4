@@ -30,7 +30,7 @@ import {
 } from '../hooks'
 import { useDiagram } from '../hooks/useDiagram'
 import { depsShallowEqual } from '../hooks/useUpdateEffect'
-import type { LikeC4DiagramProperties, NodeRenderers, ViewPadding, ViewPaddings } from '../LikeC4Diagram.props'
+import type { LikeC4DiagramProperties, NodeRenderers, ViewPaddings } from '../LikeC4Diagram.props'
 import { BuiltinEdges, BuiltinNodes } from './custom'
 import { deriveToggledFeatures } from './state/machine.setup'
 import type { DiagramContext } from './state/types'
@@ -158,7 +158,7 @@ export function LikeC4DiagramXYFlow({
   const { reducedGraphics, $panning } = useRootContainer()
 
   const isReducedGraphics = reducedGraphics,
-    layoutConstraints = useLayoutConstraints(),
+    layoutConstraints = useLayoutConstraints(nodesDraggable),
     $isPanning = $panning,
     isPanning = useTimeout(() => {
       $isPanning.set(true)
@@ -348,7 +348,10 @@ export function LikeC4DiagramXYFlow({
       zIndexMode="manual"
       {...(nodesDraggable && layoutConstraints)}
       {...props}
-      {...reactFlowProps}>
+      {...reactFlowProps}
+      onKeyDownCapture={layoutConstraints.onKeyDownCapture}
+      onKeyUpCapture={layoutConstraints.onKeyUpCapture}
+      onBlurCapture={layoutConstraints.onBlurCapture}>
       {enableControls && <Controls padding={props.fitViewPadding} />}
       {children}
     </BaseXYFlow>

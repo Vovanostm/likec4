@@ -1,10 +1,12 @@
 import type { ElementKind, Fqn, RelationId, ViewId } from '@likec4/core/types'
 import { describe, expect, it } from 'vitest'
 import { compile } from '../compiler'
+import { languageServicesDocumentPort } from './language-services-adapter'
 import { EditorWorkspace } from './workspace'
 
 const actorKind = 'actor' as ElementKind
 const componentKind = 'component' as ElementKind
+const systemKind = 'system' as ElementKind
 
 const source = `specification {
   element actor
@@ -39,12 +41,14 @@ function firstRelation(editor: Awaited<ReturnType<typeof workspace>>): RelationI
 
 function nodePosition(editor: Awaited<ReturnType<typeof workspace>>, viewId: ViewId, elementId: Fqn) {
   const snapshot = editor.state.manualLayouts[viewId]
-  const nodes = snapshot?.nodes as readonly {
-    readonly id: string
-    readonly modelRef?: string
-    readonly x: number
-    readonly y: number
-  }[] | undefined
+  const nodes = snapshot?.nodes as
+    | readonly {
+      readonly id: string
+      readonly modelRef?: string
+      readonly x: number
+      readonly y: number
+    }[]
+    | undefined
   const node = nodes?.find(candidate => candidate.id === elementId || candidate.modelRef === elementId)
   return node ? { x: node.x, y: node.y } : null
 }
@@ -54,29 +58,33 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
     const editor = await workspace()
     const relationId = firstRelation(editor)
 
-    expect(await editor.dispatch({
-      id: 1,
-      expectedRevision: 0,
-      semantic: { type: 'relation.patch', input: { id: relationId, patch: { title: 'Purchases' } } },
-    })).toMatchObject({ status: 'applied', command: 'relation.patch', revision: 1 })
-    expect(editor.state.committedSources[0]?.content).toContain("user -> shop 'Purchases'")
+    expect(
+      await editor.dispatch({
+        id: 1,
+        expectedRevision: 0,
+        semantic: { type: 'relation.patch', input: { id: relationId, patch: { title: 'Purchases' } } },
+      }),
+    ).toMatchObject({ status: 'applied', command: 'relation.patch', revision: 1 })
+    expect(editor.state.committedSources[0]?.content).toContain('user -> shop \'Purchases\'')
     expect(editor.state.history.past).toHaveLength(1)
 
     expect(await editor.undo(1)).toEqual({ status: 'applied', command: 'history.undo', revision: 2 })
     expect(editor.state.committedSources[0]?.content).toBe(source)
     expect(await editor.redo(2)).toEqual({ status: 'applied', command: 'history.redo', revision: 3 })
-    expect(editor.state.committedSources[0]?.content).toContain("user -> shop 'Purchases'")
+    expect(editor.state.committedSources[0]?.content).toContain('user -> shop \'Purchases\'')
   })
 
   it('removes exactly one selected relation and restores it with one Undo', async () => {
     const editor = await workspace()
     const relationId = firstRelation(editor)
 
-    expect(await editor.dispatch({
-      id: 1,
-      expectedRevision: 0,
-      semantic: { type: 'relation.remove', input: { id: relationId } },
-    })).toEqual({ status: 'applied', command: 'relation.remove', revision: 1, removedRelationId: relationId })
+    expect(
+      await editor.dispatch({
+        id: 1,
+        expectedRevision: 0,
+        semantic: { type: 'relation.remove', input: { id: relationId } },
+      }),
+    ).toEqual({ status: 'applied', command: 'relation.remove', revision: 1, removedRelationId: relationId })
     expect(editor.state.lastValidModel?.$data.relations).toEqual({})
     expect(editor.state.committedSources[0]?.content).not.toContain('user -> shop')
 
@@ -106,14 +114,15 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
     })
     if (result.status !== 'applied' || result.command !== 'element.createAt') throw new Error('Expected createAt')
     expect(editor.state.committedSources[0]?.content).toContain('component component')
-    expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 320, y: 180 })
+    const placedPosition = nodePosition(editor, viewId, result.createdElementId)
+    expect(placedPosition).not.toEqual({ x: 320, y: 180 })
     expect(editor.state.history.past).toHaveLength(1)
 
     await editor.undo(1)
     expect(editor.state.committedSources[0]?.content).toBe(source)
     expect(editor.state.manualLayouts[viewId]).toBeUndefined()
     await editor.redo(2)
-    expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 320, y: 180 })
+    expect(nodePosition(editor, viewId, result.createdElementId)).toEqual(placedPosition)
   })
 
   it('creates scoped element with initial title, directed sibling relation and placement in one transaction', async () => {
@@ -145,7 +154,9 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
       viewId,
     })
     if (result.command !== 'element.createConnected') throw new Error(`Expected createConnected, got ${result.command}`)
-    expect(editor.state.lastValidModel?.$data.elements[result.createdElementId]).toMatchObject({ title: 'Payment module' })
+    expect(editor.state.lastValidModel?.$data.elements[result.createdElementId]).toMatchObject({
+      title: 'Payment module',
+    })
     expect(editor.state.lastValidModel?.$data.relations[result.createdRelationId]).toMatchObject({
       source: { model: 'shop.frontend' },
       target: { model: result.createdElementId },
@@ -161,52 +172,138 @@ describe('EditorWorkspace WP-10 canvas entity commands', () => {
     expect(editor.state.lastValidModel?.$data.relations[result.createdRelationId]).toBeUndefined()
 
     await editor.redo(2)
-    expect(editor.state.lastValidModel?.$data.elements[result.createdElementId]).toMatchObject({ title: 'Payment module' })
+    expect(editor.state.lastValidModel?.$data.elements[result.createdElementId]).toMatchObject({
+      title: 'Payment module',
+    })
     expect(editor.state.lastValidModel?.$data.relations[result.createdRelationId]).toBeDefined()
     expect(nodePosition(editor, viewId, result.createdElementId)).toEqual({ x: 420, y: 240 })
+  })
+
+  it('explains an unavailable editor module without mutating the workspace', async () => {
+    const editor = await EditorWorkspace.create(
+      [{ uri: 'model.c4', content: source }],
+      compile,
+      {
+        ...languageServicesDocumentPort,
+        async createConnectedElement() {
+          throw new TypeError('Failed to fetch dynamically imported module: http://127.0.0.1:4174/editor.js')
+        },
+      },
+    )
+    const before = editor.state
+    const result = await editor.dispatch({
+      id: 1,
+      expectedRevision: 0,
+      semantic: {
+        type: 'element.createConnected',
+        input: {
+          sourceId: 'shop.frontend' as Fqn,
+          kind: componentKind,
+          title: 'Платёжный модуль',
+          viewId: 'index' as ViewId,
+          position: { x: 420, y: 240 },
+        },
+      },
+    })
+    expect(result).toMatchObject({
+      status: 'rejected',
+      revision: 0,
+      issues: [{
+        code: 'create-connected-source-edit-failed',
+        message:
+          'Не удалось загрузить модуль редактирования. Проверьте, работает ли сервер приложения, и обновите страницу.',
+      }],
+    })
+    expect(editor.state).toBe(before)
+  })
+
+  it('keeps a newly created relation in an existing manual layout', async () => {
+    const editor = await workspace()
+    const viewId = 'index' as ViewId
+
+    const created = await editor.dispatch({
+      id: 1,
+      expectedRevision: 0,
+      semantic: {
+        type: 'element.createAt',
+        input: { kind: systemKind, viewId, position: { x: 320, y: 180 }, documentUri: 'model.c4' },
+      },
+    })
+    expect(created).toMatchObject({ status: 'applied', command: 'element.createAt', revision: 1 })
+
+    const relation = await editor.dispatch({
+      id: 2,
+      expectedRevision: 1,
+      semantic: {
+        type: 'relation.create',
+        input: {
+          sourceId: 'shop.frontend' as Fqn,
+          targetId: 'shop.system' as Fqn,
+          documentUri: 'model.c4',
+        },
+      },
+    })
+    expect(relation).toMatchObject({ status: 'applied', command: 'relation.create', revision: 2 })
+    if (relation.status !== 'applied' || relation.command !== 'relation.create') {
+      throw new Error('Expected relation.create')
+    }
+
+    expect(editor.state.manualLayouts[viewId]?.edges.some(edge => edge.relations.includes(relation.createdRelationId)))
+      .toBe(true)
+    expect(
+      editor.state.lastValidModel?.$data.views[viewId]?.edges.some(edge =>
+        edge.relations.includes(relation.createdRelationId)
+      ),
+    ).toBe(true)
   })
 
   it('rejects a parent-to-new-child relation without mutating workspace state', async () => {
     const editor = await workspace()
     const before = editor.state
 
-    expect(await editor.dispatch({
-      id: 1,
-      expectedRevision: 0,
-      semantic: {
-        type: 'element.createConnected',
-        input: {
-          sourceId: 'shop' as Fqn,
-          kind: componentKind,
-          viewId: 'index' as ViewId,
-          position: { x: 420, y: 240 },
+    expect(
+      await editor.dispatch({
+        id: 1,
+        expectedRevision: 0,
+        semantic: {
+          type: 'element.createConnected',
+          input: {
+            sourceId: 'shop' as Fqn,
+            kind: componentKind,
+            viewId: 'index' as ViewId,
+            position: { x: 420, y: 240 },
+          },
         },
-      },
-    })).toMatchObject({ status: 'rejected', revision: 0, issues: [{ code: 'compile-rejected' }] })
+      }),
+    ).toMatchObject({ status: 'rejected', revision: 0, issues: [{ code: 'compile-rejected' }] })
     expect(editor.state).toBe(before)
   })
 
   it('rejects stale revision and invalid position without any mutation', async () => {
     const editor = await workspace()
     const before = editor.state
-    expect(await editor.dispatch({
-      id: 1,
-      expectedRevision: 99,
-      semantic: {
-        type: 'element.createAt',
-        input: { kind: actorKind, viewId: 'index' as ViewId, position: { x: 1, y: 2 } },
-      },
-    })).toEqual({ status: 'conflict', revision: 0 })
+    expect(
+      await editor.dispatch({
+        id: 1,
+        expectedRevision: 99,
+        semantic: {
+          type: 'element.createAt',
+          input: { kind: actorKind, viewId: 'index' as ViewId, position: { x: 1, y: 2 } },
+        },
+      }),
+    ).toEqual({ status: 'conflict', revision: 0 })
     expect(editor.state).toBe(before)
 
-    expect(await editor.dispatch({
-      id: 2,
-      expectedRevision: 0,
-      semantic: {
-        type: 'element.createAt',
-        input: { kind: actorKind, viewId: 'index' as ViewId, position: { x: Number.NaN, y: 2 } },
-      },
-    })).toMatchObject({ status: 'rejected', issues: [{ code: 'invalid-position' }] })
+    expect(
+      await editor.dispatch({
+        id: 2,
+        expectedRevision: 0,
+        semantic: {
+          type: 'element.createAt',
+          input: { kind: actorKind, viewId: 'index' as ViewId, position: { x: Number.NaN, y: 2 } },
+        },
+      }),
+    ).toMatchObject({ status: 'rejected', issues: [{ code: 'invalid-position' }] })
     expect(editor.state).toBe(before)
   })
 })

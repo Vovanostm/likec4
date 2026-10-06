@@ -135,6 +135,19 @@ describe('diagramToXY accessibility', () => {
     )
   })
 
+  it('provides Russian node and relationship descriptions when requested', () => {
+    const api = testNode('api', { title: 'API', technology: 'Node.js' })
+    const db = testNode('db', { title: 'База данных' })
+    const { xynodes, xyedges } = diagramToXY({
+      view: testView([api, db], [testEdge('api-db', api, db, { label: 'Заказы' })]),
+      currentViewId: undefined,
+      where: null,
+      locale: 'ru',
+    })
+    expect(xynodes[0]?.ariaLabel).toBe('API. Тип: component. Технология: Node.js.')
+    expect(xyedges[0]?.ariaLabel).toBe('Связь от API к База данных. Название: Заказы.')
+  })
+
   it('labels relationship descriptions and notes separately', () => {
     const customer = testNode('customer', {
       title: 'Customer',

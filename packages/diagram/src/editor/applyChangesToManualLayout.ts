@@ -1,8 +1,11 @@
 import { invariant, nonNullable } from '@likec4/core'
-import { type VectorValue, BBox, convertPoint, vector } from '@likec4/core/geometry'
+import { BBox } from '@likec4/core/geometry'
 import * as t from '@likec4/core/types'
 import { castDraft, produce, setAutoFreeze } from 'immer'
-import { isNullish, map } from 'remeda'
+import { isNullish } from 'remeda'
+import { reconcileEdgeRoute, reconcileEdgeRoutes } from './reconcileEdgeRoutes'
+
+export { reconcileEdgeRoutes } from './reconcileEdgeRoutes'
 
 /**
  * Applies changes to a manual layout.
@@ -17,7 +20,7 @@ export function applyChangesToManualLayout(
   // Disable auto-freeze during this operation
   try {
     setAutoFreeze(false)
-    return _applyChangesToManualLayout(manualView, latestView)
+    return reconcileEdgeRoutes(_applyChangesToManualLayout(manualView, latestView), manualView.nodes)
   } finally {
     setAutoFreeze(true)
   }
@@ -31,7 +34,7 @@ function _applyChangesToManualLayout(
 ): t.LayoutedView {
   invariant(manualView.id === latestView.id, 'View IDs do not match')
   invariant(manualView._type === latestView._type, 'View types do not match')
-  invariant(manualView._layout === 'manual' && latestView._layout === 'auto', 'Views must be manual and auto')
+  invariant(manualView._layout === 'manual' && latestView._layout !== 'manual', 'Views must be manual and auto')
 
   const compounds = new Set<t.NodeId>()
   const newnodes = new Set<t.NodeId>()
@@ -105,11 +108,9 @@ function _applyChangesToManualLayout(
       return removeDrift(latest)
     }
 
-    const sourceNode = nodesMap.get(latest.source)!
-    const targetNode = nodesMap.get(latest.target)!
-
-    // Add control points - that trigger proper edge rendering
-    return makeAsStraightLine(latest, sourceNode, targetNode)
+    // A newly compiled route is automatic, even when added to a manual view.
+    // Reconcile against the actual auto-layout baseline instead of inventing editable control points.
+    return reconcileEdgeRoute({ ...latest, controlPoints: null }, nodes, latestView.nodes, latestView.edges)
   })
 
   // Recalculate view bounds (around all root nodes)
@@ -182,6 +183,11 @@ function applyFromManualNode({ latest, manual }: {
   return produce(latest, next => {
     next.x = manual.x
     next.y = manual.y
+    next.labelBBox = {
+      ...latest.labelBBox,
+      x: latest.labelBBox.x + manual.x - latest.x,
+      y: latest.labelBBox.y + manual.y - latest.y,
+    }
     // Delete drift reasons
     next.drifts = null
   })
@@ -199,11 +205,15 @@ function applyFromManualEdge(edges: {
       delete draft.controlPoints
     }
     draft.points = castDraft(manual.points)
+    if (manual.isLabelCustomized !== undefined) draft.isLabelCustomized = manual.isLabelCustomized
+    else delete draft.isLabelCustomized
     if (manual.labelBBox) {
-      draft.labelBBox = latest.labelBBox ?? manual.labelBBox
-      // Take label position from manual layout
-      draft.labelBBox.x = manual.labelBBox.x
-      draft.labelBBox.y = manual.labelBBox.y
+      // Copy before changing coordinates: the current compiled model is immutable.
+      draft.labelBBox = {
+        ...(latest.labelBBox ?? manual.labelBBox),
+        x: manual.labelBBox.x,
+        y: manual.labelBBox.y,
+      }
     }
 
     draft.drifts = null
@@ -217,63 +227,4 @@ function removeDrift<T extends {}>(object: T): T {
     return result
   }
   return object
-}
-
-function makeAsStraightLine(
-  edge: t.DiagramEdge,
-  sourceNode: t.DiagramNode,
-  targetNode: t.DiagramNode,
-): t.DiagramEdge {
-  const controlPoints = edgeControlPoints(sourceNode, targetNode)
-  const labelPos = controlPoints[0]
-  return produce(edge, draft => {
-    draft.points = castDraft(map(controlPoints, convertPoint))
-    draft.controlPoints = controlPoints
-    if (edge.labelBBox) {
-      draft.labelBBox!.x = labelPos.x
-      draft.labelBBox!.y = labelPos.y
-    }
-    delete draft.drifts
-  })
-}
-
-function getBorderPointOnVector(node: BBox, nodeCenter: VectorValue, v: VectorValue) {
-  const xScale = node.width / 2 / v.x
-  const yScale = node.height / 2 / v.y
-
-  const scale = Math.min(Math.abs(xScale), Math.abs(yScale))
-
-  return vector(v).multiply(scale).add(nodeCenter)
-}
-
-function edgeControlPoints(
-  source: t.DiagramNode,
-  target: t.DiagramNode,
-): [t.XYPoint, t.XYPoint] {
-  const sourceCenter = vector(BBox.center(source))
-  const targetCenter = vector(BBox.center(target))
-
-  // Edge is a loop
-  if (source === target) {
-    const loopSize = 80
-    const centerOfTopBoundary = vector(0, source.height || 0)
-      .multiply(-0.5)
-      .add(sourceCenter)
-
-    return [
-      centerOfTopBoundary.add(vector(-loopSize / 2.5, -loopSize)).trunc().toObject(),
-      centerOfTopBoundary.add(vector(loopSize / 2.5, -loopSize)).trunc().toObject(),
-    ]
-  }
-
-  const sourceToTargetVector = targetCenter.subtract(sourceCenter)
-  const sourceBorderPoint = getBorderPointOnVector(source, sourceCenter, sourceToTargetVector)
-  const targetBorderPoint = getBorderPointOnVector(target, targetCenter, sourceToTargetVector.multiply(-1))
-
-  const sourceToTarget = targetBorderPoint.subtract(sourceBorderPoint)
-
-  return [
-    sourceBorderPoint.add(sourceToTarget.multiply(0.4)).trunc().toObject(),
-    sourceBorderPoint.add(sourceToTarget.multiply(0.6)).trunc().toObject(),
-  ]
 }

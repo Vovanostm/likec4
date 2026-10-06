@@ -101,6 +101,7 @@ export const navigating = machine.createStateConfig({
         const eventWithXYData = 'xynodes' in event ? event : {
           ...event,
           ...convertToXYFlow({
+            locale: context.locale,
             currentViewId: context.view.id,
             dynamicViewVariant: context.dynamicViewVariant,
             view: event.view,

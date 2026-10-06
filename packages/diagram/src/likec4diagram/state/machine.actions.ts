@@ -22,7 +22,7 @@ import type {
 import { difference, isString } from '@likec4/core/utils'
 import { type Rect, nodeToRect } from '@xyflow/system'
 import { produce } from 'immer'
-import { hasAtLeast, isTruthy, mapToObj, pipe } from 'remeda'
+import { hasAtLeast, isTruthy, mapToObj } from 'remeda'
 import type { Writable } from 'type-fest'
 import {
   assertEvent,
@@ -30,15 +30,15 @@ import {
 import { Base } from '../../base'
 import type { OpenSourceParams } from '../../LikeC4Diagram.props'
 import { convertToXYFlow } from '../convert-to-xyflow'
+import { createLayoutConstraints } from '../layout-constraints'
 import type { Types } from '../types'
-import { createLayoutConstraints } from '../useLayoutConstraints'
 import { type AlignmentMode, getAligner, toNodeRect } from './aligners'
 import {
   focusNodesEdges,
   mergeXYNodesEdges,
   resetEdgeControlPoints,
 } from './assign'
-import { cancelFitDiagram, fitDiagram, raiseFitDiagram, setViewport, setViewportCenter } from './machine.actions.layout'
+import { cancelFitDiagram, raiseFitDiagram, setViewport, setViewportCenter } from './machine.actions.layout'
 import { machine } from './machine.setup'
 import {
   findDiagramEdge,
@@ -165,6 +165,7 @@ export const assignXYDataFromView = (view?: DiagramView) =>
     let xydata
     if (view) {
       xydata = convertToXYFlow({
+        locale: context.locale,
         currentViewId: context.view.id,
         dynamicViewVariant: context.dynamicViewVariant,
         view,
@@ -174,6 +175,7 @@ export const assignXYDataFromView = (view?: DiagramView) =>
     } else {
       assertEvent(event, 'update.view')
       xydata = 'xynodes' in event ? event : convertToXYFlow({
+        locale: context.locale,
         currentViewId: context.view.id,
         dynamicViewVariant: context.dynamicViewVariant,
         view: event.view,

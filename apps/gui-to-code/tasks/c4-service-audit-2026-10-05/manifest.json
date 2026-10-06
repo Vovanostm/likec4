@@ -1,0 +1,14 @@
+{
+  "candidate": "index-CSKAq45U.js",
+  "readiness": "changes_requested",
+  "runtimeCodeChanged": false,
+  "source": "service-built-through-ui.c4",
+  "sourceSha256": "842a617f997c348d11065915233b2ce5082395c52458b53a75b5fd5adaa7c521",
+  "evidence": "journey-evidence.json",
+  "screenshots": [
+    "overlap.png",
+    "partial-service.png"
+  ],
+  "previousSourceHashesMatched": true,
+  "note": "Docs/evidence only. Product fixes and new C4 functionality described in PLAN.md are not implemented by this audit."
+}

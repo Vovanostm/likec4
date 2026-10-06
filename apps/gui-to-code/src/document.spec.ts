@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { applyCommand, starterSource } from './document'
+import { compile } from './compiler'
+import { applyCommand, emptySource, starterSource } from './document'
 
 describe('applyCommand', () => {
+  it('compiles the actual empty C4 desktop starter with actor shape and container kind', async () => {
+    const result = await compile(emptySource)
+    expect(result.errors).toEqual([])
+    expect(result.model?.$data.specification.elements['actor']?.style?.shape).toBe('person')
+    expect(result.model?.$data.specification.elements['container']).toBeDefined()
+  })
   it('adds semantic commands to their canonical DSL blocks', () => {
     const withElement = applyCommand(starterSource, {
       type: 'add-element',

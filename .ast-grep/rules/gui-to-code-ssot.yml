@@ -1,0 +1,94 @@
+id: gui-to-code-direct-localstorage-read
+language: TypeScript
+rule:
+  pattern: localStorage.getItem($KEY)
+files:
+  - apps/gui-to-code/src/editor/use-workspace-runtime.ts
+severity: warning
+message: Direct localStorage read bypasses the IndexedDB workspace owner
+note: Keep one durable workspace source of truth; use the workspace persistence port for source and layout recovery.
+metadata:
+  owner: apps/gui-to-code
+  category: ssot
+---
+id: gui-to-code-single-source-draft-update
+language: TypeScript
+rule:
+  pattern: "current.updateDraft([{ uri: 'model.c4', content: $CONTENT }])"
+files:
+  - apps/gui-to-code/src/editor/use-workspace-runtime.ts
+severity: warning
+message: Manual DSL editing reconstructs the candidate from one source file
+note: Preserve the complete committed source set when editing an imported multi-file workspace; do not collapse it to model.c4.
+metadata:
+  owner: apps/gui-to-code
+  category: ssot
+---
+id: gui-to-code-direct-localstorage-write
+language: TypeScript
+rule:
+  pattern: localStorage.setItem($KEY, $VALUE)
+files:
+  - apps/gui-to-code/src/editor/use-workspace-runtime.ts
+severity: warning
+message: Direct localStorage write creates a second workspace persistence owner
+note: Persist committed workspace state through IndexedDbWorkspacePersistence instead of mirroring source/layout separately.
+metadata:
+  owner: apps/gui-to-code
+  category: ssot
+---
+id: gui-to-code-runtime-model-c4-hardcoding
+language: TypeScript
+rule:
+  pattern: "'model.c4'"
+files:
+  - apps/gui-to-code/src/editor/use-wp06-runtime.ts
+severity: warning
+message: Runtime mutation path hardcodes the starter document URI
+note: Resolve the entry document from EditorWorkspaceState; model.c4 is only a starter default.
+metadata:
+  owner: apps/gui-to-code
+  category: ssot
+---
+id: gui-to-code-first-source-entry-inference
+language: TypeScript
+rule:
+  pattern: $SOURCE_LIST[0]?.uri
+files:
+  - apps/gui-to-code/src/editor/persisted-workspace.ts
+severity: warning
+message: Entry document identity must not be inferred from source ordering
+note: Persist and validate the explicit EditorWorkspaceState.entryDocumentUri.
+metadata:
+  owner: apps/gui-to-code
+  category: ssot
+---
+id: gui-to-code-legacy-document-command-owner
+language: TypeScript
+rule:
+  pattern: "import { applyCommand } from './document'"
+files:
+  - apps/gui-to-code/src/**/*.ts
+ignores:
+  - apps/gui-to-code/src/**/*.spec.ts
+severity: warning
+message: Legacy brace-based document command pipeline is still wired into application source
+note: Keep the legacy prototype isolated; EditorWorkspace is the semantic source-edit owner and this pipeline must not become a second editor owner.
+metadata:
+  owner: apps/gui-to-code
+  category: ssot
+---
+id: gui-to-code-legacy-document-command-owner-tsx
+language: Tsx
+rule:
+  pattern: "import { applyCommand } from './document'"
+files:
+  - apps/gui-to-code/src/**/*.tsx
+ignores:
+  - apps/gui-to-code/src/**/*.spec.tsx
+severity: warning
+message: Legacy brace-based document command pipeline is still wired into application source
+note: Keep the legacy prototype isolated; EditorWorkspace is the semantic source-edit owner and this pipeline must not become a second editor owner.
+metadata:
+  owner: apps/gui-to-code
+  category: ssot

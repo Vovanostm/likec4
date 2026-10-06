@@ -1,6 +1,6 @@
 import type { Fqn } from '@likec4/core/types'
 import type { AstNode, DocumentSegment, LangiumDocument } from 'langium'
-import { DocumentEditError, type DocumentTextEdit } from './DocumentEditService'
+import { type DocumentTextEdit, DocumentEditError } from './DocumentEditService'
 
 interface LikeC4Root extends AstNode {
   readonly views?: readonly AstNode[]
@@ -9,7 +9,7 @@ interface LikeC4Root extends AstNode {
 export function createElementViewEdit(
   document: LangiumDocument,
   id: string,
-  viewOf: Fqn,
+  viewOf: Fqn | undefined,
   title?: string,
 ): DocumentTextEdit {
   const root = document.parseResult.value as LikeC4Root
@@ -20,10 +20,10 @@ export function createElementViewEdit(
   return appendViewsBlock(document, root, id, viewOf, title)
 }
 
-function viewDeclaration(id: string, viewOf: Fqn, title: string | undefined, indent: string): string {
+function viewDeclaration(id: string, viewOf: Fqn | undefined, title: string | undefined, indent: string): string {
   const childIndent = `${indent}  `
   return [
-    `${indent}view ${id} of ${viewOf} {`,
+    `${indent}view ${id}${viewOf ? ` of ${viewOf}` : ''} {`,
     ...(title?.trim() ? [`${childIndent}title '${escapeTitle(title.trim())}'`] : []),
     `${childIndent}include *`,
     `${indent}}`,
@@ -34,7 +34,7 @@ function insertBeforeClosingBrace(
   document: LangiumDocument,
   segment: DocumentSegment,
   id: string,
-  viewOf: Fqn,
+  viewOf: Fqn | undefined,
   title?: string,
 ): DocumentTextEdit {
   const offset = segment.end - 1
@@ -50,7 +50,7 @@ function appendViewsBlock(
   document: LangiumDocument,
   root: LikeC4Root,
   id: string,
-  viewOf: Fqn,
+  viewOf: Fqn | undefined,
   title?: string,
 ): DocumentTextEdit {
   const segment = root.$cstNode

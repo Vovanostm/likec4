@@ -1,3 +1,4 @@
+import type { XYPoint } from '@likec4/core/geometry'
 import type * as t from '@likec4/core/types'
 import type {
   DynamicViewDisplayVariant,
@@ -6,14 +7,17 @@ import type {
 } from '@likec4/core/types'
 import { DefaultWeakMap, invariant, nonNullable } from '@likec4/core/utils'
 import type { RefObject } from 'react'
+import { hasAtLeast } from 'remeda'
 import type { PartialDeep } from 'type-fest'
 import type { TogglableFeature } from '../../context/DiagramFeatures'
 import type { EditorActorRef } from '../../editor/actor/machine'
 import type { OpenSourceParams } from '../../LikeC4Diagram.props'
 import type { OverlaysActorRef } from '../../overlays/overlaysActor'
 import type { SearchActorRef } from '../../search/searchActor'
+import { createLayoutConstraints } from '../layout-constraints'
 import type { Types } from '../types'
 import type { AlignmentMode } from './aligners'
+import { deriveToggledFeatures } from './machine.setup'
 import type {
   DiagramActorRef,
   DiagramContext,
@@ -216,6 +220,32 @@ export class DiagramApi<A extends Any = Unknown> {
       editorActor.send({ type: 'undo' })
     }
     return hasUndo
+  }
+
+  /**
+   * Move selected nodes without dragging, with the same constraints and snapshot as a pointer gesture.
+   * Returns false when geometry editing is unavailable or no selected node can move.
+   */
+  moveSelectedNodes(delta: XYPoint): boolean {
+    const snapshot = this.ref.current.getSnapshot()
+    const context = snapshot.context
+    const editor = typedSystem(this.ref.current.system).editorActorRef
+    if (
+      !Number.isFinite(delta.x) || !Number.isFinite(delta.y) || (delta.x === 0 && delta.y === 0)
+      || !snapshot.matches('ready') || !context.nodesDraggable || deriveToggledFeatures(context).enableReadOnly
+      || (context.view._type === 'dynamic' && context.dynamicViewVariant === 'sequence')
+      || !editor || editor.getSnapshot().hasTag('busy') || editor.getSnapshot().hasTag('pending')
+      || editor.getSnapshot().context.editing
+    ) return false
+    const ids = [...context.xystore.getState().nodeLookup.values()]
+      .filter(n => n.selected && n.draggable !== false).map(n => n.id)
+    if (!hasAtLeast(ids, 1)) return false
+    const constraints = createLayoutConstraints(context.xystore, ids)
+    this.startEditing('node')
+    constraints.moveBy(delta)
+    const changed = constraints.hasChanges()
+    this.stopEditing(changed)
+    return changed
   }
 
   /**

@@ -74,6 +74,8 @@ export type OverrideReactFlowProps = Pick<
   | 'zoomOnDoubleClick'
   | 'nodeDragThreshold'
   | 'edgesFocusable'
+  | 'ariaLabelConfig'
+  | 'aria-label'
 >
 
 export type PaddingUnit = 'px' | '%'
@@ -291,6 +293,9 @@ export interface LikeC4DiagramProperties<A extends Any = Unknown> {
    * Override ReactFlow props
    */
   reactFlowProps?: OverrideReactFlowProps | undefined
+
+  /** Language used for accessible diagram node and relationship descriptions. */
+  locale?: 'en' | 'ru' | undefined
 }
 
 export type OpenSourceParams<A extends Any = Unknown> =
@@ -358,6 +363,7 @@ export interface LikeC4DiagramEventHandlers<A extends Any = Unknown> {
   onNodeContextMenu?: OnNodeClick<A> | null | undefined
   onCanvasContextMenu?: OnCanvasContextMenu | null | undefined
   onEdgeClick?: OnEdgeClick<A> | null | undefined
+  /** When supplied, right-click opens the host menu instead of editing relationship bend points. */
   onEdgeContextMenu?: OnEdgeClick<A> | null | undefined
   onCanvasClick?: OnCanvasClick | null | undefined
   onCanvasDblClick?: OnCanvasClick | null | undefined

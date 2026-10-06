@@ -27,11 +27,14 @@ export function useEditorActorLogic(): EditorActorLogic & {
         console.error('No editor port available for applying latest to manual layout')
         throw new Error('No editor port')
       }
-      const manual = await promisify(() => current ?? port.fetchView(viewId, 'manual'))
-      const latest = await promisify(() => port.fetchView(viewId, 'auto'))
-      const updated = applyChangesToManualLayout(manual, latest)
-      return {
-        updated,
+      try {
+        const manual = await promisify(() => current ?? port.fetchView(viewId, 'manual'))
+        const latest = await promisify(() => port.fetchView(viewId, 'auto'))
+        const updated = applyChangesToManualLayout(manual, latest)
+        return { updated }
+      } catch (error) {
+        port.onError?.(viewId, error)
+        throw error
       }
     },
   )
@@ -51,6 +54,7 @@ export function useEditorActorLogic(): EditorActorLogic & {
           await promisify(() => port.handleChange(input.viewId, change))
           applied.push(change)
         } catch (error) {
+          port.onError?.(input.viewId, error)
           console.error('Failed to execute change', { change, error })
         }
       }

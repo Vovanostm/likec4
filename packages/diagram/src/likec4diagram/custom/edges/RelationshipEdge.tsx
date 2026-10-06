@@ -21,6 +21,7 @@ import {
   EdgePath,
   memoEdge,
 } from '../../../base-primitives'
+import { useDiagramEventHandlers } from '../../../context/DiagramEventHandlers'
 import { useEnabledFeatures } from '../../../context/DiagramFeatures'
 import { useCallbackRef } from '../../../hooks/useCallbackRef'
 import { useDiagram } from '../../../hooks/useDiagram'
@@ -57,12 +58,13 @@ export const RelationshipEdge = memoEdge<Types.EdgeProps<'relationship'>>((props
   const xyflow = useXYFlow()
   const xyflowStore = useXYStoreApi()
   const diagram = useDiagram()
+  const { onEdgeContextMenu } = useDiagramEventHandlers()
   const {
     enableNavigateTo,
     enableReadOnly,
     enableCompareWithLatest,
   } = useEnabledFeatures()
-  const enabledEditing = !enableReadOnly
+  const enabledEditing = !enableReadOnly && !props.data.presentationLocked
   const {
     id,
     selected = false,
@@ -183,6 +185,8 @@ export const RelationshipEdge = memoEdge<Types.EdgeProps<'relationship'>>((props
     if (e.pointerType !== 'mouse') {
       return
     }
+    // A host context menu owns RMB; opening it must not commit a geometry edit.
+    if (e.button === 2 && onEdgeContextMenu) return
     // Only respond to right-click or when edge is selected
     if (e.button !== 2 && !selected) {
       return
@@ -244,6 +248,12 @@ export const RelationshipEdge = memoEdge<Types.EdgeProps<'relationship'>>((props
     let pos = { x: labelBBox.x, y: labelBBox.y }
     let animationFrameId: number | null = null
 
+    const applyPointerPosition = () => {
+      const { x, y } = xyflow.screenToFlowPosition(clientPoint, { snapToGrid: false })
+      pos = { x: Math.round(x - grab.x), y: Math.round(y - grab.y) }
+      setLabelPos(pos)
+    }
+
     const onPointerMove = (ev: PointerEvent) => {
       clientPoint.x = ev.clientX
       clientPoint.y = ev.clientY
@@ -255,9 +265,7 @@ export const RelationshipEdge = memoEdge<Types.EdgeProps<'relationship'>>((props
         }
         animationFrameId ??= requestAnimationFrame(() => {
           animationFrameId = null
-          const { x, y } = xyflow.screenToFlowPosition(clientPoint, { snapToGrid: false })
-          pos = { x: Math.round(x - grab.x), y: Math.round(y - grab.y) }
-          setLabelPos(pos)
+          applyPointerPosition()
         })
       }
       ev.stopPropagation()
@@ -268,10 +276,15 @@ export const RelationshipEdge = memoEdge<Types.EdgeProps<'relationship'>>((props
       domNode.removeEventListener('pointermove', onPointerMove, { capture: true })
       if (animationFrameId !== null) {
         cancelAnimationFrame(animationFrameId)
+        animationFrameId = null
+        applyPointerPosition()
       }
       if (hasMoved) {
         // Swallow the trailing click so dragging the label doesn't trigger navigation
         domNode.addEventListener('click', stopAndPrevent, { capture: true, once: true })
+        // When pointerup lands on a different element, there may be no trailing click.
+        // Do not consume the user's next independent selection instead.
+        setTimeout(() => domNode.removeEventListener('click', stopAndPrevent, { capture: true }), 0)
         updateLabelPosition(pos)
       }
     }
@@ -347,7 +360,7 @@ export const RelationshipEdge = memoEdge<Types.EdgeProps<'relationship'>>((props
         )}
       </EdgeContainer>
       {/* Render control points above edge label  */}
-      {enabledEditing && controlPoints.length > 0 && (
+      {enabledEditing && selected && controlPoints.length > 0 && (
         <ControlPoints
           isControlPointDragging={isControlPointDragging}
           edgeProps={props}
@@ -386,6 +399,8 @@ function ControlPoints({
   const xyflowStore = useXYStoreApi()
   const xyflow = useXYFlow()
   const edgeId = edgeProps.data.id
+  const diagram = useDiagram()
+  const { onEdgeContextMenu } = useDiagramEventHandlers()
 
   const controlPointsRef = useRef(controlPoints)
   controlPointsRef.current = controlPoints
@@ -398,6 +413,13 @@ function ControlPoints({
     let animationFrameId: number | null = null
 
     let cp = [...controlPointsRef.current]
+
+    const applyPointerPosition = () => {
+      const { x, y } = xyflow.screenToFlowPosition(clientPoint, { snapToGrid: false })
+      cp = [...cp]
+      cp[index] = { x: Math.trunc(x), y: Math.trunc(y) }
+      onMove(cp)
+    }
 
     const onPointerMove = (e: PointerEvent) => {
       clientPoint.x = e.clientX
@@ -414,13 +436,7 @@ function ControlPoints({
 
         animationFrameId ??= requestAnimationFrame(() => {
           animationFrameId = null
-          const { x, y } = xyflow.screenToFlowPosition(clientPoint, { snapToGrid: false })
-          cp = [...cp]
-          cp[index] = {
-            x: Math.trunc(x),
-            y: Math.trunc(y),
-          }
-          onMove(cp)
+          applyPointerPosition()
         })
       }
 
@@ -437,6 +453,8 @@ function ControlPoints({
       })
       if (animationFrameId !== null) {
         cancelAnimationFrame(animationFrameId)
+        animationFrameId = null
+        applyPointerPosition()
       }
       if (hasMoved) {
         onFinishMove(cp)
@@ -494,6 +512,7 @@ function ControlPoints({
         break
       }
       case 2:
+        if (onEdgeContextMenu) return
         onRmbControlPointerDown(index, e)
         break
     }
@@ -520,7 +539,11 @@ function ControlPoints({
         <g
           data-active={isControlPointDragging ? true : undefined}
           className="group"
-          onContextMenu={stopAndPrevent}>
+          onContextMenu={event => {
+            stopAndPrevent(event)
+            const edge = diagram.findDiagramEdge(edgeId)
+            if (edge) onEdgeContextMenu?.(edge, event)
+          }}>
           {controlPoints.map((p, i) => (
             <circle
               data-control-point-index={i}

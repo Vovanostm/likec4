@@ -1,0 +1,1365 @@
+{
+  "schema_version": 1,
+  "document_type": "implementation_specification",
+  "title": "LikeC4 GUI-to-code: исправление надёжности и удобства",
+  "created_on": "2026-10-03",
+  "status": "proposal_not_execution_authorization",
+  "project_root": "/Users/vovanostm/learn/likec4",
+  "description_language": "ru",
+  "ui_language": "ru",
+  "objective": "Редактор не теряет работу, честно сообщает о сохранении и позволяет создать, связать, переименовать и исправить диаграмму без обязательного ввода DSL.",
+  "scope": {
+    "application": "apps/gui-to-code",
+    "default_write_boundary": [
+      "apps/gui-to-code/src/",
+      "e2e/tests/gui-to-code/"
+    ],
+    "out_of_scope": [
+      "backend/cloud sync",
+      "collaboration",
+      "full Miro parity",
+      "new design-system dependency",
+      "grammar changes",
+      "multi-project authoring",
+      "rewriting the diagram renderer",
+      "publishing or deploying"
+    ],
+    "authoritative_documents": [
+      "AGENTS.md",
+      "apps/gui-to-code/AGENTS.md",
+      "apps/gui-to-code/SPEC.md",
+      "apps/gui-to-code/ROADMAP.md",
+      "apps/gui-to-code/ROADMAP.STATUS.md"
+    ],
+    "roadmap_state": {
+      "active": [
+        "WP-13"
+      ],
+      "ready": [],
+      "source": "apps/gui-to-code/ROADMAP.STATUS.md"
+    },
+    "execution_prerequisites": [
+      "Integration owner регистрирует отдельные bounded WP-* в актуальном ROADMAP.STATUS.md и связывает FIX-* с task packets. Этот JSON не меняет managed state.",
+      "Не расширять WP-13 молча: его packet запрещает persistence/schema/semantic-command changes.",
+      "Для каждого WP закрыть указанные decision gates и запускать только один ready WP за задачу.",
+      "Сохранить все существующие изменения dirty worktree; сверить evidence с текущими файлами перед реализацией."
+    ]
+  },
+  "audit_baseline": {
+    "checkout_head": "7cedbbe182f834a8a589ef6e84535cf76301f4a7",
+    "dirty_worktree": true,
+    "head_is_not_a_snapshot_of_reviewed_changes": true,
+    "previous_review": {
+      "unit_tests": {
+        "status": "passed",
+        "files": 20,
+        "tests": 139
+      },
+      "typecheck": "passed_incremental",
+      "ast_grep": "passed",
+      "http": "200_at_time_of_review_not_a_startup_guarantee",
+      "overwrite_reproduction": "reproduced_with_production_persistence_and_in_memory_database",
+      "hands_on_browser": "NOT_RUN_policy_blocked",
+      "visual_and_first_time_user_acceptance": "NOT_RUN"
+    },
+    "limitation": "Исходники и nonbrowser checks подтверждают дефекты, но не заменяют browser usability, timing и production acceptance."
+  },
+  "invariants": [
+    "EditorWorkspace — единственный владелец semantic state, candidate compile, commit и history.",
+    "Canvas, tree, inspector и code preview не хранят второй изменяемый semantic graph.",
+    "Инкрементальные правки source-preserving; запрещены ad-hoc DSL string surgery и canonical regeneration существующего документа.",
+    "Невалидные, stale и rejected операции не меняют committed source, history и standard manual-layout snapshots.",
+    "Geometry принадлежит @likec4/diagram и стандартным .likec4/<view>.likec4.snap.",
+    "Portable ZIP v1 остаётся совместимым; durable CAS metadata не переносится как semantic model.",
+    "Все пользовательские строки, ошибки и accessibility labels — русские; DSL identifiers не переводятся.",
+    "Native text Undo/Redo, IME и browser focus не перехватываются глобальными командами.",
+    "No silent last-write-wins; storage failures не объявляются успешным сохранением.",
+    "KISS/DRY: использовать существующие commands/components; новая абстракция требует повторного реального применения или доказанной границы."
+  ],
+  "file_map": {
+    "app": {
+      "relative_path": "apps/gui-to-code/src/App.tsx",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/App.tsx",
+      "existence": "existing"
+    },
+    "workspace": {
+      "relative_path": "apps/gui-to-code/src/editor/workspace.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/workspace.ts",
+      "existence": "existing"
+    },
+    "contracts": {
+      "relative_path": "apps/gui-to-code/src/editor/contracts.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/contracts.ts",
+      "existence": "existing"
+    },
+    "persistence": {
+      "relative_path": "apps/gui-to-code/src/editor/indexeddb-workspace.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/indexeddb-workspace.ts",
+      "existence": "existing"
+    },
+    "persistence_tests": {
+      "relative_path": "apps/gui-to-code/src/editor/indexeddb-workspace.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/indexeddb-workspace.spec.ts",
+      "existence": "existing"
+    },
+    "durable": {
+      "relative_path": "apps/gui-to-code/src/editor/use-durable-workspace.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/use-durable-workspace.ts",
+      "existence": "existing"
+    },
+    "durable_tests": {
+      "relative_path": "apps/gui-to-code/src/editor/use-durable-workspace.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/use-durable-workspace.spec.ts",
+      "existence": "existing"
+    },
+    "envelope": {
+      "relative_path": "apps/gui-to-code/src/editor/persisted-workspace.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/persisted-workspace.ts",
+      "existence": "existing"
+    },
+    "envelope_tests": {
+      "relative_path": "apps/gui-to-code/src/editor/persisted-workspace.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/persisted-workspace.spec.ts",
+      "existence": "existing"
+    },
+    "runtime": {
+      "relative_path": "apps/gui-to-code/src/editor/use-workspace-runtime.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/use-workspace-runtime.ts",
+      "existence": "existing"
+    },
+    "semantic": {
+      "relative_path": "apps/gui-to-code/src/editor/use-semantic-editor.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/use-semantic-editor.ts",
+      "existence": "existing"
+    },
+    "canvas": {
+      "relative_path": "apps/gui-to-code/src/editor/use-canvas-entity-editor.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/use-canvas-entity-editor.ts",
+      "existence": "existing"
+    },
+    "inspector": {
+      "relative_path": "apps/gui-to-code/src/editor/ui/ElementInspector.tsx",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/ui/ElementInspector.tsx",
+      "existence": "existing"
+    },
+    "relation_inspector": {
+      "relative_path": "apps/gui-to-code/src/editor/ui/RelationInspector.tsx",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/ui/RelationInspector.tsx",
+      "existence": "existing"
+    },
+    "wp06_controls": {
+      "relative_path": "apps/gui-to-code/src/editor/ui/Wp06Controls.tsx",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/ui/Wp06Controls.tsx",
+      "existence": "existing"
+    },
+    "wp06_runtime": {
+      "relative_path": "apps/gui-to-code/src/editor/use-wp06-runtime.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/use-wp06-runtime.ts",
+      "existence": "existing"
+    },
+    "view_toolbar": {
+      "relative_path": "apps/gui-to-code/src/editor/ui/ViewToolbar.tsx",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/ui/ViewToolbar.tsx",
+      "existence": "existing"
+    },
+    "inline_title": {
+      "relative_path": "apps/gui-to-code/src/editor/ui/InlineTitleEditor.tsx",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/ui/InlineTitleEditor.tsx",
+      "existence": "existing"
+    },
+    "create_menu": {
+      "relative_path": "apps/gui-to-code/src/editor/ui/CanvasCreateMenu.tsx",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/ui/CanvasCreateMenu.tsx",
+      "existence": "existing"
+    },
+    "quick_menu": {
+      "relative_path": "apps/gui-to-code/src/editor/ui/CanvasQuickCreateMenu.tsx",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/ui/CanvasQuickCreateMenu.tsx",
+      "existence": "existing"
+    },
+    "toolbar": {
+      "relative_path": "apps/gui-to-code/src/editor/ui/CanvasToolbar.tsx",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/ui/CanvasToolbar.tsx",
+      "existence": "existing"
+    },
+    "kinds": {
+      "relative_path": "apps/gui-to-code/src/editor/ui/canvas-element-kinds.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/ui/canvas-element-kinds.ts",
+      "existence": "existing"
+    },
+    "shortcuts": {
+      "relative_path": "apps/gui-to-code/src/editor/editor-shortcuts.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/editor-shortcuts.ts",
+      "existence": "existing"
+    },
+    "shortcuts_tests": {
+      "relative_path": "apps/gui-to-code/src/editor/editor-shortcuts.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/editor-shortcuts.spec.ts",
+      "existence": "existing"
+    },
+    "remove_dialog": {
+      "relative_path": "apps/gui-to-code/src/editor/ui/RemoveElementConfirmation.tsx",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/ui/RemoveElementConfirmation.tsx",
+      "existence": "existing"
+    },
+    "downloads": {
+      "relative_path": "apps/gui-to-code/src/editor/file-downloads.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/file-downloads.ts",
+      "existence": "existing"
+    },
+    "styles": {
+      "relative_path": "apps/gui-to-code/src/style.css",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/style.css",
+      "existence": "existing"
+    },
+    "workspace_tests": {
+      "relative_path": "apps/gui-to-code/src/editor/workspace.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/workspace.spec.ts",
+      "existence": "existing"
+    },
+    "canvas_workspace_tests": {
+      "relative_path": "apps/gui-to-code/src/editor/workspace-wp10.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/workspace-wp10.spec.ts",
+      "existence": "existing"
+    },
+    "view_workspace_tests": {
+      "relative_path": "apps/gui-to-code/src/editor/workspace-wp05.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/workspace-wp05.spec.ts",
+      "existence": "existing"
+    },
+    "adapter": {
+      "relative_path": "apps/gui-to-code/src/editor/language-services-adapter.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/apps/gui-to-code/src/editor/language-services-adapter.ts",
+      "existence": "existing"
+    },
+    "e2e_context": {
+      "relative_path": "e2e/tests/gui-to-code/canvas-context-menu.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/e2e/tests/gui-to-code/canvas-context-menu.spec.ts",
+      "existence": "existing"
+    },
+    "e2e_inspector": {
+      "relative_path": "e2e/tests/gui-to-code/wp04-inspector.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/e2e/tests/gui-to-code/wp04-inspector.spec.ts",
+      "existence": "existing"
+    },
+    "e2e_release": {
+      "relative_path": "e2e/tests/gui-to-code/wp08-release-gate.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/e2e/tests/gui-to-code/wp08-release-gate.spec.ts",
+      "existence": "existing"
+    },
+    "e2e_recovery_new": {
+      "relative_path": "e2e/tests/gui-to-code/workspace-recovery.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/e2e/tests/gui-to-code/workspace-recovery.spec.ts",
+      "existence": "proposed_new_test_only"
+    },
+    "e2e_drafts_new": {
+      "relative_path": "e2e/tests/gui-to-code/editor-drafts.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/e2e/tests/gui-to-code/editor-drafts.spec.ts",
+      "existence": "proposed_new_test_only"
+    },
+    "e2e_onboarding_new": {
+      "relative_path": "e2e/tests/gui-to-code/empty-workspace.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/e2e/tests/gui-to-code/empty-workspace.spec.ts",
+      "existence": "proposed_new_test_only"
+    },
+    "e2e_usability_new": {
+      "relative_path": "e2e/tests/gui-to-code/usability.spec.ts",
+      "absolute_path": "/Users/vovanostm/learn/likec4/e2e/tests/gui-to-code/usability.spec.ts",
+      "existence": "proposed_new_test_only"
+    }
+  },
+  "decision_gates": [
+    {
+      "id": "DG-FIX-PERSISTENCE",
+      "status": "open",
+      "owner": "integration_owner",
+      "decision": "Добавить opaque durable version token, независимый от semantic revision. Load возвращает envelope и token атомарно; save и replacement сравнивают expected token и меняют его в одной IndexedDB readwrite transaction.",
+      "constraints": [
+        "Token меняется на каждый durable write, включая replace, reset и восстановление; число revision и workspaceId default не являются достаточным CAS.",
+        "Не использовать savedAt/Date.now как unique version token и не ограничиваться BroadcastChannel.",
+        "Утвердить storage layout и миграцию отдельно: предпочтительно metadata рядом с active/backup в том же store, без изменения portable envelope/ZIP v1.",
+        "Миграция сохраняет source bytes, entryDocumentUri и valid backup. Legacy writer старой версии приложения должен fail closed, а не игнорировать новый token.",
+        "Load/recovery и token относятся к одному согласованному storage snapshot; пользовательское confirmed replacement тоже имеет concurrency guard.",
+        "BroadcastChannel MAY уведомлять другие вкладки, но корректность не должна зависеть от получения уведомления."
+      ],
+      "close_with": [
+        "Короткий ADR с storage-version/legacy-writer policy и rollback limitations.",
+        "Исполняемый spike: два tab sessions, импорт с reused revision, stale save и второй save не меняют imported active/backup.",
+        "Migration/recovery tests, включая old records, corrupt active, valid backup, blocked upgrade и unavailable storage."
+      ]
+    },
+    {
+      "id": "DG-FIX-EMPTY-BOOTSTRAP",
+      "status": "open",
+      "owner": "document_owner",
+      "decision": "Сначала доказать first-element → first-view → visible node через существующие element.create и scoped view.create. В bootstrap не требовать уже существующий diagram.",
+      "constraints": [
+        "UI не строит DSL. Тип и ID проходят существующий document owner.",
+        "Предпочтителен явный двухшаговый guided flow с двумя понятными history entries; не вводить generic command batch.",
+        "Если scoped view.create не показывает первый root element, остановиться и согласовать минимальный root-view public contract отдельным WP; не менять packages/** в UI slice."
+      ],
+      "close_with": [
+        "Integration spike на specification + пустых model/views: первый элемент виден после guided view creation; Undo/Redo и rejected compile проверены."
+      ]
+    }
+  ],
+  "fixes": [
+    {
+      "id": "FIX-01",
+      "priority": "P1",
+      "category": "persistence",
+      "title": "Защитить imported workspace от старой вкладки",
+      "status": "proposed",
+      "owner": "persistence_owner",
+      "acceptance_refs": [
+        "AC-04",
+        "AC-07",
+        "AC-09"
+      ],
+      "depends_on": [],
+      "decision_gates": [
+        "DG-FIX-PERSISTENCE"
+      ],
+      "write_scope_file_ids": [
+        "persistence",
+        "persistence_tests",
+        "durable",
+        "durable_tests",
+        "e2e_recovery_new"
+      ],
+      "reproduction": [
+        "Вкладки A и B читают revision 0.",
+        "A импортирует другой проект с revision 0.",
+        "B сохраняет revision 1, затем revision 2.",
+        "Сейчас оба save принимаются; imported project исчезает из active, затем backup."
+      ],
+      "evidence": [
+        {
+          "file_id": "persistence",
+          "line": 190,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "durable",
+          "line": 263,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "Реализовать contract DG-FIX-PERSISTENCE; сохранять durable token в persistence/runtime boundary, не в semantic history.",
+        "Stale tab получает typed conflict, сохраняет свой local workspace в памяти, блокирует дальнейшие mutations и предлагает export/reload.",
+        "Rejected save не меняет active, backup и token. Replacement проверяет observed token непосредственно в transaction.",
+        "Дополнительные envelope/schema paths разрешаются только approved migration packet; portable ZIP contract не менять."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T01-a",
+          "level": "integration",
+          "given": "A/B loaded token V0",
+          "when": "A replaces revision 0; B saves expected V0",
+          "then": "conflict; imported active/backup неизменны"
+        },
+        {
+          "id": "T01-b",
+          "level": "integration",
+          "given": "conflict in B",
+          "when": "B пытается сохранить ещё раз",
+          "then": "никакой записи; экспорт локальной версии доступен"
+        },
+        {
+          "id": "T01-c",
+          "level": "integration",
+          "given": "same revision, different replacement; two concurrent saves/replacements",
+          "when": "transactions завершаются в обоих допустимых порядках",
+          "then": "не более одного writer с expected token; losing writer получает conflict"
+        },
+        {
+          "id": "T01-d",
+          "level": "browser",
+          "given": "two pages in one isolated browser context",
+          "when": "import in A, edit in B, reload A",
+          "then": "imported source bytes/layouts preserved; B sees Russian recovery controls"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    },
+    {
+      "id": "FIX-02",
+      "priority": "P1",
+      "category": "persistence",
+      "title": "Честно показывать сохранение текущего draft",
+      "status": "proposed",
+      "owner": "persistence_owner",
+      "acceptance_refs": [
+        "AC-04",
+        "AC-07",
+        "AC-10"
+      ],
+      "depends_on": [
+        "FIX-01"
+      ],
+      "decision_gates": [],
+      "write_scope_file_ids": [
+        "durable",
+        "durable_tests",
+        "app",
+        "downloads",
+        "e2e_drafts_new"
+      ],
+      "reproduction": [
+        "Сохранить valid workspace.",
+        "Внести syntax error в код.",
+        "Сейчас статус остаётся «Рабочее пространство сохранено», хотя reload возвращает committed source."
+      ],
+      "evidence": [
+        {
+          "file_id": "durable",
+          "line": 165,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "app",
+          "line": 447,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "Разделить durable save outcome и derived draft state: compiling, invalid/unsaved, saving, saved, conflict, storage error.",
+        "«Сохранено» показывать только когда отображаемый draft совпадает с успешно сохранённым committed snapshot и его layouts.",
+        "Для invalid draft: «Черновик не сохранён. Сохранена последняя корректная версия.» и явное «Скачать черновик .c4» через существующий source export.",
+        "Не сохранять invalid draft поверх valid active/backup и не менять schema ради этого slice.",
+        "Late save completion старого snapshot не должен объявлять более новый draft сохранённым. Ошибка storage оставляет предупреждение и export доступными."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T02-a",
+          "level": "browser",
+          "given": "saved valid source",
+          "when": "type syntax error",
+          "then": "unsaved-draft text visible; last valid canvas preserved; downloaded draft contains exact typed bytes"
+        },
+        {
+          "id": "T02-b",
+          "level": "integration",
+          "given": "delayed save N",
+          "when": "draft N+1 becomes invalid before completion",
+          "then": "completion N does not display current draft as saved"
+        },
+        {
+          "id": "T02-c",
+          "level": "browser",
+          "given": "quota/unavailable storage",
+          "when": "valid edit",
+          "then": "visible error and export; no false saved status; valid durable records preserved"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    },
+    {
+      "id": "FIX-03",
+      "priority": "P2",
+      "category": "ui",
+      "title": "Не сбрасывать несохранённые поля инспектора",
+      "status": "proposed",
+      "owner": "ui_owner",
+      "acceptance_refs": [
+        "AC-02",
+        "AC-04"
+      ],
+      "depends_on": [],
+      "decision_gates": [],
+      "write_scope_file_ids": [
+        "inspector",
+        "semantic",
+        "e2e_inspector",
+        "e2e_drafts_new"
+      ],
+      "reproduction": [
+        "Изменить title/description без Save.",
+        "Переключить Structure panel либо дождаться обновления save status.",
+        "Новый element object запускает effect и возвращает committed values."
+      ],
+      "evidence": [
+        {
+          "file_id": "inspector",
+          "line": 46,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "semantic",
+          "line": 312,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "Не синхронизировать form state по referential identity element. Локальный draft относится к выбранному element ID и base values.",
+        "Unrelated render, status и layout update сохраняют dirty fields и cursor.",
+        "Если committed values того же элемента изменились при dirty draft, оставить ввод, показать конфликт и потребовать явный reload/reconcile перед Save.",
+        "После успешного Save синхронизировать confirmed values. При смене selection с dirty fields предложить сохранить/отбросить/остаться, без скрытой мутации.",
+        "Не добавлять persistence form drafts или global form state manager."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T03-a",
+          "level": "browser",
+          "given": "dirty title/description/tags",
+          "when": "toggle Structure, save status changes, unrelated layout completes",
+          "then": "typed fields unchanged"
+        },
+        {
+          "id": "T03-b",
+          "level": "browser",
+          "given": "dirty inspector",
+          "when": "select another element or selected element is updated externally",
+          "then": "explicit recoverable decision; no silent loss/overwrite"
+        },
+        {
+          "id": "T03-c",
+          "level": "browser",
+          "given": "valid edited fields",
+          "when": "Save then Undo/Redo",
+          "then": "one semantic patch; exact confirmed values synchronized"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    },
+    {
+      "id": "FIX-04",
+      "priority": "P2",
+      "category": "ui",
+      "title": "Предсказуемо сохранять inline title",
+      "status": "proposed",
+      "owner": "ui_owner",
+      "acceptance_refs": [
+        "AC-02",
+        "AC-05"
+      ],
+      "depends_on": [],
+      "decision_gates": [],
+      "write_scope_file_ids": [
+        "inline_title",
+        "canvas",
+        "app",
+        "e2e_drafts_new"
+      ],
+      "reproduction": [
+        "Начать rename, набрать новое имя.",
+        "Tab к Save либо click вне input.",
+        "Сейчас blur отменяет draft, в том числе при переходе внутри формы."
+      ],
+      "evidence": [
+        {
+          "file_id": "inline_title",
+          "line": 71,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "Переход focus внутри всей формы не сохраняет и не отменяет draft; учитывать relatedTarget containment.",
+        "Enter и Save подтверждают один patch; Escape отменяет без semantic/history changes.",
+        "При уходе focus вне формы подтвердить непустой title один раз. При rejected patch сохранить draft и показать причину; пустой title не записывать.",
+        "Return-focus зависит от причины: Enter/Save возвращают canvas focus; успешный outside-blur не крадёт focus у намеренно выбранного control.",
+        "Использовать awaitable save result и existing busy guard, исключить double submission от blur + click + Enter."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T04-a",
+          "level": "browser",
+          "given": "dirty inline title",
+          "when": "Tab to Save, Enter; Shift+Tab inside form",
+          "then": "draft preserved until explicit save; one patch/history entry"
+        },
+        {
+          "id": "T04-b",
+          "level": "browser",
+          "given": "nonempty title",
+          "when": "click canvas or another control",
+          "then": "one commit; intended focus respected"
+        },
+        {
+          "id": "T04-c",
+          "level": "browser",
+          "given": "rejected/empty draft or busy save",
+          "when": "blur/Escape/duplicate Enter",
+          "then": "no invalid mutation or duplicate command; draft recoverable"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    },
+    {
+      "id": "FIX-05",
+      "priority": "P2",
+      "category": "ui",
+      "title": "Единообразно блокировать mutations в read-only",
+      "status": "proposed",
+      "owner": "ui_owner",
+      "acceptance_refs": [
+        "AC-04",
+        "AC-09",
+        "AC-10"
+      ],
+      "depends_on": [
+        "FIX-01"
+      ],
+      "decision_gates": [],
+      "write_scope_file_ids": [
+        "app",
+        "runtime",
+        "semantic",
+        "canvas",
+        "wp06_runtime",
+        "inspector",
+        "relation_inspector",
+        "view_toolbar",
+        "wp06_controls",
+        "e2e_recovery_new"
+      ],
+      "reproduction": [
+        "Вызвать save conflict.",
+        "Открыть inspector или Create view.",
+        "Сейчас controls enabled, runtime возвращает null и action ничего не делает."
+      ],
+      "evidence": [
+        {
+          "file_id": "app",
+          "line": 806,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "runtime",
+          "line": 125,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "В App использовать один derived mutation availability + reason из loading/compilation/busy/readOnly/conflict и передавать его semantic controls.",
+        "Покрыть inspector, relation, static/dynamic/deployment forms, pending/inline creation и snapshot import/reset.",
+        "Guards повторить на command boundary; rejected interaction сообщает русскую причину, не исчезает как silent null.",
+        "Selection, pan/zoom, просмотр кода, export и безопасное recovery остаются доступны. Не блокировать read-only navigation вместе с mutations."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T05-a",
+          "level": "browser",
+          "given": "read-only conflict",
+          "when": "inspect every mutating surface and shortcut",
+          "then": "disabled/explained; source/history/layout unchanged"
+        },
+        {
+          "id": "T05-b",
+          "level": "browser",
+          "given": "pending form opened before conflict",
+          "when": "conflict occurs and form submitted",
+          "then": "fail closed, visible reason, draft preserved"
+        },
+        {
+          "id": "T05-c",
+          "level": "browser",
+          "given": "read-only",
+          "when": "select/pan/export/reload latest",
+          "then": "viewing/export work; successful reload restores mutation availability"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    },
+    {
+      "id": "FIX-06",
+      "priority": "P2",
+      "category": "ui",
+      "title": "Показывать deletion errors независимо от inspector",
+      "status": "proposed",
+      "owner": "ui_owner",
+      "acceptance_refs": [
+        "AC-04",
+        "AC-10"
+      ],
+      "depends_on": [],
+      "decision_gates": [],
+      "write_scope_file_ids": [
+        "semantic",
+        "app",
+        "e2e_inspector"
+      ],
+      "reproduction": [
+        "Закрыть inspector.",
+        "Выбрать element и нажать Delete.",
+        "Если dependency check rejected/conflict, причина хранится только в скрытом inspectorError."
+      ],
+      "evidence": [
+        {
+          "file_id": "semantic",
+          "line": 191,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "app",
+          "line": 759,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "Публиковать inspection failure через existing visible canvas command-error channel и локально у связанного control, без второго error store.",
+        "Сообщение объясняет причину и следующий шаг: повторить на актуальной версии либо открыть зависимости.",
+        "Unexpected thrown inspection error также переводить в понятную ошибку; always clear busy; не открывать confirm dialog при failure.",
+        "Повторная успешная проверка очищает соответствующий stale error."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T06-a",
+          "level": "browser",
+          "given": "inspector closed",
+          "when": "dependency check rejected/conflict/throws",
+          "then": "visible Russian alert, unchanged workspace, usable focus, busy cleared"
+        },
+        {
+          "id": "T06-b",
+          "level": "browser",
+          "given": "previous failure",
+          "when": "retry succeeds",
+          "then": "dependency confirmation shown and stale error cleared"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    },
+    {
+      "id": "FIX-07",
+      "priority": "P2",
+      "category": "semantic",
+      "title": "Дать первый canvas flow пустому проекту",
+      "status": "proposed",
+      "owner": "document_owner",
+      "acceptance_refs": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-08"
+      ],
+      "depends_on": [
+        "FIX-08"
+      ],
+      "decision_gates": [
+        "DG-FIX-EMPTY-BOOTSTRAP"
+      ],
+      "write_scope_file_ids": [
+        "app",
+        "workspace",
+        "runtime",
+        "semantic",
+        "view_toolbar",
+        "workspace_tests",
+        "view_workspace_tests",
+        "e2e_onboarding_new"
+      ],
+      "reproduction": [
+        "Импортировать valid specification + пустые model/views.",
+        "Сейчас нет diagram, creation tool и selectable element для создания view."
+      ],
+      "evidence": [
+        {
+          "file_id": "app",
+          "line": 546,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "view_toolbar",
+          "line": 92,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "Показать «Добавить первый элемент» с типами загруженной specification независимо от selectedView.",
+        "Использовать element.create для root entity; затем предложить существующий guided view.create и открыть созданный вид.",
+        "ID allocate/validation принадлежат existing document owner; никогда не строить DSL в empty-state component.",
+        "Сохранить imported comments/formatting; генератор допустим только для сознательного создания нового документа.",
+        "Если specification не содержит element kinds, показать понятное ограничение и доступный import/code path, а не invent actor/component."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T07-a",
+          "level": "browser",
+          "given": "valid empty model/views",
+          "when": "add first element, name it, create first view",
+          "then": "visible editable node without DSL input"
+        },
+        {
+          "id": "T07-b",
+          "level": "integration",
+          "given": "bootstrap flow",
+          "when": "Undo/Redo or rejected candidate",
+          "then": "document/history consistent; no hidden batch or partial rejected mutation"
+        },
+        {
+          "id": "T07-c",
+          "level": "browser",
+          "given": "no element kinds or existing elements but no views",
+          "when": "open workspace",
+          "then": "appropriate actionable empty state; no misleading disabled dead end"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    },
+    {
+      "id": "FIX-08",
+      "priority": "P2",
+      "category": "semantic",
+      "title": "Брать доступные kinds из specification",
+      "status": "proposed",
+      "owner": "document_owner",
+      "acceptance_refs": [
+        "AC-01",
+        "AC-04",
+        "AC-08"
+      ],
+      "depends_on": [],
+      "decision_gates": [],
+      "write_scope_file_ids": [
+        "kinds",
+        "toolbar",
+        "create_menu",
+        "quick_menu",
+        "shortcuts",
+        "shortcuts_tests",
+        "workspace",
+        "workspace_tests",
+        "canvas_workspace_tests",
+        "e2e_onboarding_new"
+      ],
+      "reproduction": [
+        "Импортировать specification с database/service и без actor/system/component.",
+        "Все create controls сейчас disabled; workspace дополнительно отвергает kind через fixed supportedKinds."
+      ],
+      "evidence": [
+        {
+          "file_id": "kinds",
+          "line": 3,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "workspace",
+          "line": 1339,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "Заменить fixed allowlist единым derived catalogue из compiled specification.elements.",
+        "Known kinds получают русские labels; custom kind использует declared title, иначе literal DSL identifier.",
+        "Workspace принимает только kind существующий в текущей specification; parser/compiler остаются final validators.",
+        "Сохранить 1–3 для actor/system/component если они доступны; custom kinds доступны через add menu, без нестабильного переназначения существующих shortcuts.",
+        "Unknown kind reject; scope creation, connected creation, source preservation и atomic history остаются прежними."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T08-a",
+          "level": "integration",
+          "given": "specification database/service only",
+          "when": "createAt/createConnected",
+          "then": "declared kinds accepted; unknown kind rejected without mutation"
+        },
+        {
+          "id": "T08-b",
+          "level": "browser",
+          "given": "imported custom specification",
+          "when": "toolbar/context/connected menu",
+          "then": "same available kinds; no unusable fixed-kind buttons"
+        },
+        {
+          "id": "T08-c",
+          "level": "integration",
+          "given": "custom scoped/connected creation",
+          "when": "Undo/Redo",
+          "then": "exact sources and standard layout restored"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    },
+    {
+      "id": "FIX-09",
+      "priority": "P2",
+      "category": "ui",
+      "title": "Сделать deletion dialog действительно modal",
+      "status": "proposed",
+      "owner": "ui_owner",
+      "acceptance_refs": [
+        "AC-05"
+      ],
+      "depends_on": [],
+      "decision_gates": [],
+      "write_scope_file_ids": [
+        "remove_dialog",
+        "app",
+        "e2e_release"
+      ],
+      "reproduction": [
+        "Открыть removal confirmation.",
+        "Shift+Tab с Cancel или Tab после Delete.",
+        "Сейчас focus уходит в interactive background при aria-modal=true."
+      ],
+      "evidence": [
+        {
+          "file_id": "remove_dialog",
+          "line": 32,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "app",
+          "line": 844,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "Предпочесть native dialog.showModal() при совместимости с текущим shell; иначе local focus containment и inert background.",
+        "Initial focus на Cancel; Tab/Shift+Tab циклически обходят только доступные dialog controls.",
+        "Escape отменяет только когда cancellation безопасна; busy state объявляется, focus не исчезает при disable buttons.",
+        "При close восстановить opener если он существует, иначе canvas. Существующий dependency report и cascade semantics не менять."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T09-a",
+          "level": "browser",
+          "given": "modal open",
+          "when": "Tab/Shift+Tab/Escape",
+          "then": "focus contained; background cannot activate; close restores focus"
+        },
+        {
+          "id": "T09-b",
+          "level": "browser",
+          "given": "unsupported dependencies or busy removal",
+          "when": "navigate keyboard",
+          "then": "focus stays inside valid modal target; unsupported deletion impossible"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    },
+    {
+      "id": "FIX-10",
+      "priority": "P2",
+      "category": "ui",
+      "title": "Завершить keyboard contract quick menu",
+      "status": "proposed",
+      "owner": "ui_owner",
+      "acceptance_refs": [
+        "AC-05"
+      ],
+      "depends_on": [],
+      "decision_gates": [],
+      "write_scope_file_ids": [
+        "quick_menu",
+        "app",
+        "e2e_context"
+      ],
+      "reproduction": [
+        "Открыть context menu и нажимать Tab.",
+        "Сейчас Tab проходит по menuitems, затем в background, оставляя menu open."
+      ],
+      "evidence": [
+        {
+          "file_id": "quick_menu",
+          "line": 75,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "app",
+          "line": 77,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "Popup menuitems убрать из ordinary Tab order; Arrow/Home/End управляют local focus.",
+        "Tab/Shift+Tab закрывают menu и переводят focus к логически следующему/предыдущему control, не создавая focus trap.",
+        "Escape закрывает menu и возвращает canvas context; outside click не крадёт clicked target focus.",
+        "Не объявлять popup modal и не добавлять глобальный focus manager."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T10-a",
+          "level": "browser",
+          "given": "quick menu open",
+          "when": "Tab/Shift+Tab",
+          "then": "menu dismissed; focus outside at predictable target"
+        },
+        {
+          "id": "T10-b",
+          "level": "browser",
+          "given": "enabled/disabled items",
+          "when": "Arrow/Home/End, Enter, Escape, outside click",
+          "then": "documented menu behavior; no accidental semantic command"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    },
+    {
+      "id": "FIX-11",
+      "priority": "P2",
+      "category": "ui",
+      "title": "Не отправлять форму во время IME composition",
+      "status": "proposed",
+      "owner": "ui_owner",
+      "acceptance_refs": [
+        "AC-05"
+      ],
+      "depends_on": [
+        "FIX-04"
+      ],
+      "decision_gates": [],
+      "write_scope_file_ids": [
+        "inline_title",
+        "create_menu",
+        "shortcuts",
+        "shortcuts_tests",
+        "e2e_drafts_new"
+      ],
+      "reproduction": [
+        "Составлять имя через IME.",
+        "Enter подтверждает candidate.",
+        "Local key handlers сейчас вызывают save/create до central composition guard."
+      ],
+      "evidence": [
+        {
+          "file_id": "inline_title",
+          "line": 81,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "create_menu",
+          "line": 84,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "Local Enter/Escape handlers проверяют composition до preventDefault и до callback.",
+        "Переиспользовать малый existing predicate только если он действительно подходит local/global handlers; не добавлять новую keyboard abstraction.",
+        "Composition commit не вызывает save/create/cancel. Последующий обычный Enter работает ровно один раз."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T11-a",
+          "level": "component_or_browser",
+          "given": "nativeEvent.isComposing=true",
+          "when": "Enter/Escape in inline and connected-title inputs",
+          "then": "zero save/create/cancel callbacks"
+        },
+        {
+          "id": "T11-b",
+          "level": "browser",
+          "given": "composition completed",
+          "when": "ordinary Enter",
+          "then": "one valid semantic command; title bytes preserved"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    },
+    {
+      "id": "FIX-12",
+      "priority": "P3",
+      "category": "usability_recommendation",
+      "title": "Упростить основной экран и объяснить actions",
+      "status": "proposed",
+      "owner": "ui_owner",
+      "acceptance_refs": [
+        "AC-01",
+        "AC-05",
+        "AC-10"
+      ],
+      "depends_on": [
+        "FIX-02",
+        "FIX-03",
+        "FIX-04",
+        "FIX-05",
+        "FIX-06",
+        "FIX-07",
+        "FIX-08",
+        "FIX-09",
+        "FIX-10",
+        "FIX-11"
+      ],
+      "decision_gates": [],
+      "write_scope_file_ids": [
+        "app",
+        "inspector",
+        "view_toolbar",
+        "wp06_controls",
+        "styles",
+        "e2e_usability_new"
+      ],
+      "reproduction": [
+        "Новый пользователь видит technical fields и disabled Create view без видимого объяснения.",
+        "Связать сообщает «выберите исходный элемент», хотя node click только выбирает entity."
+      ],
+      "evidence": [
+        {
+          "file_id": "view_toolbar",
+          "line": 98,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "app",
+          "line": 563,
+          "kind": "source_confirmed"
+        },
+        {
+          "file_id": "semantic",
+          "line": 258,
+          "kind": "source_confirmed"
+        }
+      ],
+      "implementation": [
+        "Primary inspector: Название, Описание и безопасное Удалить; ID/FQN, technology, tags, parent и advanced workflows раскрывать явно.",
+        "Скрыть advanced layout actions за «Дополнительно», сохранив видимый current-view context и discoverable switcher.",
+        "Visible disabled reasons: например «Сначала выберите элемент»; не ограничиваться visually-hidden text или disabled-button tooltip.",
+        "Для connection tool говорить точное действие: «Потяните точку связи к другому элементу»; отдельно обозначить dropdown alternative. Не добавлять click-to-connect как скрытое изменение scope.",
+        "Не скрывать required view ID без valid owner-allocated default; автоматизация IDs требует отдельного доказанного contract.",
+        "Не внедрять shadcn/Tailwind или менять UI library. Использовать текущие soft color tokens; readable text, visible focus и target size важнее новой палитры.",
+        "Connected creation можно облегчить transient last-used compatible kind; не снижать initial-title validation или one-operation semantics."
+      ],
+      "acceptance_tests": [
+        {
+          "id": "T12-a",
+          "level": "human_browser",
+          "given": "first-time user and empty workspace",
+          "when": "create actor/component, connect, rename, create view",
+          "then": "AC-01 completed within 60 seconds without DSL or developer coaching; record errors/help requests"
+        },
+        {
+          "id": "T12-b",
+          "level": "browser",
+          "given": "1440x900, 1024x768, 390x844 and 200% zoom",
+          "when": "open menus, inspector, error and deletion dialog",
+          "then": "no clipped primary actions; focus visible; overlays usable; no forced horizontal page scroll"
+        },
+        {
+          "id": "T12-c",
+          "level": "browser",
+          "given": "primary controls",
+          "when": "pointer/keyboard review",
+          "then": "Russian labels; WCAG AA text contrast; targets meet 24x24 CSS px or documented equivalent/spacing exception"
+        }
+      ],
+      "stop_condition": "Все перечисленные критерии подтверждены focused tests; browser criteria без browser evidence остаются NOT_RUN.",
+      "escalate_when": "Нужны пути вне write scope, новый public API, dependency, semantic owner или неутверждённая миграция."
+    }
+  ],
+  "execution_plan": {
+    "phases": [
+      {
+        "id": "PHASE-0",
+        "outcome": "Зафиксированы approved task packets и regression failures",
+        "actions": [
+          "Сверить dirty baseline",
+          "Зарегистрировать WP scopes без изменения текущих done claims",
+          "Закрыть DG-FIX-PERSISTENCE"
+        ]
+      },
+      {
+        "id": "PHASE-1",
+        "outcome": "Durable data и drafts защищены",
+        "fixes": [
+          "FIX-01",
+          "FIX-02"
+        ]
+      },
+      {
+        "id": "PHASE-2",
+        "outcome": "Редактирование, feedback и keyboard предсказуемы",
+        "fixes": [
+          "FIX-03",
+          "FIX-04",
+          "FIX-05",
+          "FIX-06",
+          "FIX-09",
+          "FIX-10",
+          "FIX-11"
+        ]
+      },
+      {
+        "id": "PHASE-3",
+        "outcome": "Импортированные и пустые проекты редактируются без DSL",
+        "fixes": [
+          "FIX-08",
+          "FIX-07"
+        ],
+        "gate": "DG-FIX-EMPTY-BOOTSTRAP"
+      },
+      {
+        "id": "PHASE-4",
+        "outcome": "Простота подтверждена browser/human acceptance",
+        "fixes": [
+          "FIX-12"
+        ]
+      }
+    ],
+    "ownership": {
+      "integration_owner": [
+        "App.tsx",
+        "shared contracts",
+        "roadmap/task registration",
+        "decision gates",
+        "final verification",
+        "public exports/manifests/lockfile only if separately approved"
+      ],
+      "persistence_owner": [
+        "approved IndexedDB and durable hooks packet"
+      ],
+      "document_owner": [
+        "approved workspace kinds/bootstrap packet"
+      ],
+      "ui_owner": [
+        "approved bounded components packet"
+      ],
+      "reviewer": [
+        "read-only correctness/SSOT/a11y review"
+      ],
+      "qa_owner": [
+        "isolated e2e scenarios and evidence"
+      ]
+    },
+    "parallelism": [
+      "Только после fixed interfaces и registered packets; одновременные workers получают disjoint explicit files.",
+      "FIX-01/FIX-02 выполняются последовательно: оба меняют durable hook.",
+      "FIX-04/FIX-11 выполняются последовательно либо одним owner: общие inline/create handlers.",
+      "FIX-07/FIX-08 выполняются последовательно: общий workspace.",
+      "App.tsx и shared hooks редактирует integration owner; UI workers передают narrow wiring request вместо конкурирующих правок.",
+      "Нельзя параллельно изменять один e2e test file, persistence schema или managed roadmap."
+    ],
+    "stop_rules": [
+      "Не выполнять весь JSON как один неограниченный WP.",
+      "Остановить slice при неподтверждённой миграции/public API/dependency, зафиксировать proposal и необходимые tests.",
+      "Не обходить browser URL-policy denial через другой browser/CLI/CDP; browser checks выполнять только в разрешённом environment/CI.",
+      "Не коммитить, не публиковать PR и не разворачивать приложение без отдельной авторизации."
+    ]
+  },
+  "validation": {
+    "specification_only_checks": [
+      "JSON parse",
+      "unique FIX/DG/test IDs",
+      "resolved file IDs and dependencies",
+      "existing referenced paths",
+      "git diff --check"
+    ],
+    "implementation_gates_ordered": [
+      {
+        "command": "pnpm --filter @likec4/gui-to-code test -- <changed-scope spec files>",
+        "scope": "focused nonbrowser regression"
+      },
+      {
+        "command": "pnpm --filter @likec4/gui-to-code generate",
+        "scope": "generated prerequisites"
+      },
+      {
+        "command": "pnpm --filter @likec4/gui-to-code typecheck",
+        "scope": "application"
+      },
+      {
+        "command": "pnpm --filter @likec4/gui-to-code test",
+        "scope": "application runtime tests"
+      },
+      {
+        "command": "pnpm --filter @likec4/gui-to-code build",
+        "scope": "production artifact"
+      },
+      {
+        "command": "pnpm lint:ast-grep",
+        "scope": "SSOT/layering rules"
+      },
+      {
+        "command": "pnpm exec oxlint <changed-source-files>",
+        "scope": "changed source"
+      },
+      {
+        "command": "pnpm exec dprint check <changed-files>",
+        "scope": "format"
+      },
+      {
+        "command": "pnpm check:agent-instructions",
+        "scope": "canonical instruction contracts"
+      },
+      {
+        "command": "git diff --check",
+        "scope": "all changes"
+      }
+    ],
+    "browser_gates": {
+      "environment": "Изолированное тестовое storage и разрешённый browser runner/CI; не пользовательский active project.",
+      "preparation": [
+        "production build",
+        "pnpm run pretest:e2e"
+      ],
+      "command": "pnpm exec playwright test -c playwright.gui-to-code.config.ts",
+      "cwd": "/Users/vovanostm/learn/likec4/e2e",
+      "requires_permitted_browser_environment": true,
+      "required_evidence": [
+        "exact tested candidate/diff",
+        "scenario results",
+        "screenshots at defined viewports",
+        "two-tab storage proof",
+        "keyboard/focus and composition proof",
+        "new-user AC-01 timing"
+      ],
+      "current_status": "NOT_RUN"
+    },
+    "data_safety": [
+      "Regression probes и e2e используют isolated database/browser context.",
+      "Нельзя удалять пользовательские active/backup records для удобства теста.",
+      "Переносимость проверять byte-exact по sources/entry metadata/snapshots, а не только по rendered graph."
+    ],
+    "definition_of_done": [
+      "Все P1 и P2 fixes имеют regression test, успешный error path и independent review.",
+      "Source preservation, atomic connected-create и exact Undo/Redo не регрессировали.",
+      "Миграция, old-client safety и recovery проверены для approved storage contract.",
+      "Browser/human criteria выполнены; NOT_RUN нельзя превращать в passed по unit/typecheck/HTTP.",
+      "README отражает только доказанное поведение; managed status обновляет integration owner после реальных gates.",
+      "Private app-only changes не требуют changeset; при отдельно approved published-package change нужен patch changeset."
+    ],
+    "final_report_contract": {
+      "required": [
+        "completed FIX IDs",
+        "changed absolute paths",
+        "checks with actual results",
+        "browser evidence or NOT_RUN",
+        "remaining risks",
+        "migration/rollback note"
+      ],
+      "forbidden": [
+        "всё работает без browser evidence",
+        "релиз готов по локальным unit checks",
+        "Miro parity без user testing"
+      ]
+    }
+  },
+  "best_practice_references": [
+    {
+      "url": "https://www.nngroup.com/articles/ten-usability-heuristics/",
+      "application": "Понятный статус, prevention/recovery, consistency, progressive disclosure."
+    },
+    {
+      "url": "https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/",
+      "application": "Modal focus containment, initial/return focus и inert background."
+    },
+    {
+      "url": "https://www.w3.org/WAI/ARIA/apg/patterns/menu/",
+      "application": "Arrow navigation, Tab exit/dismissal и Escape."
+    },
+    {
+      "url": "https://react.dev/reference/react/useEffect",
+      "application": "Object dependencies не должны сбрасывать user draft при каждом parent render."
+    },
+    {
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html",
+      "application": "Pointer target size и spacing."
+    },
+    {
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements.html",
+      "application": "Non-drag alternative для connection workflow; dropdown path сохраняется."
+    }
+  ]
+}

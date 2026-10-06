@@ -1,8 +1,8 @@
 import type { ElementColorValues, ThemeColor } from './types.ts'
 
 const blue = {
-  fill: '#3b82f6',
-  stroke: '#2563eb',
+  fill: '#1d4ed8',
+  stroke: '#1e40af',
   hiContrast: '#eff6ff',
   loContrast: '#bfdbfe',
 } satisfies ElementColorValues

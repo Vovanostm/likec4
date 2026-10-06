@@ -1,5 +1,6 @@
 import type { ViewId, ViewManualLayoutSnapshot } from '@likec4/core/types'
 import type { EditorWorkspaceState, SourceFile } from './contracts'
+import { parseSnapshot } from './layout-snapshots'
 
 export const workspaceSchema = 'likec4.gui-to-code.workspace' as const
 export const workspaceVersion = 1 as const
@@ -18,6 +19,7 @@ export interface PersistedWorkspaceEnvelopeV1 {
   readonly manualLayouts: Readonly<Record<string, ViewManualLayoutSnapshot>>
   readonly metadata: {
     readonly entryDocumentUri: string
+    readonly activeViewId?: string
   }
 }
 
@@ -34,26 +36,19 @@ function safePath(path: string): boolean {
 }
 
 function safeLayoutId(id: string): boolean {
-  return !!id && id !== '.' && id !== '..' && !id.includes('/') && !id.includes('\\') && !id.includes('\0')
+  return !!id
+    && id !== '.'
+    && id !== '..'
+    && id !== '__proto__'
+    && id !== 'constructor'
+    && id !== 'prototype'
+    && !id.includes('/')
+    && !id.includes('\\')
+    && !id.includes('\0')
 }
 
 function byteLength(value: string): number {
   return encoder.encode(value).byteLength
-}
-
-function isLayout(value: unknown): value is ViewManualLayoutSnapshot {
-  if (!value || typeof value !== 'object') return false
-  const snapshot = value as Partial<ViewManualLayoutSnapshot>
-  return snapshot._stage === 'layouted'
-    && (snapshot._type === 'element' || snapshot._type === 'dynamic' || snapshot._type === 'deployment')
-    && typeof snapshot.id === 'string'
-    && typeof snapshot.hash === 'string'
-    && Array.isArray(snapshot.nodes)
-    && Array.isArray(snapshot.edges)
-    && !!snapshot.bounds
-    && typeof snapshot.bounds === 'object'
-    && !!snapshot.autoLayout
-    && typeof snapshot.autoLayout === 'object'
 }
 
 export function envelopeFromState(state: EditorWorkspaceState): PersistedWorkspaceEnvelope {
@@ -73,7 +68,7 @@ export function envelopeFromState(state: EditorWorkspaceState): PersistedWorkspa
     savedAt: new Date().toISOString(),
     sources,
     manualLayouts,
-    metadata: { entryDocumentUri: sources[0]?.uri ?? 'model.c4' },
+    metadata: { entryDocumentUri: state.entryDocumentUri },
   }
 }
 
@@ -81,9 +76,15 @@ export function validateWorkspaceEnvelope(input: unknown): WorkspaceEnvelopeResu
   if (!input || typeof input !== 'object') return { ok: false, message: 'Файл workspace имеет неверную структуру.' }
   const value = input as Partial<PersistedWorkspaceEnvelopeV1>
   if (value.schema !== workspaceSchema) return { ok: false, message: 'Неизвестный формат workspace.' }
-  if (value.version !== workspaceVersion) return { ok: false, message: `Версия workspace ${String(value.version)} не поддерживается.` }
-  if (typeof value.workspaceId !== 'string' || !value.workspaceId) return { ok: false, message: 'Не указан идентификатор workspace.' }
-  if (!Number.isSafeInteger(value.revision) || (value.revision ?? -1) < 0) return { ok: false, message: 'Некорректная ревизия workspace.' }
+  if (value.version !== workspaceVersion) {
+    return { ok: false, message: `Версия workspace ${String(value.version)} не поддерживается.` }
+  }
+  if (typeof value.workspaceId !== 'string' || !value.workspaceId) {
+    return { ok: false, message: 'Не указан идентификатор workspace.' }
+  }
+  if (!Number.isSafeInteger(value.revision) || (value.revision ?? -1) < 0) {
+    return { ok: false, message: 'Некорректная ревизия workspace.' }
+  }
   if (!Array.isArray(value.sources) || value.sources.length === 0 || value.sources.length > maxWorkspaceFiles) {
     return { ok: false, message: 'Workspace не содержит допустимого набора исходников.' }
   }
@@ -93,28 +94,41 @@ export function validateWorkspaceEnvelope(input: unknown): WorkspaceEnvelopeResu
     if (!source || typeof source.uri !== 'string' || typeof source.content !== 'string' || !safePath(source.uri)) {
       return { ok: false, message: 'Workspace содержит небезопасный путь исходника.' }
     }
-    const key = source.uri.toLocaleLowerCase()
+    const key = source.uri.toLowerCase()
     if (seen.has(key)) return { ok: false, message: `Путь ${source.uri} встречается несколько раз.` }
     seen.add(key)
     size += byteLength(source.content)
   }
   const entry = value.metadata?.entryDocumentUri
+  const activeViewId = value.metadata?.activeViewId
+  if (activeViewId !== undefined && (typeof activeViewId !== 'string' || !safeLayoutId(activeViewId))) {
+    return { ok: false, message: 'Предпочтительный вид workspace имеет неверный формат.' }
+  }
   if (typeof entry !== 'string' || !value.sources.some(source => source.uri === entry)) {
     return { ok: false, message: 'Основной документ workspace отсутствует.' }
   }
   if (!value.manualLayouts || typeof value.manualLayouts !== 'object' || Array.isArray(value.manualLayouts)) {
     return { ok: false, message: 'Некорректные snapshots workspace.' }
   }
+  const manualLayouts = Object.create(null) as Record<string, ViewManualLayoutSnapshot>
   for (const [id, snapshot] of Object.entries(value.manualLayouts)) {
-    if (!safeLayoutId(id) || !isLayout(snapshot) || snapshot.id !== id) {
+    if (!safeLayoutId(id)) {
       return { ok: false, message: `Snapshot ${id} имеет неверный формат.` }
     }
-    size += byteLength(JSON.stringify(snapshot))
+    const parsed = parseSnapshot(snapshot, id as ViewId)
+    if (!parsed.ok) return { ok: false, message: `Snapshot ${id} имеет неверный формат: ${parsed.message}` }
+    manualLayouts[id] = parsed.snapshot
+    size += byteLength(JSON.stringify(parsed.snapshot))
   }
   if (size > maxWorkspaceBytes) return { ok: false, message: 'Workspace превышает допустимый размер.' }
-  return { ok: true, envelope: value as PersistedWorkspaceEnvelopeV1 }
+  return {
+    ok: true,
+    envelope: { ...value, manualLayouts } as PersistedWorkspaceEnvelopeV1,
+  }
 }
 
-export function layoutsFromEnvelope(envelope: PersistedWorkspaceEnvelope): Readonly<Record<ViewId, ViewManualLayoutSnapshot>> {
+export function layoutsFromEnvelope(
+  envelope: PersistedWorkspaceEnvelope,
+): Readonly<Record<ViewId, ViewManualLayoutSnapshot>> {
   return envelope.manualLayouts as Readonly<Record<ViewId, ViewManualLayoutSnapshot>>
 }

@@ -34,6 +34,14 @@
     "module": "dist/index.js"
   },
   "exports": {
+    "./manual-layout": {
+      "sources": "./src/editor/applyChangesToManualLayout.ts",
+      "default": {
+        "types": "./dist/editor/applyChangesToManualLayout.d.ts",
+        "import": "./dist/editor/applyChangesToManualLayout.js",
+        "default": "./dist/editor/applyChangesToManualLayout.js"
+      }
+    },
     ".": {
       "sources": "./src/index.ts",
       "default": {

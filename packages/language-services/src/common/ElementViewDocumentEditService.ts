@@ -1,16 +1,16 @@
 import type { Fqn, ProjectId, ViewId } from '@likec4/core/types'
 import type { LangiumDocument } from 'langium'
-import type { LikeC4, LikeC4Langium } from './LikeC4'
 import {
-  DocumentEditError,
   type SourceEditPlan,
+  DocumentEditError,
   sourceRevision,
 } from './DocumentEditService'
 import { createElementViewEdit } from './elementViewSourceEdit'
+import type { LikeC4, LikeC4Langium } from './LikeC4'
 
 export interface AddElementViewInput {
   readonly id: string
-  readonly viewOf: Fqn
+  readonly viewOf?: Fqn
   readonly title?: string
   readonly documentUri?: string
   readonly project?: string
@@ -32,14 +32,17 @@ export class ElementViewDocumentEditService {
     if (parsed?.$data.views[input.id as ViewId]) {
       throw new DocumentEditError('collision', `View "${input.id}" already exists`)
     }
-    const scope = this.langium.likec4.likec4.ModelLocator.getParsedElement(input.viewOf, projectId)
-    if (!scope) {
+    const scope = input.viewOf
+      ? this.langium.likec4.likec4.ModelLocator.getParsedElement(input.viewOf, projectId)
+      : undefined
+    if (input.viewOf && !scope) {
       throw new DocumentEditError('not-found', `Logical element "${input.viewOf}" was not found`)
     }
 
     const document = input.documentUri
       ? this.findParsedDocument(input.documentUri)
-      : scope.document
+      : scope?.document ?? [...this.langium.shared.workspace.LangiumDocuments.userDocuments]
+        .find(document => document.parseResult && document.uri.path.endsWith('.c4'))
     if (!document?.parseResult) {
       throw new DocumentEditError('not-found', 'No parsed LikeC4 document found for the view')
     }

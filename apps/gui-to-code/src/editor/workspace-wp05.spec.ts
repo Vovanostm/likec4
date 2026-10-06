@@ -1,8 +1,8 @@
 import type { Fqn, ViewId, ViewManualLayoutSnapshot } from '@likec4/core/types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { compile } from '../compiler'
 import { starterSource } from '../document'
-import type { EditorOperation, LayoutCommand } from './contracts'
+import type { CompileRequest, EditorOperation, LayoutCommand } from './contracts'
 import { snapshotFromLayout } from './layout-snapshots'
 import { EditorWorkspace } from './workspace'
 
@@ -24,6 +24,54 @@ function indexSnapshot(editor: Awaited<ReturnType<typeof workspace>>): ViewManua
 }
 
 describe('EditorWorkspace WP-05 views and manual layouts', () => {
+  it('uses the already validated model for geometry saves/reset and keeps the original automatic layout', async () => {
+    const compiler = vi.fn<(request: CompileRequest) => ReturnType<typeof compile>>(request => compile(request))
+    const editor = await EditorWorkspace.create([sourceFile], compiler)
+    const original = editor.state.lastValidModel?.view(indexViewId).$layouted.nodes
+    const snapshot = indexSnapshot(editor)
+    snapshot.nodes[0]!.x += 120
+    expect(
+      (await editor.dispatch(layoutOperation({
+        type: 'layout.save',
+        input: { viewId: indexViewId, snapshot },
+      }, 0))).status,
+    ).toBe('applied')
+    expect(editor.state.lastValidModel?.view(indexViewId).$layouted.nodes[0]!.x).toBe(snapshot.nodes[0]!.x)
+    expect((await editor.dispatch(layoutOperation({ type: 'layout.reset', input: { viewId: indexViewId } }, 1))).status)
+      .toBe('applied')
+    expect(editor.state.lastValidModel?.view(indexViewId).$layouted.nodes).toEqual(original)
+    expect(editor.state.committedSources).toEqual([sourceFile])
+    expect((await editor.undo(2)).status).toBe('applied')
+    expect(editor.state.lastValidModel?.view(indexViewId).$layouted.nodes[0]!.x).toBe(snapshot.nodes[0]!.x)
+    expect((await editor.redo(3)).status).toBe('applied')
+    expect(editor.state.lastValidModel?.view(indexViewId).$layouted.nodes).toEqual(original)
+    expect(compiler).toHaveBeenCalledTimes(1)
+  })
+
+  it('recompiles changed semantic sources in history while reusing geometry-only history', async () => {
+    const compiler = vi.fn<(request: CompileRequest) => ReturnType<typeof compile>>(request => compile(request))
+    const editor = await EditorWorkspace.create([sourceFile], compiler)
+    const snapshot = indexSnapshot(editor)
+    snapshot.nodes[0]!.x += 100
+    await editor.dispatch(layoutOperation({ type: 'layout.save', input: { viewId: indexViewId, snapshot } }, 0))
+    const created = await editor.dispatch({
+      id: 2,
+      expectedRevision: 1,
+      semantic: { type: 'view.create', input: { id: 'detail', title: 'Detail', viewOf: 'shop' as Fqn } },
+    })
+    expect(created.status).toBe('applied')
+    expect(compiler).toHaveBeenCalledTimes(2)
+    await editor.undo(2)
+    expect(editor.state.lastValidModel?.$data.views['detail']).toBeUndefined()
+    expect(compiler).toHaveBeenCalledTimes(3)
+    await editor.undo(3)
+    await editor.redo(4)
+    expect(compiler).toHaveBeenCalledTimes(3)
+    await editor.redo(5)
+    expect(editor.state.lastValidModel?.$data.views['detail']).toBeDefined()
+    expect(compiler).toHaveBeenCalledTimes(4)
+  })
+
   it('creates one scoped view and restores byte-exact sources through Undo/Redo', async () => {
     const editor = await workspace()
     const original = editor.state.committedSources[0]?.content
@@ -68,10 +116,12 @@ describe('EditorWorkspace WP-05 views and manual layouts', () => {
     const original = editor.state.committedSources[0]?.content
     const snapshot = indexSnapshot(editor)
 
-    expect(await editor.dispatch(layoutOperation({
-      type: 'layout.save',
-      input: { viewId: indexViewId, snapshot },
-    }, 0))).toEqual({
+    expect(
+      await editor.dispatch(layoutOperation({
+        type: 'layout.save',
+        input: { viewId: indexViewId, snapshot },
+      }, 0)),
+    ).toEqual({
       status: 'applied',
       command: 'layout.save',
       revision: 1,
@@ -89,10 +139,16 @@ describe('EditorWorkspace WP-05 views and manual layouts', () => {
     expect(await editor.redo(2)).toEqual({ status: 'applied', command: 'history.redo', revision: 3 })
     expect(editor.state.manualLayouts[indexViewId]).toEqual(snapshot)
 
-    expect(await editor.dispatch(layoutOperation({
-      type: 'layout.reset',
-      input: { viewId: indexViewId },
-    }, 3, 4))).toEqual({
+    expect(
+      await editor.dispatch(layoutOperation(
+        {
+          type: 'layout.reset',
+          input: { viewId: indexViewId },
+        },
+        3,
+        4,
+      )),
+    ).toEqual({
       status: 'applied',
       command: 'layout.reset',
       revision: 4,
@@ -144,34 +200,67 @@ describe('EditorWorkspace WP-05 views and manual layouts', () => {
     const snapshot = indexSnapshot(editor)
     const before = editor.state
 
-    expect(await editor.dispatch(layoutOperation({
-      type: 'layout.save',
-      input: { viewId: indexViewId, snapshot },
-    }, 99))).toEqual({ status: 'conflict', revision: 0 })
+    expect(
+      await editor.dispatch(layoutOperation({
+        type: 'layout.save',
+        input: { viewId: indexViewId, snapshot },
+      }, 99)),
+    ).toEqual({ status: 'conflict', revision: 0 })
     expect(editor.state).toBe(before)
 
     const wrongView = { ...snapshot, id: 'other' as ViewId }
-    expect(await editor.dispatch(layoutOperation({
-      type: 'layout.save',
-      input: { viewId: indexViewId, snapshot: wrongView },
-    }, 0, 2))).toMatchObject({
+    expect(
+      await editor.dispatch(layoutOperation(
+        {
+          type: 'layout.save',
+          input: { viewId: indexViewId, snapshot: wrongView },
+        },
+        0,
+        2,
+      )),
+    ).toMatchObject({
       status: 'rejected',
       issues: [{ code: 'layout-view-mismatch' }],
     })
     expect(editor.state).toBe(before)
 
     const malformed = { ...snapshot, nodes: null } as unknown as ViewManualLayoutSnapshot
-    expect(await editor.dispatch(layoutOperation({
-      type: 'layout.save',
-      input: { viewId: indexViewId, snapshot: malformed },
-    }, 0, 3))).toMatchObject({
+    expect(
+      await editor.dispatch(layoutOperation(
+        {
+          type: 'layout.save',
+          input: { viewId: indexViewId, snapshot: malformed },
+        },
+        0,
+        3,
+      )),
+    ).toMatchObject({
       status: 'rejected',
       issues: [{ code: 'layout-snapshot-invalid' }],
     })
     expect(editor.state).toBe(before)
   })
 
-  it('preserves the snapshot and exposes core drift after a semantic change', async () => {
+  it('rejects a dynamic snapshot without sequence layout before saving it', async () => {
+    const editor = await workspace()
+    const snapshot = {
+      ...indexSnapshot(editor),
+      _type: 'dynamic',
+    } as unknown as ViewManualLayoutSnapshot
+
+    expect(
+      await editor.dispatch(layoutOperation({
+        type: 'layout.save',
+        input: { viewId: indexViewId, snapshot },
+      }, 0)),
+    ).toMatchObject({
+      status: 'rejected',
+      issues: [{ code: 'layout-snapshot-invalid' }],
+    })
+    expect(editor.state.manualLayouts[indexViewId]).toBeUndefined()
+  })
+
+  it('reconciles current entities while retaining manual positions and the last valid revision', async () => {
     const editor = await workspace()
     const snapshot = indexSnapshot(editor)
     await editor.dispatch(layoutOperation({
@@ -180,19 +269,24 @@ describe('EditorWorkspace WP-05 views and manual layouts', () => {
     }, 0))
 
     const changedSource = starterSource.replace(
-      "    web = component 'Web application'",
-      "    api = component 'API'\n    web = component 'Web application'",
+      '    web = component \'Web application\'',
+      '    api = component \'API\'\n    web = component \'Web application\'',
     )
     await editor.updateDraft([{ uri: 'model.c4', content: changedSource }])
 
     expect(editor.state.revision).toBe(2)
-    expect(editor.state.manualLayouts[indexViewId]).toEqual(snapshot)
-    expect(editor.state.lastValidModel?.view(indexViewId).$view.drifts).toContain('nodes-added')
+    const reconciled = editor.state.manualLayouts[indexViewId]
+    expect(reconciled?.nodes.map(node => node.modelRef)).toContain('shop.api')
+    for (const before of snapshot.nodes) {
+      if (before.children.length > 0) continue
+      expect(reconciled?.nodes.find(node => node.id === before.id)).toMatchObject({ x: before.x, y: before.y })
+    }
+    expect(editor.state.lastValidModel?.view(indexViewId).hasLayoutDrifts).toBe(false)
     expect(editor.state.lastValidModel?.view(indexViewId).$layouted._layout).toBe('manual')
 
     await editor.updateDraft([{ uri: 'model.c4', content: 'invalid' }])
     expect(editor.state.compilation.status).toBe('invalid')
-    expect(editor.state.manualLayouts[indexViewId]).toEqual(snapshot)
+    expect(editor.state.manualLayouts[indexViewId]).toEqual(reconciled)
     expect(editor.state.lastValidModel?.view(indexViewId).$layouted._layout).toBe('manual')
   })
 })

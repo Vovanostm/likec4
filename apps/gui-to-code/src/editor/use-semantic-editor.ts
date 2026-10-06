@@ -1,4 +1,5 @@
-import type { ElementKind, Fqn, RelationId } from '@likec4/core/types'
+import type { ElementKind, Fqn, RelationId, ViewId } from '@likec4/core/types'
+import { flattenMarkdownOrString } from '@likec4/core/types'
 import { createCanvasIntentController } from '@likec4/diagram'
 import type {
   CanvasIntent,
@@ -7,11 +8,10 @@ import type {
 } from '@likec4/diagram'
 import type {
   Dispatch,
-  KeyboardEvent as ReactKeyboardEvent,
   MutableRefObject,
   SetStateAction,
 } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { completeRelationConnection } from './canvas-relation-intents'
 import type { RemovalDependencyReport } from './contracts'
 import { patchFromForm } from './ui/element-form'
@@ -24,15 +24,23 @@ import {
 } from './ui/selection'
 import type { EditorSelection, StructureNode } from './ui/selection'
 import type { useWorkspaceRuntime } from './use-workspace-runtime'
-import { workspaceDocumentUri } from './use-workspace-runtime'
+import type { EditorWorkspace } from './workspace'
 
 type WorkspaceRuntime = ReturnType<typeof useWorkspaceRuntime>
+
+export interface FirstDiagramCreation {
+  readonly id: Fqn
+  readonly viewId: ViewId
+  readonly workspace: EditorWorkspace
+  readonly revision: number
+}
 
 export interface SemanticElementSelection {
   readonly id: Fqn
   readonly title: string
   readonly description: string | null
   readonly technology: string | null
+  readonly icon: string | null
   readonly tags: readonly string[]
 }
 
@@ -46,7 +54,8 @@ export interface SemanticEditorRuntime {
   readonly relationTarget: string
   readonly inspectorError: string | null
   readonly removalReport: RemovalDependencyReport | null
-  readonly availableKinds: ReadonlySet<ElementKind>
+  readonly availableKinds: ReadonlySet<string>
+  readonly kindTitles: ReadonlyMap<string, string>
   readonly availableTags: readonly string[]
   readonly elements: readonly { readonly id: Fqn; readonly title: string }[]
   readonly selectedElement: SemanticElementSelection | null
@@ -56,12 +65,14 @@ export interface SemanticEditorRuntime {
   readonly setRelationSource: Dispatch<SetStateAction<string>>
   readonly setRelationTarget: Dispatch<SetStateAction<string>>
   readonly createElement: (kind: ElementKind) => Promise<void>
-  readonly patchElement: (values: ElementFormValues) => Promise<void>
-  readonly renameElement: (newId: string) => Promise<void>
-  readonly moveElement: (parentId: Fqn | null) => Promise<void>
+  readonly createChildElement: (parentId: Fqn, kind: ElementKind) => Promise<Fqn | null>
+  readonly createFirstDiagram: (kind: ElementKind) => Promise<FirstDiagramCreation | null>
+  readonly patchElement: (values: ElementFormValues) => Promise<boolean>
+  readonly renameElement: (newId: string) => Promise<boolean>
+  readonly moveElement: (parentId: Fqn | null) => Promise<boolean>
   readonly inspectRemoval: () => Promise<void>
   readonly closeRemoval: () => void
-  readonly confirmRemoval: () => Promise<void>
+  readonly confirmRemoval: () => Promise<boolean>
   readonly activateCreateTool: (kind: ElementKind) => void
   readonly activateRelationTool: () => void
   readonly completeRelation: (sourceId: string, targetId: string) => void
@@ -69,7 +80,8 @@ export interface SemanticEditorRuntime {
   readonly updateDraftSource: (content: string) => void
   readonly undo: () => Promise<void>
   readonly redo: () => Promise<void>
-  readonly handleEditorKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void
+  readonly goToHistory: (index: number, expectedRevision: number) => Promise<void>
+  readonly cancelTools: () => void
 }
 
 export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRuntime {
@@ -94,12 +106,21 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
     setSelection(previous => reconcileSelection(previous, runtime.state!))
   }, [runtime.state])
 
-  const resetTools = (): void => {
+  const resetTools = useCallback((): void => {
     setActiveKind(null)
     setRelationActive(false)
     setRelationSource('')
     setRelationTarget('')
-  }
+  }, [])
+
+  const cancelTools = useCallback((): void => {
+    controller.current?.cancel('tool-change')
+    resetTools()
+  }, [resetTools])
+
+  useEffect(() => {
+    cancelTools()
+  }, [runtime.selectedViewId, cancelTools])
 
   const resultError = (result: Awaited<ReturnType<typeof runtime.dispatchSemantic>>, fallback: string): void => {
     if (result?.status === 'conflict') {
@@ -112,9 +133,10 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
   }
 
   const createElement = async (kind: ElementKind): Promise<void> => {
+    const documentUri = runtime.state?.entryDocumentUri
     const result = await runtime.dispatchSemantic({
       type: 'element.create',
-      input: { kind, documentUri: workspaceDocumentUri },
+      input: { kind, ...(documentUri ? { documentUri } : {}) },
     }, 'Не удалось создать элемент.')
     resetTools()
     if (result?.status === 'applied' && result.command === 'element.create') {
@@ -123,10 +145,42 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
     }
   }
 
+  const createFirstDiagram = async (kind: ElementKind): Promise<FirstDiagramCreation | null> => {
+    const current = runtime.workspace.current
+    if (!current) return null
+    const result = await runtime.dispatchSemantic({
+      type: 'diagram.create',
+      input: { kind, title: 'Новый элемент' },
+    }, 'Не удалось начать диаграмму. Повторите попытку.')
+    if (result?.status !== 'applied' || result.command !== 'diagram.create') return null
+    if (runtime.workspace.current !== current || current.state.revision !== result.revision) return null
+    resetTools()
+    setSelection({ type: 'element', id: result.createdElementId })
+    runtime.selectView(result.createdViewId)
+    runtime.setFeedback('Диаграмма создана. Задайте название первого элемента.')
+    return { id: result.createdElementId, viewId: result.createdViewId, workspace: current, revision: result.revision }
+  }
+
+  const createChildElement = async (parentId: Fqn, kind: ElementKind): Promise<Fqn | null> => {
+    const current = runtime.workspace.current
+    if (!current) return null
+    const result = await runtime.dispatchSemantic({
+      type: 'element.create',
+      input: { kind, parentId, title: 'Новый элемент' },
+    }, 'Не удалось создать дочерний элемент.')
+    if (result?.status !== 'applied' || result.command !== 'element.create') return null
+    if (runtime.workspace.current !== current || current.state.revision !== result.revision) return null
+    resetTools()
+    setSelection({ type: 'element', id: result.createdElementId })
+    runtime.setFeedback('Дочерний элемент создан. Задайте название в свойствах.')
+    return result.createdElementId
+  }
+
   const createRelation = async (sourceId: Fqn, targetId: Fqn): Promise<void> => {
+    const documentUri = runtime.state?.entryDocumentUri
     const result = await runtime.dispatchSemantic({
       type: 'relation.create',
-      input: { sourceId, targetId, documentUri: workspaceDocumentUri },
+      input: { sourceId, targetId, ...(documentUri ? { documentUri } : {}) },
     }, 'Не удалось создать связь.')
     resetTools()
     if (result?.status === 'applied' && result.command === 'relation.create') {
@@ -134,56 +188,80 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
     }
   }
 
-  const patchElement = async (values: ElementFormValues): Promise<void> => {
-    if (!selection) return
+  const patchElement = async (values: ElementFormValues): Promise<boolean> => {
+    if (!selection) return false
+    const current = runtime.state?.lastValidModel?.$data.elements[selection.id]
+    if (!current) return false
+    const base: ElementFormValues = {
+      title: current.title,
+      description: flattenMarkdownOrString(current.description) ?? '',
+      technology: current.technology ?? '',
+      icon: current.style.icon === 'none' ? null : current.style.icon ?? null,
+      tags: current.tags ?? [],
+    }
     const result = await runtime.dispatchSemantic({
       type: 'element.patch',
-      input: { id: selection.id, patch: patchFromForm(values) },
+      input: { id: selection.id, patch: patchFromForm(values, base) },
     }, 'Не удалось сохранить свойства.')
     resultError(result, 'Не удалось сохранить свойства.')
     if (result?.status === 'applied') runtime.setFeedback('Свойства элемента сохранены.')
+    return result?.status === 'applied'
   }
 
-  const renameElement = async (newId: string): Promise<void> => {
-    if (!selection) return
+  const renameElement = async (newId: string): Promise<boolean> => {
+    if (!selection) return false
     const result = await runtime.dispatchSemantic({
       type: 'element.rename',
       input: { id: selection.id, newId: newId.trim() },
     }, 'Не удалось переименовать элемент.')
     resultError(result, 'Не удалось переименовать элемент.')
     if (result?.status === 'applied' && result.command === 'element.rename') {
+      setSelection({ type: 'element', id: result.updatedElementId })
       runtime.setFeedback(`Элемент переименован: ${result.updatedElementId}.`)
     }
+    return result?.status === 'applied'
   }
 
-  const moveElement = async (parentId: Fqn | null): Promise<void> => {
-    if (!selection) return
+  const moveElement = async (parentId: Fqn | null): Promise<boolean> => {
+    if (!selection) return false
     const result = await runtime.dispatchSemantic({
       type: 'element.move',
       input: { id: selection.id, parentId },
     }, 'Не удалось переместить элемент.')
     resultError(result, 'Не удалось переместить элемент.')
     if (result?.status === 'applied' && result.command === 'element.move') {
+      setSelection({ type: 'element', id: result.updatedElementId })
       runtime.setFeedback(`Элемент перемещён: ${result.updatedElementId}.`)
     }
+    return result?.status === 'applied'
   }
 
   const inspectRemoval = async (): Promise<void> => {
     const current = runtime.workspace.current
-    if (!current || !selection) return
+    if (!current || !selection || !runtime.assertMutationAvailable()) return
     removeInitiator.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     runtime.setBusy(true)
     setInspectorError(null)
+    runtime.setCommandError(null)
+    setRemovalReport(null)
     try {
       const result = await current.inspectElementRemoval(selection.id, current.state.revision)
       runtime.refresh()
       if (result.status === 'ready') {
         setRemovalReport(result.report)
       } else if (result.status === 'conflict') {
-        setInspectorError('Проект изменился. Проверьте удаление ещё раз.')
+        const message = 'Проект изменился. Проверьте удаление ещё раз.'
+        setInspectorError(message)
+        runtime.setCommandError(message)
       } else {
-        setInspectorError(result.issues[0]?.message ?? 'Не удалось проверить зависимости.')
+        const message = result.issues[0]?.message ?? 'Не удалось проверить зависимости. Повторите проверку.'
+        setInspectorError(message)
+        runtime.setCommandError(message)
       }
+    } catch {
+      const message = 'Не удалось проверить зависимости. Повторите проверку на актуальной версии.'
+      setInspectorError(message)
+      runtime.setCommandError(message)
     } finally {
       runtime.setBusy(false)
     }
@@ -194,9 +272,10 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
     queueMicrotask(() => removeInitiator.current?.focus())
   }
 
-  const confirmRemoval = async (): Promise<void> => {
+  const confirmRemoval = async (): Promise<boolean> => {
     const report = removalReport
-    if (!report) return
+    if (!report) return false
+    setInspectorError(null)
     const result = await runtime.dispatchSemantic({
       type: 'element.remove',
       input: {
@@ -210,9 +289,11 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
       setRemovalReport(null)
       runtime.setFeedback('Элемент и подтверждённые зависимости удалены.')
       queueMicrotask(() => {
-        document.querySelector<HTMLElement>('.structure-item, .diagram-panel')?.focus()
+        document.querySelector<HTMLElement>('.diagram-panel')?.focus()
       })
+      return true
     }
+    return false
   }
 
   intentHandler.current = intent => {
@@ -233,6 +314,7 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
   }
 
   const activateCreateTool = (kind: ElementKind): void => {
+    if (!runtime.assertMutationAvailable()) return
     controller.current?.startElementCreation(kind)
     setActiveKind(kind)
     setRelationActive(false)
@@ -241,12 +323,13 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
   }
 
   const activateRelationTool = (): void => {
+    if (!runtime.assertMutationAvailable()) return
     controller.current?.startRelationCreation()
     setActiveKind(null)
     setRelationActive(true)
     setRelationSource('')
     setRelationTarget('')
-    runtime.setFeedback('Выберите исходный элемент.')
+    runtime.setFeedback('Потяните точку связи к другому элементу или выберите пару в списках ниже.')
     runtime.setCommandError(null)
   }
 
@@ -293,41 +376,19 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
     }
   }
 
-  const handleEditorKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
-      event.preventDefault()
-      void (event.shiftKey ? redo() : undo())
-      return
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      if (removalReport) closeRemoval()
-      else if (!controller.current?.handleKeyDown(event.key)) setSelection(null)
-      return
-    }
-    if ((event.key === 'Delete' || event.key === 'Backspace') && selection && !isEditableTarget(event.target)) {
-      event.preventDefault()
-      void inspectRemoval()
-      return
-    }
-    if (event.key === 'Enter' && selection && event.target instanceof HTMLElement) {
-      const fromSelectedTreeItem = event.target.getAttribute('aria-current') === 'true'
-      const fromCanvas = !!event.target.closest('.diagram-panel')
-      if (fromSelectedTreeItem || fromCanvas) {
-        event.preventDefault()
-        document.getElementById('element-title')?.focus()
-        return
-      }
-    }
-    if ((event.key === 'Enter' || event.key === ' ') && activeKind && !isEditableTarget(event.target)) {
-      event.preventDefault()
-      controller.current?.requestElementCreation({ x: 0.5, y: 0.5 })
-    }
+  const goToHistory = async (index: number, expectedRevision: number): Promise<void> => {
+    const result = await runtime.goToHistory(index, expectedRevision)
+    if (result?.status !== 'applied') return
+    resetTools()
+    const next = runtime.workspace.current?.state
+    if (next) setSelection(previous => selectionAfterResult(previous, result, next))
   }
 
   const state = runtime.state
-  const availableKinds = new Set<ElementKind>(
-    Object.keys(state?.lastValidModel?.$data.specification.elements ?? {}) as ElementKind[],
+  const availableKinds = new Set(Object.keys(state?.lastValidModel?.$data.specification.elements ?? {}))
+  const kindTitles = new Map(
+    Object.entries(state?.lastValidModel?.$data.specification.elements ?? {})
+      .flatMap(([kind, specification]) => specification.title ? [[kind, specification.title] as const] : []),
   )
   const availableTags = Object.keys(state?.lastValidModel?.$data.specification.tags ?? {}).sort()
   const elements = Object.values(state?.lastValidModel?.$data.elements ?? {})
@@ -338,8 +399,9 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
     ? {
       id: selectedModelElement.id as Fqn,
       title: selectedModelElement.title,
-      description: typeof selectedModelElement.description === 'string' ? selectedModelElement.description : null,
+      description: flattenMarkdownOrString(selectedModelElement.description),
       technology: selectedModelElement.technology ?? null,
+      icon: selectedModelElement.style.icon === 'none' ? null : selectedModelElement.style.icon ?? null,
       tags: selectedModelElement.tags ? [...selectedModelElement.tags] : [],
     }
     : null
@@ -355,15 +417,18 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
     inspectorError,
     removalReport,
     availableKinds,
+    kindTitles,
     availableTags,
     elements,
     selectedElement,
     structure: state ? buildStructureTree(state) : [],
     parents: state && selection ? parentOptions(state, selection.id) : [],
-    canvasDisabled: !state || state.compilation.status !== 'valid' || runtime.busy,
+    canvasDisabled: !state || state.compilation.status !== 'valid' || runtime.busy || runtime.readOnly,
     setRelationSource,
     setRelationTarget,
     createElement,
+    createChildElement,
+    createFirstDiagram,
     patchElement,
     renameElement,
     moveElement,
@@ -377,12 +442,14 @@ export function useSemanticEditor(runtime: WorkspaceRuntime): SemanticEditorRunt
     updateDraftSource,
     undo,
     redo,
-    handleEditorKeyDown,
+    goToHistory,
+    cancelTools,
   }
 }
 
 function relationFeedback(runtime: WorkspaceRuntime, relationId: RelationId): string {
-  const views = Object.values(runtime.state?.lastValidModel?.$data.views ?? {})
+  const state = runtime.workspace.current?.state ?? runtime.state
+  const views = Object.values(state?.lastValidModel?.$data.views ?? {})
   if (views.length === 0) {
     return 'Связь создана в модели, но в проекте нет подходящего вида для отображения.'
   }
@@ -392,8 +459,4 @@ function relationFeedback(runtime: WorkspaceRuntime, relationId: RelationId): st
   return selectedView.edges.some(edge => edge.relations.includes(relationId))
     ? 'Связь создана.'
     : 'Связь создана в модели, но текущий вид её не отображает.'
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && target.matches('input, textarea, select, [contenteditable="true"]')
 }

@@ -19,6 +19,12 @@ export interface LikeC4EditorCallbacks {
    */
   onCanvasIntent?: CanvasIntentHandler
 
+  /** Report a failed layout update so the host can offer visible recovery. */
+  onError?: (viewId: t.ViewId, error: unknown) => void
+
+  /** Supported view operations; omitted means the host supports every operation. */
+  supportedChanges?: readonly t.ViewChange['op'][]
+
   /**
    * Fetch a view by its ID and layout type.
    *

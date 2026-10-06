@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openPanel } from './panels'
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.clear())
@@ -10,17 +11,21 @@ test('edits, renames and safely removes one selected element with keyboard histo
   await page.getByRole('button', { name: 'Код', exact: true }).click()
   const source = page.getByLabel('Исходный код LikeC4')
   const treeItem = page.getByRole('button', { name: /Web application.*shop\.web/ })
+  await openPanel(page, 'Структура')
   await treeItem.click()
+  await openPanel(page, 'Инспектор')
 
   const title = page.getByLabel('Название', { exact: true })
   await expect(title).toHaveValue('Web application')
   await title.fill('Storefront')
   await page.getByRole('button', { name: 'Сохранить свойства' }).click()
-  await expect(source).toHaveValue(/title 'Storefront'/)
+  await expect(source).toHaveValue(/web = component 'Storefront'/)
 
+  await page.getByText('Подробности', { exact: true }).click()
   const localId = page.getByLabel('Локальный ID')
   await localId.fill('client')
   await page.getByRole('button', { name: 'Переименовать' }).click()
+  await openPanel(page, 'Структура')
   const renamedTreeItem = page.getByRole('button', { name: /Storefront.*shop\.client/ })
   await expect(renamedTreeItem).toBeVisible()
   await expect(source).toHaveValue(/client = component/)

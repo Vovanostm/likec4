@@ -92,7 +92,7 @@ export const pushHistory = () =>
         },
         redo: null,
       })
-      enqueue(scheduleSync())
+      enqueue(scheduleSync(0))
     }
   })
 

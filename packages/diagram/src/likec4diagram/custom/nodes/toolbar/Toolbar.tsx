@@ -5,6 +5,7 @@ import { useDebouncedValue } from '@mantine/hooks'
 import { type NodeToolbarProps, NodeToolbar } from '@xyflow/react'
 import type { ReactNode } from 'react'
 import type { BaseNodeProps } from '../../../../base/types'
+import { useOptionalLikeC4Editor } from '../../../../editor/LikeC4EditorProvider'
 import { type DiagramContext, useDiagramContext } from '../../../../hooks/useDiagram'
 import { stopPropagation } from '../../../../utils/xyflow'
 import * as styles from './styles.css'
@@ -22,6 +23,7 @@ const useSelectedNodesCount = () => {
 }
 
 export function Toolbar({ title, children, nodeProps, ...props }: ToolbarProps) {
+  const editor = useOptionalLikeC4Editor()
   const selectedNodesCount = useSelectedNodesCount()
   const {
     selected = false,
@@ -49,7 +51,7 @@ export function Toolbar({ title, children, nodeProps, ...props }: ToolbarProps) 
   }
   // TODO: This is a workaround to prevent the toolbar from flickering when the node unhovered
   const [isToolbarVisible] = useDebouncedValue(_isToolbarVisible, delay)
-  if (!isToolbarVisible) {
+  if (!isToolbarVisible || (editor?.supportedChanges && !editor.supportedChanges.includes('change-element-style'))) {
     return null
   }
 

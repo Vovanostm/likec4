@@ -1,0 +1,38 @@
+specification {
+  element actor
+  element system
+  element component
+  deploymentNode environment
+}
+
+model {
+  system system 'Сервис заказов' {
+    component component {
+      title 'API заказов'
+      component component {
+        title 'Контроллер заказов'
+      }
+        }
+      component component2 {
+        technology 'PostgreSQL'
+        title 'База заказов'
+      }
+        }
+  actor actor {
+    title 'Покупатель'
+  }
+  system.component -> system.component2
+  actor -> system
+}
+
+views {
+  view view1 of system {
+    title 'Новый элемент'
+    include *
+  }
+
+  view view2 of system.component {
+    title 'C3 — Компоненты API'
+    include *
+  }
+}

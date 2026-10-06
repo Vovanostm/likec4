@@ -43,6 +43,7 @@ const clearEditing = () =>
   })
 
 const moving = machine.createStateConfig({
+  tags: ['pending'],
   ...idOf(to.moving),
   entry: [
     saveBeforeEditing(),

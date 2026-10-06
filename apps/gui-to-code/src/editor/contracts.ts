@@ -1,6 +1,8 @@
 import type { LikeC4Model } from '@likec4/core/model'
 import type {
+  Color,
   ElementKind,
+  ElementShape,
   Fqn,
   RelationId,
   ViewId,
@@ -18,6 +20,7 @@ export interface SourceFile {
 export interface WorkspaceDiagnostic {
   readonly message: string
   readonly line?: number
+  readonly uri?: string
 }
 
 export interface CompileRequest {
@@ -63,7 +66,7 @@ export interface CreateConnectedElementEditInput {
 
 export interface CreateViewEditInput {
   readonly id: string
-  readonly viewOf: Fqn
+  readonly viewOf?: Fqn
   readonly title?: string
   readonly documentUri?: string
 }
@@ -139,9 +142,13 @@ export interface RemoveDeploymentRelationEditInput {
 }
 
 export interface ElementPatch {
+  readonly kind?: ElementKind
+  readonly shape?: ElementShape
+  readonly color?: Color
   readonly title?: string
   readonly description?: string | null
   readonly technology?: string | null
+  readonly icon?: string | null
   readonly tags?: readonly string[]
 }
 
@@ -152,6 +159,14 @@ export interface PatchElementEditInput {
 
 export interface RelationPatch {
   readonly title?: string
+  readonly description?: string | null
+  readonly technology?: string | null
+  readonly tags?: readonly string[]
+}
+
+export interface CreateTagCommand {
+  readonly type: 'tag.create'
+  readonly input: { readonly name: string }
 }
 
 export interface PatchRelationEditInput {
@@ -240,6 +255,7 @@ export class EditorDocumentError extends Error {
 }
 
 export interface EditorDocumentPort {
+  createTag?(sources: readonly SourceFile[], input: { readonly name: string }): Promise<readonly SourceFile[]>
   createElement(sources: readonly SourceFile[], input: CreateElementEditInput): Promise<readonly SourceFile[]>
   createRelation(sources: readonly SourceFile[], input: CreateRelationEditInput): Promise<readonly SourceFile[]>
   createConnectedElement?(
@@ -251,10 +267,22 @@ export interface EditorDocumentPort {
   createDynamicStep(sources: readonly SourceFile[], input: CreateDynamicStepEditInput): Promise<readonly SourceFile[]>
   patchDynamicStep?(sources: readonly SourceFile[], input: PatchDynamicStepEditInput): Promise<readonly SourceFile[]>
   removeDynamicStep?(sources: readonly SourceFile[], input: RemoveDynamicStepEditInput): Promise<readonly SourceFile[]>
-  createDeploymentView(sources: readonly SourceFile[], input: CreateDeploymentViewEditInput): Promise<readonly SourceFile[]>
-  createDeploymentNode(sources: readonly SourceFile[], input: CreateDeploymentNodeEditInput): Promise<readonly SourceFile[]>
-  createDeploymentInstance(sources: readonly SourceFile[], input: CreateDeploymentInstanceEditInput): Promise<readonly SourceFile[]>
-  createDeploymentRelation(sources: readonly SourceFile[], input: CreateDeploymentRelationEditInput): Promise<readonly SourceFile[]>
+  createDeploymentView(
+    sources: readonly SourceFile[],
+    input: CreateDeploymentViewEditInput,
+  ): Promise<readonly SourceFile[]>
+  createDeploymentNode(
+    sources: readonly SourceFile[],
+    input: CreateDeploymentNodeEditInput,
+  ): Promise<readonly SourceFile[]>
+  createDeploymentInstance(
+    sources: readonly SourceFile[],
+    input: CreateDeploymentInstanceEditInput,
+  ): Promise<readonly SourceFile[]>
+  createDeploymentRelation(
+    sources: readonly SourceFile[],
+    input: CreateDeploymentRelationEditInput,
+  ): Promise<readonly SourceFile[]>
   patchDeploymentRelation?(
     sources: readonly SourceFile[],
     input: PatchDeploymentRelationEditInput,
@@ -280,11 +308,25 @@ export interface WorkspaceDocumentSnapshot {
 export interface EditorHistoryEntry {
   readonly revision: Revision
   readonly document: WorkspaceDocumentSnapshot
+  readonly action: EditorHistoryAction
+}
+
+/** Presentation metadata for a validated command; snapshots own its exact undo/redo state. */
+export interface EditorHistoryAction {
+  readonly type:
+    | EditorCommand['type']
+    | LayoutCommand['type']
+    | 'subgraph.paste'
+    | 'subgraph.remove'
+    | 'source.edit'
+    | 'workspace.open'
+  readonly label: string
 }
 
 export interface EditorHistory {
   readonly past: readonly EditorHistoryEntry[]
   readonly future: readonly EditorHistoryEntry[]
+  readonly current: EditorHistoryAction
 }
 
 export interface WorkspaceCompilation {
@@ -297,6 +339,7 @@ export interface WorkspaceCompilation {
 export interface EditorWorkspaceState {
   readonly version: 2
   readonly projectId: string
+  readonly entryDocumentUri: string
   readonly revision: Revision
   readonly committedSources: readonly SourceFile[]
   readonly draftSources: readonly SourceFile[]
@@ -311,6 +354,17 @@ export interface CreateElementCommand {
   readonly input: {
     readonly kind: ElementKind
     readonly id?: string
+    readonly title?: string
+    readonly parentId?: Fqn
+    readonly documentUri?: string
+  }
+}
+
+/** Atomically starts a diagram in an empty project; IDs remain workspace-owned. */
+export interface CreateDiagramCommand {
+  readonly type: 'diagram.create'
+  readonly input: {
+    readonly kind: ElementKind
     readonly title?: string
     readonly documentUri?: string
   }
@@ -372,7 +426,7 @@ export interface CreateViewCommand {
   readonly input: {
     readonly id?: string
     readonly title?: string
-    readonly viewOf: Fqn
+    readonly viewOf?: Fqn
     readonly documentUri?: string
   }
 }
@@ -464,6 +518,8 @@ export interface RemoveDeploymentRelationCommand {
 }
 
 export type EditorCommand =
+  | CreateTagCommand
+  | CreateDiagramCommand
   | CreateElementCommand
   | CreateElementAtCommand
   | CreateConnectedElementCommand
@@ -521,6 +577,7 @@ export type EditorOperation =
   }
 
 export type CommandIssueCode =
+  | 'bootstrap-project-not-empty'
   | 'stale-revision'
   | 'workspace-invalid'
   | 'kind-unavailable'
@@ -542,6 +599,8 @@ export type CommandIssueCode =
   | 'create-connected-source-edit-failed'
   | 'create-connected-verification-failed'
   | 'history-empty'
+  | 'history-position-invalid'
+  | 'history-compile-rejected'
   | 'undo-compile-rejected'
   | 'element-not-found'
   | 'invalid-title'
@@ -610,6 +669,19 @@ export interface CommandIssue {
 }
 
 export type AppliedCommandResult =
+  | {
+    readonly status: 'applied'
+    readonly command: 'tag.create'
+    readonly revision: Revision
+    readonly createdTag: string
+  }
+  | {
+    readonly status: 'applied'
+    readonly command: 'diagram.create'
+    readonly revision: Revision
+    readonly createdElementId: Fqn
+    readonly createdViewId: ViewId
+  }
   | {
     readonly status: 'applied'
     readonly command: 'element.create'
@@ -732,7 +804,7 @@ export type AppliedCommandResult =
   }
   | {
     readonly status: 'applied'
-    readonly command: 'history.undo' | 'history.redo'
+    readonly command: 'history.undo' | 'history.redo' | 'history.goto'
     readonly revision: Revision
   }
 

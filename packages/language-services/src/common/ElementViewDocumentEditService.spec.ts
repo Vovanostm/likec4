@@ -23,12 +23,31 @@ views {
 }
 `
 
-function applyPlan(current: string, plan: Awaited<ReturnType<ReturnType<typeof createElementViewDocumentEditService>['planAddElementView']>>): string {
+function applyPlan(
+  current: string,
+  plan: Awaited<ReturnType<ReturnType<typeof createElementViewDocumentEditService>['planAddElementView']>>,
+): string {
   const uri = plan.affectedDocuments[0]!
   return applyDocumentTextEdits(current, plan.edits.filter(edit => edit.uri === uri), plan.baseRevisions[uri]!)
 }
 
 describe('ElementViewDocumentEditService', () => {
+  it('adds a root context without rewriting scoped views or model bytes', async () => {
+    const likec4 = await fromSources({ 'model.c4': source })
+    const plan = await createElementViewDocumentEditService(likec4).planAddElementView({
+      id: 'context',
+      title: 'Context',
+    })
+    const candidate = applyPlan(source, plan)
+    expect(candidate).toContain('view context {\n    title \'Context\'\n    include *')
+    expect(candidate.slice(0, candidate.indexOf('\nviews {'))).toBe(source.slice(0, source.indexOf('\nviews {')))
+    expect(candidate).toContain('view index of shop')
+    const reparsed = await fromSources({ 'model.c4': candidate })
+    expect(reparsed.hasErrors()).toBe(false)
+    const context = (await reparsed.computedModel()).$data.views['context']
+    expect(context && 'viewOf' in context ? context.viewOf : undefined).toBeUndefined()
+  })
+
   it('adds one scoped element view without rewriting neighbours', async () => {
     const likec4 = await fromSources({ 'model.c4': source })
     const plan = await createElementViewDocumentEditService(likec4).planAddElementView({
@@ -39,7 +58,7 @@ describe('ElementViewDocumentEditService', () => {
     })
     const candidate = applyPlan(source, plan)
 
-    expect(candidate).toContain("view web of shop.web {\n    title 'Web view'\n    include *\n  }")
+    expect(candidate).toContain('view web of shop.web {\n    title \'Web view\'\n    include *\n  }')
     expect(candidate).toContain('// existing view must stay byte-identical')
     expect(candidate.match(/view web of/g)).toHaveLength(1)
     const reparsed = await fromSources({ 'model.c4': candidate })
@@ -85,11 +104,13 @@ describe('ElementViewDocumentEditService', () => {
       'b/views.c4': 'views {}\n',
     })
 
-    await expect(createElementViewDocumentEditService(likec4).planAddElementView({
-      id: 'web',
-      viewOf: 'shop.web' as Fqn,
-      documentUri: 'views.c4',
-    })).rejects.toMatchObject({ code: 'ambiguous-reference' })
+    await expect(
+      createElementViewDocumentEditService(likec4).planAddElementView({
+        id: 'web',
+        viewOf: 'shop.web' as Fqn,
+        documentUri: 'views.c4',
+      }),
+    ).rejects.toMatchObject({ code: 'ambiguous-reference' })
   })
 
   it('rejects duplicate and invalid view IDs', async () => {
@@ -104,9 +125,11 @@ describe('ElementViewDocumentEditService', () => {
 
   it('rejects a missing logical scope without producing edits', async () => {
     const likec4 = await fromSources({ 'model.c4': source })
-    await expect(createElementViewDocumentEditService(likec4).planAddElementView({
-      id: 'missing',
-      viewOf: 'missing' as Fqn,
-    })).rejects.toMatchObject({ code: 'not-found' })
+    await expect(
+      createElementViewDocumentEditService(likec4).planAddElementView({
+        id: 'missing',
+        viewOf: 'missing' as Fqn,
+      }),
+    ).rejects.toMatchObject({ code: 'not-found' })
   })
 })

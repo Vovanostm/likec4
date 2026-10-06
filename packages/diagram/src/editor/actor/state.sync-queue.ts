@@ -65,6 +65,7 @@ const idle = machine.createStateConfig({
  * Has pending operations
  */
 const pending = machine.createStateConfig({
+  tags: ['pending'],
   ...idOf(to.pending),
   on: {
     // Debounce queue events
