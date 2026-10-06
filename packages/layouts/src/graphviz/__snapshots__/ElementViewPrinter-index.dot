@@ -29,9 +29,9 @@ digraph {
   node [
     fontname = "Arial";
     shape = "rect";
-    fillcolor = "#3b82f6";
+    fillcolor = "#1d4ed8";
     fontcolor = "#eff6ff";
-    color = "#2563eb";
+    color = "#1e40af";
     style = "filled";
     penwidth = 0;
   ];

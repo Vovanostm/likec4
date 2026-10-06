@@ -17,58 +17,58 @@ skinparam {
 }
 
 skinparam rectangle<<RootEl1>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam person<<RootEl2>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<RootEl3>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<RootEl4>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam database<<RootEl5>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam database<<RootEl6>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam queue<<RootEl7>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<RootEl8>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<RootEl9>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam component<<RootEl10>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 rectangle ""Root" element" <<Root>> as Root {
-  skinparam RectangleBorderColor<<Root>> #3b82f6
-  skinparam RectangleFontColor<<Root>> #3b82f6
+  skinparam RectangleBorderColor<<Root>> #1d4ed8
+  skinparam RectangleFontColor<<Root>> #1d4ed8
   skinparam RectangleBorderStyle<<Root>> dashed
 
   rectangle "==Element with \\n"rectangle" shape" <<RootEl1>> as RootEl1
@@ -107,49 +107,49 @@ skinparam {
 }
 
 skinparam rectangle<<Amazon>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<Customer>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<Support>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<CloudBackendGraphql>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<CloudBackendStorage>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<CloudFrontendAdminPanel>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<CloudFrontendDashboard>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 rectangle "==amazon" <<Amazon>> as Amazon
 rectangle "cloud" <<Cloud>> as Cloud {
-  skinparam RectangleBorderColor<<Cloud>> #3b82f6
-  skinparam RectangleFontColor<<Cloud>> #3b82f6
+  skinparam RectangleBorderColor<<Cloud>> #1d4ed8
+  skinparam RectangleFontColor<<Cloud>> #1d4ed8
   skinparam RectangleBorderStyle<<Cloud>> dashed
 
   rectangle "backend" <<CloudBackend>> as CloudBackend {
-    skinparam RectangleBorderColor<<CloudBackend>> #3b82f6
-    skinparam RectangleFontColor<<CloudBackend>> #3b82f6
+    skinparam RectangleBorderColor<<CloudBackend>> #1d4ed8
+    skinparam RectangleFontColor<<CloudBackend>> #1d4ed8
     skinparam RectangleBorderStyle<<CloudBackend>> dashed
 
     rectangle "==graphql" <<CloudBackendGraphql>> as CloudBackendGraphql
@@ -188,34 +188,34 @@ skinparam {
 }
 
 skinparam rectangle<<Amazon>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<Customer>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<Support>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<CloudBackend>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<CloudFrontend>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 rectangle "==amazon" <<Amazon>> as Amazon
 rectangle "cloud" <<Cloud>> as Cloud {
-  skinparam RectangleBorderColor<<Cloud>> #3b82f6
-  skinparam RectangleFontColor<<Cloud>> #3b82f6
+  skinparam RectangleBorderColor<<Cloud>> #1d4ed8
+  skinparam RectangleFontColor<<Cloud>> #1d4ed8
   skinparam RectangleBorderStyle<<Cloud>> dashed
 
   rectangle "==backend" <<CloudBackend>> as CloudBackend
@@ -249,19 +249,19 @@ skinparam {
 }
 
 skinparam rectangle<<Client>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<SystemBackend>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<SystemFrontend>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 rectangle "==client" <<Client>> as Client
 rectangle "==backend" <<SystemBackend>> as SystemBackend
@@ -290,9 +290,9 @@ skinparam {
 }
 
 skinparam rectangle<<PaymentGateway>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 skinparam rectangle<<EmailProvider>>{
   BackgroundColor #0284c7
@@ -300,9 +300,9 @@ skinparam rectangle<<EmailProvider>>{
   BorderColor #0369a1
 }
 skinparam person<<Customer>>{
-  BackgroundColor #3b82f6
+  BackgroundColor #1d4ed8
   FontColor #eff6ff
-  BorderColor #2563eb
+  BorderColor #1e40af
 }
 rectangle "==Payment Gateway" <<PaymentGateway>> as PaymentGateway
 rectangle "==Email Provider\\n<size:10>[Rest API]</size>" <<EmailProvider>> as EmailProvider

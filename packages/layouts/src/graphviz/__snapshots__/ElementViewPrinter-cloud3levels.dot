@@ -29,9 +29,9 @@ digraph {
   node [
     fontname = "Arial";
     shape = "rect";
-    fillcolor = "#3b82f6";
+    fillcolor = "#1d4ed8";
     fontcolor = "#eff6ff";
-    color = "#2563eb";
+    color = "#1e40af";
     style = "filled";
     penwidth = 0;
   ];
@@ -101,8 +101,8 @@ digraph {
     likec4_id = "cloud";
     likec4_level = 0;
     likec4_depth = 2;
-    fillcolor = "#1a468d";
-    color = "#1c3979";
+    fillcolor = "#1d316a";
+    color = "#1a2856";
     style = "filled";
     margin = 40;
     label = <<FONT POINT-SIZE="11" COLOR="#bfdbfeb3"><B>CLOUD</B></FONT>>;
@@ -112,8 +112,8 @@ digraph {
       likec4_id = "cloud.backend";
       likec4_level = 1;
       likec4_depth = 1;
-      fillcolor = "#194b9e";
-      color = "#1b3d88";
+      fillcolor = "#1d3476";
+      color = "#1b2b60";
       style = "filled";
       margin = 40;
       label = <<FONT POINT-SIZE="11" COLOR="#bfdbfeb3"><B>BACKEND</B></FONT>>;
