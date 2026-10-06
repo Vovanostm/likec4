@@ -256,7 +256,12 @@ Public API and contracts:
 
 ### apps/gui-to-code
 
+- Product scope: a desktop-only service for creating and editing diagrams. Prioritize the complete desktop user journey, diagram correctness, data integrity, persistence, Undo/Redo, import/export, and desktop responsiveness/performance.
+- Mobile/tablet layouts, touch-device support, accessibility/WCAG conformance, assistive-technology audits, and related certification are outside the requested delivery and acceptance scope. Do not add work or block delivery on those checks unless the user explicitly changes this scope. Preserve existing behaviour and basic UI semantics when making desktop changes.
+- Interpret “modern industry standards” and “best practices” for this app within that desktop product scope; do not infer a mobile or accessibility compliance programme.
+
 - `apps/gui-to-code` is a private browser-only, Russian-language canvas editor. `README.md` records the current slice; `SPEC.md` is the product/technical contract and `ROADMAP.md` is the delivery plan. Its `AGENTS.md` is the only permitted nested instruction file and supplements, rather than replaces, this root policy.
+- Every GUI-to-code desktop UI review must read and apply the spacing and alignment gate in `apps/gui-to-code/AGENTS.md`, including reviews by independent critics.
 - The full editor has one mutable semantic owner: `EditorWorkspace` and its pure, typed `EditorCommand` reducer/history. Canvas, tree, inspector, code preview and compiler output are derived views. Never maintain a second mutable graph or perform ad-hoc DSL string surgery from canvas gestures.
 - A canvas gesture dispatches a semantic command (create, patch, connect, move-to-parent, rename, remove) to the workspace. The compiler validates the next revision and derives model/diagnostics; failed commands do not replace the last valid revision. Geometry is owned only by `@likec4/diagram` and standard `.likec4/<view>.likec4.snap` snapshots.
 - Reuse `@likec4/diagram`, `@likec4/language-services/browser`, existing XYFlow interaction, and the canonical LikeC4 generator. Do not import `@likec4/language-server` into the UI, clone XYFlow state, or use lossy whole-document generation as an incremental edit path.
